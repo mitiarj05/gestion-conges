@@ -1,0 +1,159 @@
+/* frontend/src/styles/darkTheme.css */
+
+/* Thème sombre */
+[data-theme="dark"] {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-card: #0f3460;
+    --text-primary: #ffffff;
+    --text-secondary: #a0aec0;
+    --border-color: #2d3748;
+    --card-bg: #1e1e2e;
+    --hover-bg: #2d2d3e;
+    --input-bg: #2d2d3e;
+    --input-border: #4a4a5e;
+    --header-bg: #0f0f1a;
+    --sidebar-bg: #0f0f1a;
+    --table-header: #2d2d3e;
+    --table-row-hover: #252535;
+}
+
+[data-theme="dark"] body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .admin-section,
+[data-theme="dark"] .table-container,
+[data-theme="dark"] .modal,
+[data-theme="dark"] .filters-bar {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .card h3,
+[data-theme="dark"] .card .value {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .card .small {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .info-box {
+    background: var(--bg-secondary);
+    border-left-color: #667eea;
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .app-header {
+    background: var(--header-bg);
+}
+
+[data-theme="dark"] .sidebar {
+    background: var(--sidebar-bg);
+}
+
+[data-theme="dark"] .sidebar nav a {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .sidebar nav a:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .sidebar nav a.active {
+    background: var(--bg-card);
+    color: white;
+}
+
+[data-theme="dark"] table th {
+    background: var(--table-header);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] table td {
+    border-bottom-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] tr:hover {
+    background: var(--table-row-hover);
+}
+
+[data-theme="dark"] .form-input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+    background: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .form-input:focus {
+    border-color: #667eea;
+}
+
+[data-theme="dark"] .request-item {
+    background: var(--card-bg);
+    border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .request-info small {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .footer {
+    background: var(--header-bg);
+}
+
+[data-theme="dark"] .stat-card .label {
+    opacity: 0.8;
+}
+
+[data-theme="dark"] .code-list {
+    background: var(--bg-secondary);
+}
+
+[data-theme="dark"] .modal-overlay {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+/* Thème sombre - Toast notifications */
+[data-theme="dark"] .toast-notification {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Thème sombre - Statistiques */
+[data-theme="dark"] .statistics-tabs .tab-btn {
+    background: var(--card-bg);
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .statistics-tabs .tab-btn.active {
+    background: var(--bg-card);
+    color: white;
+}
+
+[data-theme="dark"] .summary-item .summary-label {
+    color: var(--text-secondary);
+}
+
+/* Thème sombre - Progress bars */
+[data-theme="dark"] .progress-bar {
+    background: var(--input-bg);
+}
+
+[data-theme="dark"] .monthly-bar-container {
+    background: var(--input-bg);
+}
+
+[data-theme="dark"] .type-bar-container {
+    background: var(--input-bg);
+}
+
+/* Thème sombre - Status cards */
+[data-theme="dark"] .status-card {
+    background: var(--card-bg);
+}

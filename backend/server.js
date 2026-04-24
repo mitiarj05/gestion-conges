@@ -14,10 +14,12 @@ app.use(express.urlencoded({ extended: true }));
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/leaves', leaveRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Route test
 app.get('/', (req, res) => {

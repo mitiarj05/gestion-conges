@@ -1,4 +1,3 @@
-// backend/middleware/roleCheck.js
 const requireRoles = (allowedRoles) => {
     return (req, res, next) => {
         if (!req.user) {
@@ -10,7 +9,7 @@ const requireRoles = (allowedRoles) => {
         
         if (!hasRole) {
             return res.status(403).json({ 
-                message: 'Accès refusé. Rôle insuffisant.',
+                message: 'Accès refusé. Rôle insuffissant.',
                 required: allowedRoles,
                 yourRoles: userRoles
             });

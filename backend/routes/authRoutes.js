@@ -1,50 +1,55 @@
-// backend/routes/authRoutes.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 
-// INSCRIPTION
+async function adminExists() {
+    const result = await pool.query(
+        `SELECT COUNT(*) FROM utilisateurs_roles ur 
+         JOIN roles r ON ur.role_id = r.id 
+         WHERE r.nom = 'admin'`
+    );
+    return parseInt(result.rows[0].count) > 0;
+}
+
 router.post('/register', async (req, res) => {
-    const { nom, prenom, email, password, telephone, code_inscription } = req.body;
+    const { nom, prenom, email, password, telephone, role_souhaite, adminCode, adminSecretKey } = req.body;
     
     try {
-        console.log('Tentative inscription:', { email, code_inscription });
+        console.log('=== INSCRIPTION ===');
+        console.log('Email:', email);
+        console.log('Rôle souhaité:', role_souhaite);
         
-        // Vérifier si l'email existe déjà
         const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         if (existingUser.rows.length > 0) {
             return res.status(400).json({ message: 'Cet email est déjà utilisé' });
         }
         
-        // Déterminer le rôle selon le code (AVEC VALEURS PAR DÉFAUT)
-        const MANAGER_CODE = process.env.MANAGER_CODE || 'MGR2024';
-        const ADMIN_CODE = process.env.ADMIN_CODE || 'ADMIN2024';
+        const adminAlreadyExists = await adminExists();
         
         let roleNom = 'employe';
-        if (code_inscription === MANAGER_CODE) {
-            roleNom = 'manager';
-            console.log('Code manager reconnu, rôle = manager');
-        }
-        if (code_inscription === ADMIN_CODE) {
+        
+        if (role_souhaite === 'admin') {
+            const ADMIN_CODE = process.env.ADMIN_CODE || 'ADMIN26';
+            const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || 'SUPER_SECRET_KEY_123';
+            
+            if (adminCode !== ADMIN_CODE) {
+                return res.status(403).json({ message: 'Code Admin invalide' });
+            }
+            if (adminSecretKey !== ADMIN_SECRET_KEY) {
+                return res.status(403).json({ message: 'Clé d\'activation invalide' });
+            }
             roleNom = 'admin';
-            console.log('Code admin reconnu, rôle = admin');
         }
         
-        console.log('Rôle attribué:', roleNom);
-        
-        // Récupérer l'ID du rôle
         const roleResult = await pool.query('SELECT id FROM roles WHERE nom = $1', [roleNom]);
         if (roleResult.rows.length === 0) {
-            return res.status(500).json({ message: 'Rôle non trouvé dans la base' });
+            return res.status(500).json({ message: 'Rôle non trouvé' });
         }
-        const roleId = roleResult.rows[0].id;
         
-        // Hasher le mot de passe
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // Créer l'utilisateur
         const userResult = await pool.query(
             `INSERT INTO users (nom, prenom, email, password_hash, telephone, statut, cree_le)
              VALUES ($1, $2, $3, $4, $5, 'actif', NOW())
@@ -54,15 +59,13 @@ router.post('/register', async (req, res) => {
         
         const userId = userResult.rows[0].id;
         
-        // Attribuer le rôle principal
         await pool.query(
             `INSERT INTO utilisateurs_roles (utilisateur_id, role_id, assigne_le)
              VALUES ($1, $2, NOW())`,
-            [userId, roleId]
+            [userId, roleResult.rows[0].id]
         );
         
-        // Attribuer le rôle employé aussi si ce n'est pas déjà le cas
-        if (roleNom !== 'employe') {
+        if (roleNom === 'admin') {
             const employeRole = await pool.query('SELECT id FROM roles WHERE nom = $1', ['employe']);
             if (employeRole.rows.length > 0) {
                 await pool.query(
@@ -73,7 +76,6 @@ router.post('/register', async (req, res) => {
             }
         }
         
-        // Créer le solde de congés pour l'année en cours
         const currentYear = new Date().getFullYear();
         const typesConges = await pool.query('SELECT id, jours_par_defaut FROM types_conges WHERE jours_par_defaut IS NOT NULL');
         
@@ -85,27 +87,21 @@ router.post('/register', async (req, res) => {
             );
         }
         
-        console.log('Inscription réussie pour:', email, 'avec rôle:', roleNom);
-        
         res.status(201).json({ 
-            message: 'Inscription réussie',
+            message: roleNom === 'admin' ? 'Compte Admin créé avec succès !' : 'Inscription réussie',
             user: { id: userId, nom, prenom, email, role: roleNom }
         });
         
     } catch (error) {
-        console.error('Erreur inscription détaillée:', error);
+        console.error('Erreur inscription:', error);
         res.status(500).json({ message: 'Erreur serveur: ' + error.message });
     }
 });
 
-// CONNEXION
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     
     try {
-        console.log('Tentative connexion:', email);
-        
-        // Récupérer l'utilisateur avec ses rôles
         const userResult = await pool.query(
             `SELECT u.id, u.nom, u.prenom, u.email, u.password_hash, u.statut,
                     COALESCE(array_agg(DISTINCT r.nom) FILTER (WHERE r.nom IS NOT NULL), '{}') as roles
@@ -118,35 +114,27 @@ router.post('/login', async (req, res) => {
         );
         
         if (userResult.rows.length === 0) {
-            console.log('Utilisateur non trouvé:', email);
             return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
         }
         
         const user = userResult.rows[0];
         
-        // Vérifier le statut
         if (user.statut !== 'actif') {
             return res.status(401).json({ message: 'Compte désactivé' });
         }
         
-        // Vérifier le mot de passe
         const validPassword = await bcrypt.compare(password, user.password_hash);
         if (!validPassword) {
-            console.log('Mot de passe incorrect pour:', email);
             return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
         }
         
-        // Mettre à jour dernière connexion
         await pool.query('UPDATE users SET derniere_connexion = NOW() WHERE id = $1', [user.id]);
         
-        // Créer le token JWT
         const token = jwt.sign(
             { id: user.id, email: user.email, roles: user.roles },
-            process.env.JWT_SECRET || 'default_secret_key',
+            process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
-        
-        console.log('Connexion réussie pour:', email, 'Rôles:', user.roles);
         
         res.json({
             token,
@@ -160,8 +148,17 @@ router.post('/login', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Erreur connexion détaillée:', error);
-        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+        console.error('Erreur connexion:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
+router.get('/admin-exists', async (req, res) => {
+    try {
+        const exists = await adminExists();
+        res.json({ adminExists: exists });
+    } catch (error) {
+        res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 

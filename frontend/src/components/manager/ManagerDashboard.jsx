@@ -1,109 +1,209 @@
 // frontend/src/components/manager/ManagerDashboard.jsx
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import Navbar from '../common/Navbar';
+import Sidebar from '../common/Sidebar';
+import Footer from '../common/Footer';
+import TeamList from './TeamList';
+import PendingValidations from './PendingValidations';
 
 function ManagerDashboard({ onLogout }) {
     const [user, setUser] = useState({});
-    const [pendingRequests, setPendingRequests] = useState([
-        { id: 1, name: 'Jean Dupont', start_date: '2024-05-10', end_date: '2024-05-15', type: 'Congés Payés', duration: 5, reason: 'Vacances' },
-        { id: 2, name: 'Sophie Martin', start_date: '2024-05-20', end_date: '2024-05-20', type: 'Permission', duration: 2, reason: 'RDV médical' }
-    ]);
+    const [pendingRequests, setPendingRequests] = useState([]);
+    const [teamMembers, setTeamMembers] = useState([]);
+    const [balance, setBalance] = useState({ paid: 15, rtt: 6, permission: 1 });
+    const [loading, setLoading] = useState(true);
+    const location = useLocation();
+    const navigate = useNavigate();
 
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
+        fetchAllData();
+        
+        const interval = setInterval(() => {
+            fetchAllData();
+        }, 30000);
+        
+        return () => clearInterval(interval);
     }, []);
 
-    const handleApprove = (id) => {
-        setPendingRequests(pendingRequests.filter(req => req.id !== id));
-        alert(`Demande #${id} approuvée !`);
+    const getAuthHeaders = () => ({ 
+        headers: { 
+            Authorization: `Bearer ${localStorage.getItem('token')}` 
+        } 
+    });
+
+    const fetchAllData = async () => {
+        await Promise.all([fetchPendingRequests(), fetchTeamMembers(), fetchBalance()]);
+        setLoading(false);
     };
 
-    const handleReject = (id) => {
-        setPendingRequests(pendingRequests.filter(req => req.id !== id));
-        alert(`Demande #${id} refusée.`);
+    const fetchPendingRequests = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                navigate('/login');
+                return;
+            }
+            const response = await axios.get('http://localhost:5000/api/leaves/team-pending', getAuthHeaders());
+            setPendingRequests(response.data);
+            console.log(`📋 ${response.data.length} demandes en attente de validation`);
+        } catch (error) {
+            console.error('Erreur fetchPendingRequests:', error);
+            if (error.response?.status === 401) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                navigate('/login');
+            }
+        }
     };
+
+    const fetchTeamMembers = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await axios.get('http://localhost:5000/api/users/my-team', getAuthHeaders());
+            setTeamMembers(response.data);
+            console.log(`👥 Équipe: ${response.data.length} membres`);
+        } catch (error) {
+            console.error('Erreur fetchTeamMembers:', error);
+            setTeamMembers([]);
+        }
+    };
+
+    const fetchBalance = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await axios.get('http://localhost:5000/api/leaves/balance', getAuthHeaders());
+            setBalance(response.data);
+        } catch (error) {
+            console.error('Erreur fetchBalance:', error);
+        }
+    };
+
+    const refreshData = () => {
+        fetchAllData();
+    };
+
+    if (loading) {
+        return (
+            <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <div>Chargement...</div>
+            </div>
+        );
+    }
+
+    // Dashboard Home
+    const DashboardHome = () => (
+        <>
+            <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
+            
+            <div className="manager-section">
+                <h3>👥 SECTION MANAGER - 1ère validation</h3>
+                <div className="cards-grid">
+                    <div className="stat-card blue">
+                        <div className="number">{teamMembers.length}</div>
+                        <div className="label">👥 Membres dans mon équipe</div>
+                    </div>
+                    <div className="stat-card orange">
+                        <div className="number">{pendingRequests.length}</div>
+                        <div className="label">⏳ Demandes à valider (1ère étape)</div>
+                    </div>
+                </div>
+                <div className="btn-group mt-20">
+                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team')}>
+                        👥 Gérer mon équipe
+                    </button>
+                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/validations')}>
+                        ✅ Valider les demandes
+                    </button>
+                </div>
+            </div>
+            
+            {pendingRequests.length > 0 && (
+                <>
+                    <h3>📋 Demandes en attente de validation</h3>
+                    <PendingValidations requests={pendingRequests} onRefresh={refreshData} />
+                </>
+            )}
+            
+            {teamMembers.length === 0 && (
+                <div className="info-box" style={{ marginTop: '20px', background: '#e8f4fd' }}>
+                    <strong>💡 Conseil :</strong> Commencez par ajouter des membres à votre équipe dans l'onglet "Mon équipe" 
+                    pour pouvoir gérer leurs demandes de congé.
+                </div>
+            )}
+            
+            <div className="info-box" style={{ marginTop: '20px', background: '#fff3cd' }}>
+                <strong>ℹ️ Processus de validation :</strong><br/>
+                1️⃣ Vous validez la demande (1ère étape) → L'employé est notifié<br/>
+                2️⃣ L'administrateur valide définitivement (2ème étape) → L'employé est notifié
+            </div>
+            
+            <div className="cards-grid mt-20">
+                <div className="card">
+                    <h3>🏖️ Congés Payés</h3>
+                    <div className="value">{balance.paid || 15} jours</div>
+                    <div className="small">Mon solde restant</div>
+                </div>
+                <div className="card">
+                    <h3>📅 Réduction du Temps de Travail (RTT)</h3>
+                    <div className="value">{balance.rtt || 6} jours</div>
+                    <div className="small">Mon solde restant</div>
+                </div>
+                <div className="card">
+                    <h3>⏰ Permissions</h3>
+                    <div className="value">{balance.permission || 1}h</div>
+                    <div className="small">Utilisées ce mois</div>
+                </div>
+            </div>
+        </>
+    );
+
+    const currentPath = location.pathname;
+
+    if (currentPath.includes('/team')) {
+        return (
+            <>
+                <Navbar user={user} role="manager" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="manager" />
+                    <main className="main-content">
+                        <TeamList teamMembers={teamMembers} onRefresh={refreshData} />
+                    </main>
+                </div>
+                <Footer />
+            </>
+        );
+    }
+
+    if (currentPath.includes('/validations')) {
+        return (
+            <>
+                <Navbar user={user} role="manager" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="manager" />
+                    <main className="main-content">
+                        <PendingValidations requests={pendingRequests} onRefresh={refreshData} />
+                    </main>
+                </div>
+                <Footer />
+            </>
+        );
+    }
 
     return (
         <>
-            <header className="app-header">
-                <h2>🏢 Gestion des Congés</h2>
-                <div className="user-info">
-                    <span className="role-badge">Manager</span>
-                    <span>{user.prenom} {user.nom}</span>
-                    <button onClick={onLogout} className="logout-btn">Déconnexion</button>
-                </div>
-            </header>
-            
+            <Navbar user={user} role="manager" onLogout={onLogout} />
             <div className="app-container">
-                <aside className="sidebar">
-                    <nav>
-                        <a href="#" className="active">📊 Tableau de bord</a>
-                        <a href="#">👥 Mon équipe</a>
-                        <a href="#">✅ Validations</a>
-                        <a href="#">📅 Mes demandes</a>
-                        <a href="#">➕ Nouvelle demande</a>
-                    </nav>
-                </aside>
-                
+                <Sidebar role="manager" />
                 <main className="main-content">
-                    <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
-                    
-                    <div className="manager-section">
-                        <h3>👥 SECTION MANAGER</h3>
-                        <div className="cards-grid">
-                            <div className="card">
-                                <h3>👥 Mon équipe</h3>
-                                <div className="value">5 membres</div>
-                            </div>
-                            <div className="card">
-                                <h3>⏳ Demandes en attente</h3>
-                                <div className="value">{pendingRequests.length}</div>
-                            </div>
-                            <div className="card">
-                                <h3>✅ Approuvées ce mois</h3>
-                                <div className="value">8</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <h3>📋 Demandes à valider</h3>
-                    {pendingRequests.map((req) => (
-                        <div key={req.id} className="request-item">
-                            <div className="request-info">
-                                <strong>{req.name}</strong>
-                                <small>{req.start_date} - {req.end_date} • {req.type} • {req.duration} {req.type === 'Permission' ? 'heures' : 'jours'}</small>
-                                <small style={{ display: 'block' }}>Motif : {req.reason}</small>
-                            </div>
-                            <div className="request-actions">
-                                <button onClick={() => handleApprove(req.id)} className="btn btn-success btn-sm">✅ Approuver</button>
-                                <button onClick={() => handleReject(req.id)} className="btn btn-danger btn-sm">❌ Refuser</button>
-                            </div>
-                        </div>
-                    ))}
-                    
-                    {pendingRequests.length === 0 && (
-                        <div className="info-box">✅ Aucune demande en attente !</div>
-                    )}
-                    
-                    <div className="cards-grid mt-20">
-                        <div className="card">
-                            <h3>🏖️ Congés Payés</h3>
-                            <div className="value">15 jours</div>
-                            <div className="small">Mon solde</div>
-                        </div>
-                        <div className="card">
-                            <h3>⚡ RTT</h3>
-                            <div className="value">6 jours</div>
-                            <div className="small">Mon solde</div>
-                        </div>
-                        <div className="card">
-                            <h3>⏰ Permissions</h3>
-                            <div className="value">1h</div>
-                            <div className="small">Utilisées ce mois</div>
-                        </div>
-                    </div>
+                    <DashboardHome />
                 </main>
             </div>
+            <Footer />
         </>
     );
 }
