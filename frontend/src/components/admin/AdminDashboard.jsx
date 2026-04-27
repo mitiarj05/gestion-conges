@@ -61,27 +61,58 @@ function AdminDashboard({ onLogout }) {
         } catch (error) { console.error('Erreur:', error); }
     };
 
-    const handleFinalApprove = async (id) => {
-        if (window.confirm('✅ Valider définitivement cette demande ?')) {
+    const handleFinalApprove = async (id, request_type) => {
+        const typeLabel = request_type === 'permission' ? 'permission' : 'congé';
+        if (window.confirm(`✅ Valider définitivement cette demande de ${typeLabel} ?`)) {
             try {
-                await axios.put(`${API_URL}/admin/final-approve/${id}`, {}, getAuthHeaders());
-                alert('✅ Demande définitivement approuvée !');
+                await axios.put(`${API_URL}/admin/final-approve/${id}`, 
+                    { request_type },
+                    getAuthHeaders()
+                );
+                alert(`✅ Demande de ${typeLabel} définitivement approuvée !`);
                 fetchPendingApprovals();
                 fetchLeaveRequests();
-            } catch (error) { alert('Erreur'); }
+            } catch (error) { 
+                console.error('Erreur:', error);
+                alert('Erreur lors de l\'approbation'); 
+            }
         }
     };
 
-    const handleFinalReject = async (id) => {
-        const motif = prompt('❌ Motif du refus :');
+    const handleFinalReject = async (id, request_type) => {
+        const typeLabel = request_type === 'permission' ? 'permission' : 'congé';
+        const motif = prompt(`❌ Motif du refus de la ${typeLabel} :`);
         if (motif !== null) {
             try {
-                await axios.put(`${API_URL}/admin/final-reject/${id}`, { motif }, getAuthHeaders());
-                alert('❌ Demande définitivement refusée.');
+                await axios.put(`${API_URL}/admin/final-reject/${id}`, 
+                    { motif, request_type },
+                    getAuthHeaders()
+                );
+                alert(`❌ Demande de ${typeLabel} définitivement refusée.`);
                 fetchPendingApprovals();
                 fetchLeaveRequests();
-            } catch (error) { alert('Erreur'); }
+            } catch (error) { 
+                console.error('Erreur:', error);
+                alert('Erreur lors du refus'); 
+            }
         }
+    };
+
+    const getDisplayInfo = (req) => {
+        if (req.request_type === 'permission') {
+            return {
+                dates: `${req.date_permission || req.date_debut}`,
+                duration: `${req.duree_heures || req.nombre_jours} heures`,
+                type: '⏰ Permission',
+                managerName: `${req.manager_prenom || ''} ${req.manager_nom || ''}`.trim() || 'Manager'
+            };
+        }
+        return {
+            dates: `${req.date_debut} - ${req.date_fin}`,
+            duration: `${req.nombre_jours} jours`,
+            type: req.type_name,
+            managerName: `${req.manager_prenom || ''} ${req.manager_nom || ''}`.trim() || 'Manager'
+        };
     };
 
     const getStatusLabel = (status) => {
@@ -110,7 +141,6 @@ function AdminDashboard({ onLogout }) {
         );
     }
 
-    // Composant Dashboard Home
     const DashboardHome = () => (
         <>
             <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
@@ -121,6 +151,7 @@ function AdminDashboard({ onLogout }) {
                 <div className="stat-card red"><div className="number">{pendingApprovals.length}</div><div className="label">À valider (Admin)</div></div>
                 <div className="stat-card green"><div className="number">{stats.services}</div><div className="label">Services</div></div>
             </div>
+            
             <div className="admin-section">
                 <h3>⚙️ Actions Administrateur</h3>
                 <div className="btn-group">
@@ -129,6 +160,7 @@ function AdminDashboard({ onLogout }) {
                     <button className="btn btn-primary" onClick={() => window.location.href = '/dashboard/admin/settings'}>⚙️ Paramètres</button>
                 </div>
             </div>
+            
             {pendingApprovals.length > 0 && (
                 <div className="admin-section">
                     <h3>✅ Demandes pré-approuvées (à valider définitivement)</h3>
@@ -145,26 +177,28 @@ function AdminDashboard({ onLogout }) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {pendingApprovals.map((req) => (
-                                    <tr key={req.id}>
-                                        <td>{req.prenom} {req.nom}</td>
-                                        <td>{req.date_debut} - {req.date_fin}</td>
-                                        <td>{getTypeLabel(req.type_name)}</td>
-                                        <td>{req.nombre_jours} jours</td>
-                                        <td>{req.manager_prenom} {req.manager_nom}</td>
-                                        <td>
-                                            <button className="btn btn-sm btn-success" onClick={() => handleFinalApprove(req.id)}>✅ Approuver</button>
-                                            <button className="btn btn-sm btn-danger" onClick={() => handleFinalReject(req.id)}>❌ Refuser</button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {pendingApprovals.map((req) => {
+                                    const info = getDisplayInfo(req);
+                                    return (
+                                        <tr key={`${req.request_type}-${req.id}`}>
+                                            <td>{req.prenom} {req.nom}</td>
+                                            <td>{info.dates}</td>
+                                            <td>{info.type}</td>
+                                            <td>{info.duration}</td>
+                                            <td>{info.managerName}</td>
+                                            <td>
+                                                <button className="btn btn-sm btn-success" onClick={() => handleFinalApprove(req.id, req.request_type)}>✅ Approuver</button>
+                                                <button className="btn btn-sm btn-danger" onClick={() => handleFinalReject(req.id, req.request_type)}>❌ Refuser</button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
                 </div>
             )}
             
-            {/* Liste de toutes les demandes */}
             <div className="admin-section">
                 <h3>📋 Toutes les demandes de congé</h3>
                 <div className="table-container">
@@ -206,7 +240,6 @@ function AdminDashboard({ onLogout }) {
         </>
     );
 
-    // Composant Logs
     const LogsPage = () => (
         <>
             <h2>📜 Logs système</h2>
@@ -300,7 +333,6 @@ function AdminDashboard({ onLogout }) {
         );
     }
 
-    // Dashboard par défaut
     return (
         <>
             <Navbar user={user} role="admin" onLogout={onLogout} />

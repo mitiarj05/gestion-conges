@@ -1,7 +1,9 @@
 // frontend/src/components/employee/PermissionRequest.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import useToast from '../../hooks/useToast';
+import ToastNotification from '../notifications/ToastNotification';
 
 function PermissionRequest({ onSuccess }) {
     const [formData, setFormData] = useState({
@@ -13,9 +15,26 @@ function PermissionRequest({ onSuccess }) {
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [permissionBalance, setPermissionBalance] = useState({ used: 0, max: 4, remaining: 4 });
     const navigate = useNavigate();
+    const { toasts, removeToast, success, error: toastError } = useToast();
 
-    // Obtenir la date d'aujourd'hui au format YYYY-MM-DD
+    useEffect(() => {
+        fetchPermissionBalance();
+    }, []);
+
+    const fetchPermissionBalance = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await axios.get('http://localhost:5000/api/leaves/permission-balance', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setPermissionBalance(response.data);
+        } catch (err) {
+            console.error('Erreur chargement solde permission:', err);
+        }
+    };
+
     const getTodayDate = () => {
         const today = new Date();
         const year = today.getFullYear();
@@ -55,7 +74,6 @@ function PermissionRequest({ onSuccess }) {
             return;
         }
 
-        // Vérifier que la date n'est pas dans le passé
         const selectedDate = new Date(formData.date_permission);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -74,6 +92,12 @@ function PermissionRequest({ onSuccess }) {
 
         if (formData.duree_heures <= 0) {
             setError('La durée de permission doit être positive');
+            setLoading(false);
+            return;
+        }
+
+        if (formData.duree_heures > permissionBalance.remaining) {
+            setError(`Vous n'avez plus que ${permissionBalance.remaining} heure(s) disponible(s) ce mois-ci.`);
             setLoading(false);
             return;
         }
@@ -98,7 +122,7 @@ function PermissionRequest({ onSuccess }) {
             });
 
             if (response.status === 201) {
-                alert('✅ Demande de permission envoyée !\n\nEn attente de validation par votre manager.');
+                success('✅ Demande de permission envoyée !\n\nEn attente de validation par votre manager.');
                 if (onSuccess) onSuccess();
                 else navigate('/dashboard/employee');
             }
@@ -120,12 +144,14 @@ function PermissionRequest({ onSuccess }) {
     return (
         <div>
             <h2>⏰ Demander une permission</h2>
+            
             <div className="info-box" style={{ background: '#e8f4fd', marginBottom: '20px' }}>
                 <strong>ℹ️ Règles :</strong><br/>
                 • La permission permet de s'absenter quelques heures (max 4h par mois)<br/>
                 • Une permission est validée en 2 étapes (manager puis admin)<br/>
                 • Vous pouvez modifier ou annuler votre demande tant qu'elle n'est pas validée<br/>
-                • ⚠️ Les dates de permission doivent être aujourd'hui ou dans le futur
+                • ⚠️ Les dates de permission doivent être aujourd'hui ou dans le futur<br/>
+                • 📊 Solde ce mois : {permissionBalance.used}h / {permissionBalance.max}h utilisés - {permissionBalance.remaining}h restants
             </div>
 
             {error && <div className="error-message">{error}</div>}
@@ -172,6 +198,11 @@ function PermissionRequest({ onSuccess }) {
                     <div className="form-input" style={{ background: '#f0f0f0' }}>
                         {formData.duree_heures > 0 ? `${formData.duree_heures} heure(s)` : '--'}
                     </div>
+                    {formData.duree_heures > permissionBalance.remaining && (
+                        <small className="error-message" style={{ display: 'block', marginTop: '5px' }}>
+                            ⚠️ Solde insuffisant : il vous reste {permissionBalance.remaining}h ce mois
+                        </small>
+                    )}
                     {formData.duree_heures > 4 && (
                         <small className="error-message" style={{ display: 'block', marginTop: '5px' }}>
                             ⚠️ La durée dépasse 4 heures (maximum autorisé)
@@ -194,7 +225,7 @@ function PermissionRequest({ onSuccess }) {
                     <button 
                         type="submit" 
                         className="btn btn-primary" 
-                        disabled={loading || formData.duree_heures > 4}
+                        disabled={loading || formData.duree_heures > permissionBalance.remaining || formData.duree_heures > 4}
                     >
                         {loading ? 'Envoi en cours...' : '📤 Envoyer la demande'}
                     </button>
@@ -203,6 +234,8 @@ function PermissionRequest({ onSuccess }) {
                     </button>
                 </div>
             </form>
+
+            <ToastNotification toasts={toasts} removeToast={removeToast} />
         </div>
     );
 }

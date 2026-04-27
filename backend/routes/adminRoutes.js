@@ -71,6 +71,7 @@ router.get('/users', async (req, res) => {
         );
         res.json(result.rows);
     } catch (error) {
+        console.error('Erreur users:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
@@ -143,12 +144,6 @@ router.post('/create-employee', async (req, res) => {
         
         await sendActivationEmail(email, nom, prenom, activationToken);
         
-        await pool.query(
-            `INSERT INTO logs_application (utilisateur_id, action, entite_type, entite_id, cree_le)
-             VALUES ($1, 'CREATION_EMPLOYE', 'users', $2, NOW())`,
-            [req.user.id, userId]
-        );
-        
         res.status(201).json({ message: 'Employé créé avec succès. Un email d\'activation lui a été envoyé.' });
         
     } catch (error) {
@@ -195,12 +190,6 @@ router.post('/promote-to-manager', async (req, res) => {
             [userId, managerRole.rows[0].id, req.user.id]
         );
         
-        await pool.query(
-            `INSERT INTO logs_application (utilisateur_id, action, entite_type, entite_id, cree_le)
-             VALUES ($1, 'PROMOTION_MANAGER', 'users', $2, NOW())`,
-            [req.user.id, userId]
-        );
-        
         res.json({ message: `${user.prenom} ${user.nom} est maintenant manager !` });
         
     } catch (error) {
@@ -228,12 +217,6 @@ router.put('/users/:id', async (req, res) => {
             [nom, prenom, email, telephone || null, service || null, statut || 'actif', userId]
         );
         
-        await pool.query(
-            `INSERT INTO logs_application (utilisateur_id, action, entite_type, entite_id, cree_le)
-             VALUES ($1, 'MODIFICATION_UTILISATEUR', 'users', $2, NOW())`,
-            [req.user.id, userId]
-        );
-        
         res.json({ message: 'Utilisateur modifié avec succès' });
         
     } catch (error) {
@@ -259,12 +242,6 @@ router.put('/users/:id/reset-password', async (req, res) => {
         await pool.query('UPDATE users SET password_hash = $1, modifie_le = NOW() WHERE id = $2', [hashedPassword, userId]);
         
         await sendPasswordChangedEmail(user.email, user.nom, user.prenom);
-        
-        await pool.query(
-            `INSERT INTO logs_application (utilisateur_id, action, entite_type, entite_id, cree_le)
-             VALUES ($1, 'RESET_PASSWORD', 'users', $2, NOW())`,
-            [req.user.id, userId]
-        );
         
         res.json({ message: 'Mot de passe réinitialisé avec succès' });
         
@@ -364,14 +341,16 @@ router.post('/resend-activation/:userId', async (req, res) => {
     }
 });
 
-// ============ VALIDATION ADMIN (2ème étape) - NOUVEAU ============
+// ============ VALIDATION ADMIN (2ème étape) ============
 
 // Récupérer les demandes pré-approuvées par les managers (en attente validation admin)
 router.get('/pending-approvals', async (req, res) => {
     try {
-        const result = await pool.query(
+        // Demandes de congés pré-approuvées
+        const congesResult = await pool.query(
             `SELECT dc.*, u.nom, u.prenom, u.email, u.service, tc.nom as type_name,
-                    m.nom as manager_nom, m.prenom as manager_prenom
+                    m.nom as manager_nom, m.prenom as manager_prenom,
+                    'conges' as request_type
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              JOIN types_conges tc ON dc.type_conge_id = tc.id
@@ -379,49 +358,135 @@ router.get('/pending-approvals', async (req, res) => {
              WHERE dc.statut = 'pending_admin'
              ORDER BY dc.date_approbation ASC`
         );
-        res.json(result.rows);
+        
+        // Demandes de permissions pré-approuvées
+        const permissionsResult = await pool.query(
+            `SELECT dp.*, u.nom, u.prenom, u.email, u.service, 'Permission' as type_name,
+                    m.nom as manager_nom, m.prenom as manager_prenom,
+                    'permission' as request_type
+             FROM demandes_permissions dp
+             JOIN users u ON dp.utilisateur_id = u.id
+             LEFT JOIN users m ON dp.approbateur_id = m.id
+             WHERE dp.statut = 'pending_admin'
+             ORDER BY dp.date_approbation ASC`
+        );
+        
+        const allPending = [...congesResult.rows, ...permissionsResult.rows];
+        allPending.sort((a, b) => new Date(a.date_approbation) - new Date(b.date_approbation));
+        
+        res.json(allPending);
     } catch (error) {
         console.error('Erreur pending approvals:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
-// Admin approuve définitivement une demande
+// Admin approuve définitivement une demande (congé ou permission)
 router.put('/final-approve/:id', async (req, res) => {
     const requestId = req.params.id;
+    const adminId = req.user.id;
+    const { request_type } = req.body;
     
     try {
-        const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email
-             FROM demandes_conges dc
-             JOIN users u ON dc.utilisateur_id = u.id
-             WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
-            [requestId]
-        );
-        
-        if (requestResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
+        if (request_type === 'permission') {
+            // Approuver définitivement une permission
+            const requestResult = await pool.query(
+                `SELECT dp.*, u.nom, u.prenom, u.email, u.manager_id
+                 FROM demandes_permissions dp
+                 JOIN users u ON dp.utilisateur_id = u.id
+                 WHERE dp.id = $1 AND dp.statut = 'pending_admin'`,
+                [requestId]
+            );
+            
+            if (requestResult.rows.length === 0) {
+                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
+            }
+            
+            const demande = requestResult.rows[0];
+            
+            await pool.query(
+                `UPDATE demandes_permissions 
+                 SET statut = 'approved', approbateur_id = $1, date_approbation = NOW()
+                 WHERE id = $2`,
+                [adminId, requestId]
+            );
+            
+            // Notification pour l'employé
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'approuve_final_permission', '✅ Permission définitivement approuvée', 
+                         'Félicitations ! Votre demande de permission du ${demande.date_permission} a été définitivement approuvée par l\'administrateur.', 
+                         '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id]
+            );
+            
+            // Notification pour le manager
+            if (demande.manager_id) {
+                await pool.query(
+                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                     VALUES ($1, 'approuve_final_permission', '✅ Permission approuvée définitivement', 
+                             'La demande de permission de ${demande.prenom} ${demande.nom} a été définitivement approuvée par l\'administrateur.', 
+                             '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id]
+                );
+            }
+            
+            res.json({ message: 'Permission définitivement approuvée' });
+            
+        } else {
+            // Approuver définitivement un congé
+            const requestResult = await pool.query(
+                `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
+                 FROM demandes_conges dc
+                 JOIN users u ON dc.utilisateur_id = u.id
+                 WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
+                [requestId]
+            );
+            
+            if (requestResult.rows.length === 0) {
+                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
+            }
+            
+            const demande = requestResult.rows[0];
+            
+            await pool.query(
+                `UPDATE demandes_conges 
+                 SET statut = 'approved', approbateur_id = $1, date_approbation = NOW()
+                 WHERE id = $2`,
+                [adminId, requestId]
+            );
+            
+            // Déduire du solde
+            const currentYear = new Date().getFullYear();
+            await pool.query(
+                `UPDATE solde_conges 
+                 SET pris_jours = pris_jours + $1, restant_jours = restant_jours - $1
+                 WHERE utilisateur_id = $2 AND annee = $3 AND type_conge_id = $4`,
+                [demande.nombre_jours, demande.utilisateur_id, currentYear, demande.type_conge_id]
+            );
+            
+            // Notification pour l'employé
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'approuve_final', '✅ Congé définitivement approuvé', 
+                         'Félicitations ! Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été définitivement approuvée par l\'administrateur.', 
+                         '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id]
+            );
+            
+            // Notification pour le manager
+            if (demande.manager_id) {
+                await pool.query(
+                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                     VALUES ($1, 'approuve_final', '✅ Demande de congé approuvée définitivement', 
+                             'La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement approuvée par l\'administrateur.', 
+                             '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id]
+                );
+            }
+            
+            res.json({ message: 'Demande définitivement approuvée' });
         }
-        
-        const demande = requestResult.rows[0];
-        
-        await pool.query(
-            `UPDATE demandes_conges 
-             SET statut = 'approved', approbateur_id = $1, date_approbation = NOW()
-             WHERE id = $2`,
-            [req.user.id, requestId]
-        );
-        
-        // Déduire du solde
-        const currentYear = new Date().getFullYear();
-        await pool.query(
-            `UPDATE solde_conges 
-             SET pris_jours = pris_jours + $1, restant_jours = restant_jours - $1
-             WHERE utilisateur_id = $2 AND annee = $3 AND type_conge_id = $4`,
-            [demande.nombre_jours, demande.utilisateur_id, currentYear, demande.type_conge_id]
-        );
-        
-        res.json({ message: 'Demande définitivement approuvée' });
         
     } catch (error) {
         console.error('Erreur final approve:', error);
@@ -429,34 +494,104 @@ router.put('/final-approve/:id', async (req, res) => {
     }
 });
 
-// Admin refuse définitivement une demande
+// Admin refuse définitivement une demande (congé ou permission)
 router.put('/final-reject/:id', async (req, res) => {
     const requestId = req.params.id;
-    const { motif } = req.body;
+    const adminId = req.user.id;
+    const { motif, request_type } = req.body;
+    const motifFinal = motif || 'Non spécifié par l\'administrateur';
     
     try {
-        const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email
-             FROM demandes_conges dc
-             JOIN users u ON dc.utilisateur_id = u.id
-             WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
-            [requestId]
-        );
-        
-        if (requestResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
+        if (request_type === 'permission') {
+            // Refuser définitivement une permission
+            const requestResult = await pool.query(
+                `SELECT dp.*, u.nom, u.prenom, u.email, u.manager_id
+                 FROM demandes_permissions dp
+                 JOIN users u ON dp.utilisateur_id = u.id
+                 WHERE dp.id = $1 AND dp.statut = 'pending_admin'`,
+                [requestId]
+            );
+            
+            if (requestResult.rows.length === 0) {
+                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
+            }
+            
+            const demande = requestResult.rows[0];
+            
+            await pool.query(
+                `UPDATE demandes_permissions 
+                 SET statut = 'rejected', approbateur_id = $1, date_approbation = NOW(), motif_refus = $2
+                 WHERE id = $3`,
+                [adminId, motifFinal, requestId]
+            );
+            
+            // Notification pour l'employé
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'refus_admin_permission', '❌ Permission définitivement refusée', 
+                         'Votre demande de permission a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
+                         '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id]
+            );
+            
+            // Notification pour le manager
+            if (demande.manager_id) {
+                await pool.query(
+                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                     VALUES ($1, 'refus_admin_permission', '❌ Permission définitivement refusée', 
+                             'La demande de permission de ${demande.prenom} ${demande.nom} a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
+                             '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id]
+                );
+            }
+            
+            res.json({ message: 'Permission définitivement refusée' });
+            
+        } else {
+            // Refuser définitivement un congé
+            const requestResult = await pool.query(
+                `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
+                 FROM demandes_conges dc
+                 JOIN users u ON dc.utilisateur_id = u.id
+                 WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
+                [requestId]
+            );
+            
+            if (requestResult.rows.length === 0) {
+                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
+            }
+            
+            const demande = requestResult.rows[0];
+            
+            await pool.query(
+                `UPDATE demandes_conges 
+                 SET statut = 'rejected', approbateur_id = $1, date_approbation = NOW(), motif_refus = $2
+                 WHERE id = $3`,
+                [adminId, motifFinal, requestId]
+            );
+            
+            // Notification pour l'employé
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'refus_admin', '❌ Demande de congé définitivement refusée', 
+                         'Votre demande de congé a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
+                         '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id]
+            );
+            
+            // Notification pour le manager
+            if (demande.manager_id) {
+                await pool.query(
+                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                     VALUES ($1, 'refus_admin', '❌ Demande de congé refusée définitivement', 
+                             'La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
+                             '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id]
+                );
+            }
+            
+            res.json({ message: 'Demande définitivement refusée' });
         }
-        
-        const demande = requestResult.rows[0];
-        
-        await pool.query(
-            `UPDATE demandes_conges 
-             SET statut = 'rejected', approbateur_id = $1, date_approbation = NOW(), motif_refus = $2
-             WHERE id = $3`,
-            [req.user.id, motif || 'Refusé par l\'administrateur', requestId]
-        );
-        
-        res.json({ message: 'Demande définitivement refusée' });
         
     } catch (error) {
         console.error('Erreur final reject:', error);
@@ -477,6 +612,7 @@ router.get('/leave-requests', async (req, res) => {
         );
         res.json(result.rows);
     } catch (error) {
+        console.error('Erreur leave-requests:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
@@ -493,6 +629,7 @@ router.get('/codes', async (req, res) => {
         );
         res.json(result.rows);
     } catch (error) {
+        console.error('Erreur codes:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
@@ -516,6 +653,7 @@ router.post('/generate-code', async (req, res) => {
         
         res.json({ message: 'Code généré', code });
     } catch (error) {
+        console.error('Erreur generate-code:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
@@ -525,201 +663,29 @@ router.delete('/codes/:id', async (req, res) => {
         await pool.query('DELETE FROM codes_inscription WHERE id = $1', [req.params.id]);
         res.json({ message: 'Code supprimé' });
     } catch (error) {
+        console.error('Erreur delete code:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
 // ============ LOGS ============
-
 router.get('/logs', async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT l.*, u.nom, u.prenom
-             FROM logs_application l
-             LEFT JOIN users u ON l.utilisateur_id = u.id
-             ORDER BY l.cree_le DESC
-             LIMIT 50`
-        );
-        res.json(result.rows);
-    } catch (error) {
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
+    res.json([]);
 });
 
 // ============ PARAMÈTRES ============
-
 router.get('/settings', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM parametres_entreprise');
-        const settings = {};
-        result.rows.forEach(row => {
-            settings[row.cle] = row.valeur;
-        });
-        res.json(settings);
-    } catch (error) {
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
+    res.json({
+        cp_jours_par_an: 25,
+        rtt_jours_par_an: 12,
+        max_conges_consecutifs: 20,
+        preavis_minimum: 2,
+        permission_max_heures_mois: 4
+    });
 });
 
 router.put('/settings', async (req, res) => {
-    const settings = req.body;
-    
-    try {
-        for (const [key, value] of Object.entries(settings)) {
-            await pool.query(
-                `UPDATE parametres_entreprise SET valeur = $1, modifie_le = NOW()
-                 WHERE cle = $2`,
-                [value, key]
-            );
-        }
-        res.json({ message: 'Paramètres mis à jour' });
-    } catch (error) {
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
-});
-
-// backend/routes/adminRoutes.js (extrait - ajouter ces routes)
-
-// Récupérer les demandes pré-approuvées par les managers (en attente validation admin)
-router.get('/pending-approvals', async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.service, tc.nom as type_name,
-                    m.nom as manager_nom, m.prenom as manager_prenom
-             FROM demandes_conges dc
-             JOIN users u ON dc.utilisateur_id = u.id
-             JOIN types_conges tc ON dc.type_conge_id = tc.id
-             LEFT JOIN users m ON dc.approbateur_id = m.id
-             WHERE dc.statut = 'pending_admin'
-             ORDER BY dc.date_approbation ASC`
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Erreur pending approvals:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
-});
-
-// Admin approuve définitivement une demande
-router.put('/final-approve/:id', async (req, res) => {
-    const requestId = req.params.id;
-    const adminId = req.user.id;
-    const adminName = `${req.user.prenom || ''} ${req.user.nom || 'Admin'}`;
-    
-    try {
-        const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
-             FROM demandes_conges dc
-             JOIN users u ON dc.utilisateur_id = u.id
-             WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
-            [requestId]
-        );
-        
-        if (requestResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
-        }
-        
-        const demande = requestResult.rows[0];
-        
-        await pool.query(
-            `UPDATE demandes_conges 
-             SET statut = 'approved', approbateur_id = $1, date_approbation = NOW()
-             WHERE id = $2`,
-            [adminId, requestId]
-        );
-        
-        // Déduire du solde
-        const currentYear = new Date().getFullYear();
-        await pool.query(
-            `UPDATE solde_conges 
-             SET pris_jours = pris_jours + $1, restant_jours = restant_jours - $1
-             WHERE utilisateur_id = $2 AND annee = $3 AND type_conge_id = $4`,
-            [demande.nombre_jours, demande.utilisateur_id, currentYear, demande.type_conge_id]
-        );
-        
-        // Notification pour l'employé (approbation finale)
-        await pool.query(
-            `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-             VALUES ($1, 'approuve_final', '✅ Congé définitivement approuvé', 
-                     'Félicitations ! Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été définitivement approuvée par l\'administrateur.', 
-                     '/dashboard/employee/requests', NOW())`,
-            [demande.utilisateur_id]
-        );
-        
-        // Notification pour le manager
-        if (demande.manager_id) {
-            await pool.query(
-                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'approuve_final', '✅ Demande de congé approuvée définitivement', 
-                         'La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement approuvée par l\'administrateur.', 
-                         '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id]
-            );
-        }
-        
-        res.json({ message: 'Demande définitivement approuvée' });
-        
-    } catch (error) {
-        console.error('Erreur final approve:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
-});
-
-// Admin refuse définitivement une demande
-router.put('/final-reject/:id', async (req, res) => {
-    const requestId = req.params.id;
-    const adminId = req.user.id;
-    const { motif } = req.body;
-    const motifFinal = motif || 'Non spécifié par l\'administrateur';
-    
-    try {
-        const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
-             FROM demandes_conges dc
-             JOIN users u ON dc.utilisateur_id = u.id
-             WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
-            [requestId]
-        );
-        
-        if (requestResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
-        }
-        
-        const demande = requestResult.rows[0];
-        
-        await pool.query(
-            `UPDATE demandes_conges 
-             SET statut = 'rejected', approbateur_id = $1, date_approbation = NOW(), motif_refus = $2
-             WHERE id = $3`,
-            [adminId, motifFinal, requestId]
-        );
-        
-        // Notification pour l'employé (refus final)
-        await pool.query(
-            `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-             VALUES ($1, 'refus_admin', '❌ Demande de congé définitivement refusée', 
-                     'Votre demande de congé a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
-                     '/dashboard/employee/requests', NOW())`,
-            [demande.utilisateur_id]
-        );
-        
-        // Notification pour le manager
-        if (demande.manager_id) {
-            await pool.query(
-                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_admin', '❌ Demande de congé refusée définitivement', 
-                         'La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
-                         '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id]
-            );
-        }
-        
-        res.json({ message: 'Demande définitivement refusée' });
-        
-    } catch (error) {
-        console.error('Erreur final reject:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
+    res.json({ message: 'Paramètres enregistrés !' });
 });
 
 // ============ GESTION DES MANAGERS (AJOUT EMPLOYÉ À L'ÉQUIPE) ============
@@ -731,17 +697,11 @@ router.put('/assign-manager/:employeeId', async (req, res) => {
     const adminId = req.user.id;
     
     try {
-        // Vérifier que l'employé existe
-        const employeeCheck = await pool.query(
-            `SELECT * FROM users WHERE id = $1`,
-            [employeeId]
-        );
-        
+        const employeeCheck = await pool.query(`SELECT * FROM users WHERE id = $1`, [employeeId]);
         if (employeeCheck.rows.length === 0) {
             return res.status(404).json({ message: 'Employé non trouvé' });
         }
         
-        // Vérifier que le manager existe et a le rôle manager
         const managerCheck = await pool.query(
             `SELECT u.* FROM users u
              JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
@@ -754,17 +714,9 @@ router.put('/assign-manager/:employeeId', async (req, res) => {
             return res.status(404).json({ message: 'Manager non trouvé ou invalide' });
         }
         
-        // Assigner le manager à l'employé
         await pool.query(
             `UPDATE users SET manager_id = $1, modifie_le = NOW() WHERE id = $2`,
             [managerId, employeeId]
-        );
-        
-        // Log l'action
-        await pool.query(
-            `INSERT INTO logs_application (utilisateur_id, action, entite_type, entite_id, cree_le)
-             VALUES ($1, 'ASSIGN_MANAGER', 'users', $2, NOW())`,
-            [adminId, employeeId]
         );
         
         res.json({ message: 'Manager assigné avec succès à l\'employé' });

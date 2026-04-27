@@ -16,11 +16,13 @@ function Sidebar({ role }) {
                 { path: '/dashboard/admin/settings', label: '⚙️ Paramètres', key: 'settings' }
             ];
         }
-        if (role === 'manager') {
+                if (role === 'manager') {
             return [
                 { path: '/dashboard/manager', label: '📊 Dashboard', key: 'dashboard' },
                 { path: '/dashboard/manager/team', label: '👥 Mon équipe', key: 'team' },
-                { path: '/dashboard/manager/validations', label: '✅ Validations', key: 'validations' }
+                { path: '/dashboard/manager/validations', label: '✅ Validations', key: 'validations' },
+                { path: '/dashboard/manager/statistics', label: '📊 Statistiques', key: 'statistics' },
+                { path: '/dashboard/manager/team-calendar', label: '📅 Calendrier équipe', key: 'team-calendar' } // <-- Ce lien
             ];
         }
         return [

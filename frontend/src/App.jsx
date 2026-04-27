@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import DashboardRouter from './pages/DashboardRouter';
 import './styles/darkTheme.css';
+import './index.css';
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);

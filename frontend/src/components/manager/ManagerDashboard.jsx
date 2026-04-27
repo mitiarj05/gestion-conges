@@ -7,6 +7,10 @@ import Sidebar from '../common/Sidebar';
 import Footer from '../common/Footer';
 import TeamList from './TeamList';
 import PendingValidations from './PendingValidations';
+import TeamStatistics from './TeamStatistics';
+import TeamCalendar from './TeamCalendar';
+import ToastNotification from '../notifications/ToastNotification';
+import useToast from '../../hooks/useToast';
 
 function ManagerDashboard({ onLogout }) {
     const [user, setUser] = useState({});
@@ -16,6 +20,9 @@ function ManagerDashboard({ onLogout }) {
     const [loading, setLoading] = useState(true);
     const location = useLocation();
     const navigate = useNavigate();
+
+    // Hook pour les notifications toast
+    const { toasts, removeToast, success, error, warning, info } = useToast();
 
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -38,6 +45,10 @@ function ManagerDashboard({ onLogout }) {
     const fetchAllData = async () => {
         await Promise.all([fetchPendingRequests(), fetchTeamMembers(), fetchBalance()]);
         setLoading(false);
+    };
+
+    const refreshAllData = () => {
+        fetchAllData();
     };
 
     const fetchPendingRequests = async () => {
@@ -84,6 +95,7 @@ function ManagerDashboard({ onLogout }) {
 
     const refreshData = () => {
         fetchAllData();
+        success('Données actualisées');
     };
 
     if (loading) {
@@ -118,6 +130,12 @@ function ManagerDashboard({ onLogout }) {
                     </button>
                     <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/validations')}>
                         ✅ Valider les demandes
+                    </button>
+                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/statistics')}>
+                        📊 Statistiques équipe
+                    </button>
+                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team-calendar')}>
+                        📅 Calendrier équipe
                     </button>
                 </div>
             </div>
@@ -163,8 +181,32 @@ function ManagerDashboard({ onLogout }) {
     );
 
     const currentPath = location.pathname;
+    console.log('🔍 Current path in ManagerDashboard:', currentPath);
 
-    if (currentPath.includes('/team')) {
+    // ⚠️ IMPORTANT: L'ordre des conditions est crucial !
+    // Les chemins plus spécifiques doivent être vérifiés en premier
+
+    // 1. Route pour Calendrier équipe (le plus spécifique)
+    if (currentPath === '/dashboard/manager/team-calendar' || currentPath.includes('/team-calendar')) {
+        console.log('✅ Affichage de TeamCalendar');
+        return (
+            <>
+                <Navbar user={user} role="manager" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="manager" />
+                    <main className="main-content">
+                        <TeamCalendar />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // 2. Route pour Mon équipe (TeamList)
+    if (currentPath === '/dashboard/manager/team' || currentPath.includes('/team')) {
+        console.log('✅ Affichage de TeamList');
         return (
             <>
                 <Navbar user={user} role="manager" onLogout={onLogout} />
@@ -175,11 +217,14 @@ function ManagerDashboard({ onLogout }) {
                     </main>
                 </div>
                 <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
+    // 3. Route pour Validations
     if (currentPath.includes('/validations')) {
+        console.log('✅ Affichage de PendingValidations');
         return (
             <>
                 <Navbar user={user} role="manager" onLogout={onLogout} />
@@ -190,10 +235,31 @@ function ManagerDashboard({ onLogout }) {
                     </main>
                 </div>
                 <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
+    // 4. Route pour Statistiques
+    if (currentPath.includes('/statistics')) {
+        console.log('✅ Affichage de TeamStatistics');
+        return (
+            <>
+                <Navbar user={user} role="manager" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="manager" />
+                    <main className="main-content">
+                        <TeamStatistics teamMembers={teamMembers} />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // Dashboard par défaut
+    console.log('✅ Affichage du Dashboard par défaut');
     return (
         <>
             <Navbar user={user} role="manager" onLogout={onLogout} />
@@ -204,6 +270,7 @@ function ManagerDashboard({ onLogout }) {
                 </main>
             </div>
             <Footer />
+            <ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );
 }

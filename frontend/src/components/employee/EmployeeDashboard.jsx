@@ -39,10 +39,8 @@ function EmployeeDashboard({ onLogout }) {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Hooks personnalisés
     const { toasts, removeToast, success, error, warning, info } = useToast();
 
-    // Filtres
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterType, setFilterType] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -62,7 +60,6 @@ function EmployeeDashboard({ onLogout }) {
         return () => clearInterval(interval);
     }, []);
 
-    // Filtrer les demandes
     useEffect(() => {
         let filtered = [...requests];
         
@@ -71,15 +68,23 @@ function EmployeeDashboard({ onLogout }) {
         }
         
         if (filterType !== 'all') {
-            filtered = filtered.filter(r => r.type_id === parseInt(filterType));
+            if (filterType === 'permission') {
+                filtered = filtered.filter(r => r.request_type === 'permission');
+            } else {
+                filtered = filtered.filter(r => r.type_id === parseInt(filterType));
+            }
         }
         
         if (searchTerm) {
-            filtered = filtered.filter(r => 
-                r.start_date.includes(searchTerm) || 
-                r.end_date.includes(searchTerm) ||
-                (r.motif && r.motif.toLowerCase().includes(searchTerm.toLowerCase()))
-            );
+            filtered = filtered.filter(r => {
+                const searchLower = searchTerm.toLowerCase();
+                const dates = (r.start_date || '').toLowerCase();
+                const motif = (r.motif || '').toLowerCase();
+                const type = (r.type || '').toLowerCase();
+                return dates.includes(searchLower) || 
+                       motif.includes(searchLower) ||
+                       type.includes(searchLower);
+            });
         }
         
         setFilteredRequests(filtered);
@@ -88,6 +93,11 @@ function EmployeeDashboard({ onLogout }) {
     const fetchAllData = async () => {
         await Promise.all([fetchBalance(), fetchRequests()]);
         setLoading(false);
+    };
+
+    const refreshAllData = () => {
+        fetchAllData();
+        fetchNotifications();
     };
 
     const fetchBalance = async () => {
@@ -119,17 +129,36 @@ function EmployeeDashboard({ onLogout }) {
             const response = await axios.get('http://localhost:5000/api/leaves/my-requests', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            setRequests(response.data);
             
-            // Charger les justificatifs pour chaque demande
+            const formattedRequests = response.data.map(req => ({
+                id: req.id,
+                start_date: req.start_date,
+                end_date: req.end_date,
+                type_id: req.type_id,
+                type: req.type,
+                duration: req.duration,
+                status: req.status,
+                motif: req.motif,
+                motif_refus: req.motif_refus,
+                request_type: req.request_type,
+                displayDuration: req.request_type === 'permission' ? `${req.duration} heure(s)` : `${req.duration} jour(s)`,
+                displayDates: req.request_type === 'permission' ? req.start_date : `${req.start_date} - ${req.end_date}`
+            }));
+            
+            setRequests(formattedRequests);
+            
             const justifs = {};
-            for (const req of response.data) {
-                try {
-                    const justifResponse = await axios.get(`http://localhost:5000/api/leaves/justificatifs/${req.id}`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    justifs[req.id] = justifResponse.data;
-                } catch (e) {
+            for (const req of formattedRequests) {
+                if (req.request_type !== 'permission') {
+                    try {
+                        const justifResponse = await axios.get(`http://localhost:5000/api/leaves/justificatifs/${req.id}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        justifs[req.id] = justifResponse.data;
+                    } catch (e) {
+                        justifs[req.id] = [];
+                    }
+                } else {
                     justifs[req.id] = [];
                 }
             }
@@ -178,10 +207,25 @@ function EmployeeDashboard({ onLogout }) {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 success('✅ Demande annulée avec succès !');
-                fetchAllData();
-                fetchNotifications();
+                refreshAllData();
             } catch (error) {
                 console.error('Erreur annulation:', error);
+                error(error.response?.data?.message || 'Erreur lors de l\'annulation');
+            }
+        }
+    };
+
+    const handleCancelPermission = async (permissionId) => {
+        if (window.confirm(`Êtes-vous sûr de vouloir annuler cette demande de permission ?`)) {
+            try {
+                const token = localStorage.getItem('token');
+                await axios.delete(`http://localhost:5000/api/leaves/cancel-permission/${permissionId}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                success('✅ Demande de permission annulée avec succès !');
+                refreshAllData();
+            } catch (error) {
+                console.error('Erreur annulation permission:', error);
                 error(error.response?.data?.message || 'Erreur lors de l\'annulation');
             }
         }
@@ -197,8 +241,7 @@ function EmployeeDashboard({ onLogout }) {
             );
             success(response.data.message || '✅ Demande modifiée avec succès !');
             setEditingRequest(null);
-            fetchAllData();
-            fetchNotifications();
+            refreshAllData();
         } catch (error) {
             console.error('Erreur modification:', error);
             error(error.response?.data?.message || 'Erreur lors de la modification');
@@ -209,7 +252,7 @@ function EmployeeDashboard({ onLogout }) {
         setEditingRequest(null);
     };
 
-    const getStatusLabel = (status, motif_refus) => {
+    const getStatusLabel = (status, motif_refus, request_type) => {
         switch(status) {
             case 'pending_manager': 
                 return <span className="status status-pending">⏳ En attente manager - Modifiable</span>;
@@ -230,8 +273,7 @@ function EmployeeDashboard({ onLogout }) {
     };
 
     const handleRequestSuccess = () => {
-        fetchAllData();
-        fetchNotifications();
+        refreshAllData();
         success('✅ Demande de congé envoyée avec succès !');
         navigate('/dashboard/employee/requests');
     };
@@ -250,7 +292,6 @@ function EmployeeDashboard({ onLogout }) {
         );
     }
 
-    // Dashboard Home
     const DashboardHome = () => (
         <>
             <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
@@ -296,10 +337,12 @@ function EmployeeDashboard({ onLogout }) {
                     <div className="small">Restantes ce mois / 4h max</div>
                 </div>
             </div>
+            
             <div className="actions-bar">
                 <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>📅 Demander un congé</button>
                 <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/permission')}>⏰ Demander une permission</button>
             </div>
+            
             <div className="table-container">
                 <h3 style={{ padding: '15px 15px 0 15px' }}>📋 Mes demandes récentes</h3>
                 <table className="table">
@@ -316,21 +359,21 @@ function EmployeeDashboard({ onLogout }) {
                     <tbody>
                         {requests.slice(0, 5).map((req) => (
                             <tr key={req.id}>
-                                <td>{formatDate(req.start_date)} - {formatDate(req.end_date)}</td>
+                                <td>{req.displayDates}</td>
                                 <td>{req.type}</td>
-                                <td>{req.duration} {req.type === 'Permission' ? 'heures' : 'jours'}</td>
-                                <td>{getStatusLabel(req.status, req.motif_refus)}</td>
+                                <td>{req.displayDuration}</td>
+                                <td>{getStatusLabel(req.status, req.motif_refus, req.request_type)}</td>
                                 <td>
                                     {justificatifs[req.id]?.length > 0 ? (
                                         <span className="status status-approved">📎 {justificatifs[req.id].length} fichier(s)</span>
                                     ) : (
-                                        req.status === 'pending_manager' && (
+                                        req.status === 'pending_manager' && req.request_type !== 'permission' && (
                                             <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
                                         )
                                     )}
                                 </td>
                                 <td>
-                                    {req.status === 'pending_manager' && (
+                                    {req.status === 'pending_manager' && req.request_type !== 'permission' && (
                                         <div style={{ display: 'flex', gap: '5px' }}>
                                             <button 
                                                 className="btn btn-sm btn-primary" 
@@ -347,9 +390,19 @@ function EmployeeDashboard({ onLogout }) {
                                             </button>
                                         </div>
                                     )}
+                                    {req.status === 'pending_manager' && req.request_type === 'permission' && (
+                                        <div style={{ display: 'flex', gap: '5px' }}>
+                                            <button 
+                                                className="btn btn-sm btn-danger" 
+                                                onClick={() => handleCancelPermission(req.id)}
+                                            >
+                                                🗑️ Annuler
+                                            </button>
+                                        </div>
+                                    )}
                                     {req.status === 'pending_admin' && (
-                                        <span className="info-text" style={{ fontSize: '11px', color: '#888' }}>
-                                            ⏳ En attente validation admin
+                                        <span className="info-text" style={{ fontSize: '11px', color: '#ff9800' }}>
+                                            ⏳ Déjà validé par manager
                                         </span>
                                     )}
                                     {(req.status === 'approved' || req.status === 'rejected') && (
@@ -363,6 +416,7 @@ function EmployeeDashboard({ onLogout }) {
                     </tbody>
                 </table>
             </div>
+            
             <div className="info-box" style={{ marginTop: '20px', background: '#e8f4fd' }}>
                 <strong>ℹ️ Informations :</strong><br/>
                 • 📝 Les demandes avec le statut "En attente manager" peuvent être modifiées, annulées ou complétées par un justificatif.<br/>
@@ -410,23 +464,23 @@ function EmployeeDashboard({ onLogout }) {
                     <tbody>
                         {filteredRequests.map((req) => (
                             <tr key={req.id}>
-                                <td>{formatDate(req.start_date)} - {formatDate(req.end_date)}</td>
+                                <td>{req.displayDates}</td>
                                 <td>{req.type}</td>
-                                <td>{req.duration} {req.type === 'Permission' ? 'heures' : 'jours'}</td>
+                                <td>{req.displayDuration}</td>
                                 <td>{req.motif || '-'}</td>
-                                <td>{getStatusLabel(req.status, req.motif_refus)}</td>
+                                <td>{getStatusLabel(req.status, req.motif_refus, req.request_type)}</td>
                                 <td>{req.motif_refus || '-'}</td>
                                 <td>
                                     {justificatifs[req.id]?.length > 0 ? (
                                         <span className="status status-approved">📎 {justificatifs[req.id].length} fichier(s)</span>
                                     ) : (
-                                        req.status === 'pending_manager' && (
+                                        req.status === 'pending_manager' && req.request_type !== 'permission' && (
                                             <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
                                         )
                                     )}
                                 </td>
                                 <td>
-                                    {req.status === 'pending_manager' && (
+                                    {req.status === 'pending_manager' && req.request_type !== 'permission' && (
                                         <div style={{ display: 'flex', gap: '5px' }}>
                                             <button 
                                                 className="btn btn-sm btn-primary" 
@@ -438,6 +492,16 @@ function EmployeeDashboard({ onLogout }) {
                                             <button 
                                                 className="btn btn-sm btn-danger" 
                                                 onClick={() => handleCancelRequest(req)}
+                                            >
+                                                🗑️ Annuler
+                                            </button>
+                                        </div>
+                                    )}
+                                    {req.status === 'pending_manager' && req.request_type === 'permission' && (
+                                        <div style={{ display: 'flex', gap: '5px' }}>
+                                            <button 
+                                                className="btn btn-sm btn-danger" 
+                                                onClick={() => handleCancelPermission(req.id)}
                                             >
                                                 🗑️ Annuler
                                             </button>
@@ -466,6 +530,7 @@ function EmployeeDashboard({ onLogout }) {
                     </tbody>
                 </table>
             </div>
+            
             <div className="actions-bar mt-20">
                 <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>➕ Nouvelle demande</button>
                 <button className="btn btn-secondary" onClick={() => {
@@ -480,7 +545,7 @@ function EmployeeDashboard({ onLogout }) {
     const CalendarPage = () => (
         <>
             <h2>📅 Calendrier des congés</h2>
-            <CalendarView requests={requests} />
+            <CalendarView requests={requests} onRequestUpdate={refreshAllData} />
         </>
     );
 

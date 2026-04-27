@@ -7,6 +7,7 @@ function LeaveRequest({ onSuccess }) {
     const [formData, setFormData] = useState({ type_id: 1, start_date: '', end_date: '', motif: '' });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [errorsList, setErrorsList] = useState([]);
     const navigate = useNavigate();
 
     // Obtenir la date d'aujourd'hui au format YYYY-MM-DD
@@ -24,6 +25,7 @@ function LeaveRequest({ onSuccess }) {
         e.preventDefault();
         setLoading(true);
         setError('');
+        setErrorsList([]);
         
         if (!formData.start_date || !formData.end_date) {
             setError('Veuillez sélectionner les dates');
@@ -36,9 +38,8 @@ function LeaveRequest({ onSuccess }) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
-        // Vérifier que la date de début n'est pas dans le passé
         if (start < today) {
-            setError('La date de début ne peut pas être dans le passé. Veuillez choisir une date à partir d\'aujourd\'hui.');
+            setError('La date de début ne peut pas être dans le passé');
             setLoading(false);
             return;
         }
@@ -77,6 +78,10 @@ function LeaveRequest({ onSuccess }) {
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 setTimeout(() => navigate('/login'), 2000);
+            } else if (err.response?.data?.errors) {
+                // Afficher la liste des erreurs
+                setErrorsList(err.response.data.errors);
+                setError('Veuillez corriger les erreurs suivantes :');
             } else {
                 setError(err.response?.data?.message || 'Erreur lors de la demande');
             }
@@ -85,19 +90,80 @@ function LeaveRequest({ onSuccess }) {
         }
     };
 
+    // Obtenir le libellé du type de congé
+    const getTypeLabel = (typeId) => {
+        switch(parseInt(typeId)) {
+            case 1: return '🏖️ Congés Payés (CP)';
+            case 2: return '⚡ Réduction du Temps de Travail (RTT)';
+            case 3: return '📝 Congé sans solde';
+            default: return 'Congés Payés';
+        }
+    };
+
     return (
         <div>
             <h2>📅 Demander un congé</h2>
+            
+            {/* Affichage des règles par type de congé */}
+            <div className="info-box" style={{ background: '#e8f4fd', marginBottom: '20px' }}>
+                <strong>📋 Règles selon le type de congé :</strong><br/>
+                {formData.type_id == 1 && (
+                    <>
+                        • 🏖️ <strong>Congés Payés (CP)</strong> : 25 jours/an, max 20 jours consécutifs<br/>
+                        • ⏰ Préavis minimum : 2 jours<br/>
+                        • 💰 Rémunéré : Oui
+                    </>
+                )}
+                {formData.type_id == 2 && (
+                    <>
+                        • ⚡ <strong>RTT</strong> : 12 jours/an, max 10 jours consécutifs<br/>
+                        • ⏰ Préavis minimum : 1 jour<br/>
+                        • 💰 Rémunéré : Oui
+                    </>
+                )}
+                {formData.type_id == 3 && (
+                    <>
+                        • 📝 <strong>Congé sans solde</strong> : Pas de limite annuelle, max 5 jours consécutifs<br/>
+                        • ⏰ Préavis minimum : 5 jours<br/>
+                        • 💰 Rémunéré : Non
+                    </>
+                )}
+                <br/>
+                • ⚠️ Délai minimum entre deux demandes : 7 jours<br/>
+                • 📅 Plafond annuel tous types confondus : 30 jours
+            </div>
+            
             {error && <div className="error-message">{error}</div>}
+            
+            {errorsList.length > 0 && (
+                <div className="error-message" style={{ background: '#f8d7da', borderLeftColor: '#dc3545' }}>
+                    <strong>❌ {errorsList.length} règle(s) non respectée(s) :</strong>
+                    <ul style={{ marginTop: '10px', marginLeft: '20px' }}>
+                        {errorsList.map((err, idx) => (
+                            <li key={idx}>{err}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+            
             <form onSubmit={handleSubmit} className="admin-section">
                 <div className="form-group">
                     <label>Type de congé</label>
-                    <select className="form-input" value={formData.type_id} onChange={(e) => setFormData({...formData, type_id: parseInt(e.target.value)})}>
-                        <option value="1">🏖️ Congés Payés</option>
-                        <option value="2">📅 Réduction du Temps de Travail (RTT)</option>
-                        <option value="3">📝 Congé sans solde</option>
+                    <select 
+                        className="form-input" 
+                        value={formData.type_id} 
+                        onChange={(e) => {
+                            setFormData({...formData, type_id: parseInt(e.target.value)});
+                            setErrorsList([]);
+                            setError('');
+                        }}
+                    >
+                        <option value="1">🏖️ Congés Payés (CP) - 25j/an</option>
+                        <option value="2">⚡ Réduction du Temps de Travail (RTT) - 12j/an</option>
+                        <option value="3">📝 Congé sans solde - Non rémunéré</option>
                     </select>
                 </div>
+                
                 <div className="form-row">
                     <div className="form-group">
                         <label>Date de début</label>
@@ -107,10 +173,11 @@ function LeaveRequest({ onSuccess }) {
                             value={formData.start_date} 
                             onChange={(e) => {
                                 setFormData({...formData, start_date: e.target.value});
-                                // Si la date de fin est antérieure à la nouvelle date de début, réinitialiser
                                 if (formData.end_date && new Date(e.target.value) > new Date(formData.end_date)) {
                                     setFormData(prev => ({...prev, end_date: ''}));
                                 }
+                                setErrorsList([]);
+                                setError('');
                             }} 
                             min={todayDate}
                             required 
@@ -123,17 +190,29 @@ function LeaveRequest({ onSuccess }) {
                             type="date" 
                             className="form-input" 
                             value={formData.end_date} 
-                            onChange={(e) => setFormData({...formData, end_date: e.target.value})} 
+                            onChange={(e) => {
+                                setFormData({...formData, end_date: e.target.value});
+                                setErrorsList([]);
+                                setError('');
+                            }} 
                             min={formData.start_date || todayDate}
                             required 
                         />
                         <small className="info-text">📅 Doit être après ou égale à la date de début</small>
                     </div>
                 </div>
+                
                 <div className="form-group">
                     <label>Motif (optionnel)</label>
-                    <textarea className="form-input" rows="3" value={formData.motif} onChange={(e) => setFormData({...formData, motif: e.target.value})} placeholder="Précisez la raison de votre demande..." />
+                    <textarea 
+                        className="form-input" 
+                        rows="3" 
+                        value={formData.motif} 
+                        onChange={(e) => setFormData({...formData, motif: e.target.value})} 
+                        placeholder="Précisez la raison de votre demande..."
+                    />
                 </div>
+                
                 <div className="btn-group">
                     <button type="submit" className="btn btn-primary" disabled={loading}>
                         {loading ? 'Envoi en cours...' : '📤 Envoyer la demande'}
@@ -143,6 +222,7 @@ function LeaveRequest({ onSuccess }) {
                     </button>
                 </div>
             </form>
+            
             <div className="info-box" style={{ marginTop: '20px', background: '#e8f4fd' }}>
                 <strong>ℹ️ Processus de validation en 2 étapes :</strong><br/>
                 1️⃣ Votre manager valide la demande (1ère étape)<br/>
