@@ -1,5 +1,5 @@
 // frontend/src/components/employee/EmployeeDashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from '../common/Navbar';
@@ -17,7 +17,7 @@ import FileUpload from '../common/FileUpload';
 import StatisticsChart from './StatisticsChart';
 import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
-import { formatDate, formatDateTime } from '../../utils/dateUtils';
+import { formatDateTime } from '../../utils/dateUtils';
 
 function EmployeeDashboard({ onLogout }) {
     const [user, setUser] = useState({});
@@ -35,16 +35,124 @@ function EmployeeDashboard({ onLogout }) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [editingRequest, setEditingRequest] = useState(null);
+    const [showEditModal, setShowEditModal] = useState(false);
     const [justificatifs, setJustificatifs] = useState({});
     const location = useLocation();
     const navigate = useNavigate();
 
-    const { toasts, removeToast, success, error, warning, info } = useToast();
+    const { toasts, removeToast, success, error: toastError } = useToast();
 
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterType, setFilterType] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [filteredRequests, setFilteredRequests] = useState([]);
+
+    // Fonctions memoized pour éviter les dépendances manquantes
+    const fetchBalance = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                navigate('/login');
+                return;
+            }
+            const response = await axios.get('http://localhost:5000/api/leaves/balance', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            console.log('Balance reçue:', response.data);
+            setBalance(response.data);
+        } catch (error) {
+            console.error('Erreur solde:', error);
+            if (error.response?.status === 401) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                navigate('/login');
+            }
+        }
+    }, [navigate]);
+
+    const fetchRequests = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            const response = await axios.get('http://localhost:5000/api/leaves/my-requests', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            console.log('=== DEMANDES REÇUES ===');
+            console.log('Nombre total:', response.data.length);
+            
+            const formattedRequests = response.data.map(req => {
+                console.log(`Demande ID ${req.id}: statut=${req.statut}, type=${req.request_type}, type_id=${req.type_id}`);
+                
+                // Normaliser le statut
+                let normalizedStatus = req.statut;
+                if (!normalizedStatus || normalizedStatus === 'En attente') {
+                    normalizedStatus = 'pending_manager';
+                }
+                
+                return {
+                    id: req.id,
+                    start_date: req.start_date || req.date_permission,
+                    end_date: req.end_date || req.date_permission,
+                    date_permission: req.date_permission,
+                    type_id: req.type_id || 4,
+                    type: req.type || 'Permission',
+                    duration: req.duration || req.duree_heures || req.nombre_jours || 0,
+                    status: normalizedStatus,
+                    motif: req.motif || '',
+                    motif_refus: req.motif_refus || '',
+                    request_type: req.request_type || 'conges',
+                    displayDuration: req.request_type === 'permission' ? `${req.duration || req.duree_heures} heure(s)` : `${req.duration || req.nombre_jours} jour(s)`,
+                    displayDates: req.request_type === 'permission' ? (req.start_date || req.date_permission) : `${req.start_date || req.date_debut} - ${req.end_date || req.date_fin}`
+                };
+            });
+            
+            setRequests(formattedRequests);
+            
+            const justifs = {};
+            for (const req of formattedRequests) {
+                if (req.request_type !== 'permission') {
+                    try {
+                        const justifResponse = await axios.get(`http://localhost:5000/api/leaves/justificatifs/${req.id}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        justifs[req.id] = justifResponse.data;
+                    } catch (e) {
+                        justifs[req.id] = [];
+                    }
+                } else {
+                    justifs[req.id] = [];
+                }
+            }
+            setJustificatifs(justifs);
+        } catch (error) {
+            console.error('Erreur chargement demandes:', error);
+        }
+    }, []);
+
+    const fetchNotifications = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            const response = await axios.get('http://localhost:5000/api/leaves/notifications', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setNotifications(response.data);
+            setUnreadCount(response.data.filter(n => !n.est_lu).length);
+        } catch (error) {
+            console.error('Erreur notifications:', error);
+        }
+    }, []);
+
+    const fetchAllData = useCallback(async () => {
+        await Promise.all([fetchBalance(), fetchRequests()]);
+        setLoading(false);
+    }, [fetchBalance, fetchRequests]);
+
+    const refreshAllData = useCallback(() => {
+        fetchAllData();
+        fetchNotifications();
+    }, [fetchAllData, fetchNotifications]);
 
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -58,7 +166,7 @@ function EmployeeDashboard({ onLogout }) {
         }, 30000);
         
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchAllData, fetchNotifications]);
 
     useEffect(() => {
         let filtered = [...requests];
@@ -90,98 +198,6 @@ function EmployeeDashboard({ onLogout }) {
         setFilteredRequests(filtered);
     }, [requests, filterStatus, filterType, searchTerm]);
 
-    const fetchAllData = async () => {
-        await Promise.all([fetchBalance(), fetchRequests()]);
-        setLoading(false);
-    };
-
-    const refreshAllData = () => {
-        fetchAllData();
-        fetchNotifications();
-    };
-
-    const fetchBalance = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                navigate('/login');
-                return;
-            }
-            const response = await axios.get('http://localhost:5000/api/leaves/balance', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            console.log('Balance reçue:', response.data);
-            setBalance(response.data);
-        } catch (error) {
-            console.error('Erreur solde:', error);
-            if (error.response?.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                navigate('/login');
-            }
-        }
-    };
-
-    const fetchRequests = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-            const response = await axios.get('http://localhost:5000/api/leaves/my-requests', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            
-            const formattedRequests = response.data.map(req => ({
-                id: req.id,
-                start_date: req.start_date,
-                end_date: req.end_date,
-                type_id: req.type_id,
-                type: req.type,
-                duration: req.duration,
-                status: req.status,
-                motif: req.motif,
-                motif_refus: req.motif_refus,
-                request_type: req.request_type,
-                displayDuration: req.request_type === 'permission' ? `${req.duration} heure(s)` : `${req.duration} jour(s)`,
-                displayDates: req.request_type === 'permission' ? req.start_date : `${req.start_date} - ${req.end_date}`
-            }));
-            
-            setRequests(formattedRequests);
-            
-            const justifs = {};
-            for (const req of formattedRequests) {
-                if (req.request_type !== 'permission') {
-                    try {
-                        const justifResponse = await axios.get(`http://localhost:5000/api/leaves/justificatifs/${req.id}`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
-                        justifs[req.id] = justifResponse.data;
-                    } catch (e) {
-                        justifs[req.id] = [];
-                    }
-                } else {
-                    justifs[req.id] = [];
-                }
-            }
-            setJustificatifs(justifs);
-        } catch (error) {
-            console.error('Erreur chargement demandes:', error);
-        }
-    };
-
-    const fetchNotifications = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-            const response = await axios.get('http://localhost:5000/api/leaves/notifications', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setNotifications(response.data);
-            setUnreadCount(response.data.filter(n => !n.est_lu).length);
-        } catch (error) {
-            console.error('Erreur notifications:', error);
-        }
-    };
-
     const markAsRead = async (id) => {
         try {
             const token = localStorage.getItem('token');
@@ -195,43 +211,73 @@ function EmployeeDashboard({ onLogout }) {
         }
     };
 
+    // CORRECTION : Fonction handleModifyRequest améliorée
     const handleModifyRequest = (request) => {
-        setEditingRequest(request);
-    };
-
-    const handleCancelRequest = async (request) => {
-        if (window.confirm(`Êtes-vous sûr de vouloir annuler votre demande de congé du ${request.start_date} au ${request.end_date} ?`)) {
-            try {
-                const token = localStorage.getItem('token');
-                await axios.delete(`http://localhost:5000/api/leaves/cancel-request/${request.id}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                success('✅ Demande annulée avec succès !');
-                refreshAllData();
-            } catch (error) {
-                console.error('Erreur annulation:', error);
-                error(error.response?.data?.message || 'Erreur lors de l\'annulation');
-            }
+        console.log('=== OUVERTURE MODAL MODIFICATION ===');
+        console.log('Request à modifier:', request);
+        console.log('ID:', request.id);
+        console.log('Type:', request.request_type);
+        console.log('Status:', request.status);
+        console.log('Dates:', request.start_date, '->', request.end_date);
+        console.log('Type ID:', request.type_id);
+        console.log('Motif:', request.motif);
+        
+        // Vérifier que la demande est bien modifiable
+        if (request.status !== 'pending_manager') {
+            toastError('Cette demande ne peut plus être modifiée');
+            return;
         }
+        
+        if (request.request_type === 'permission') {
+            toastError('Les permissions ne peuvent pas être modifiées');
+            return;
+        }
+        
+        // Préparer les données pour le formulaire
+        const requestToEdit = {
+            id: request.id,
+            type_id: request.type_id || 1,
+            start_date: request.start_date,
+            end_date: request.end_date,
+            motif: request.motif || '',
+            type: request.type,
+            status: request.status
+        };
+        
+        console.log('Request préparée pour édition:', requestToEdit);
+        
+        setEditingRequest(requestToEdit);
+        setShowEditModal(true);
     };
 
-    const handleCancelPermission = async (permissionId) => {
-        if (window.confirm(`Êtes-vous sûr de vouloir annuler cette demande de permission ?`)) {
+    const handleDeleteRequest = async (request) => {
+        const typeLabel = request.request_type === 'permission' ? 'permission' : 'congé';
+        if (window.confirm(`⚠️ Supprimer définitivement cette demande de ${typeLabel} ?\n\nCette action est irréversible.`)) {
             try {
                 const token = localStorage.getItem('token');
-                await axios.delete(`http://localhost:5000/api/leaves/cancel-permission/${permissionId}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                success('✅ Demande de permission annulée avec succès !');
+                if (request.request_type === 'permission') {
+                    await axios.delete(`http://localhost:5000/api/leaves/cancel-permission/${request.id}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                } else {
+                    await axios.delete(`http://localhost:5000/api/leaves/cancel-request/${request.id}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                }
+                success(`✅ Demande de ${typeLabel} supprimée avec succès !`);
                 refreshAllData();
             } catch (error) {
-                console.error('Erreur annulation permission:', error);
-                error(error.response?.data?.message || 'Erreur lors de l\'annulation');
+                console.error('Erreur suppression:', error);
+                toastError(error.response?.data?.message || 'Erreur lors de la suppression');
             }
         }
     };
 
     const handleSaveEdit = async (editedData) => {
+        console.log('=== SAUVEGARDE MODIFICATION ===');
+        console.log('Données modifiées:', editedData);
+        console.log('Request en cours d\'édition:', editingRequest);
+        
         try {
             const token = localStorage.getItem('token');
             const response = await axios.put(
@@ -239,25 +285,43 @@ function EmployeeDashboard({ onLogout }) {
                 editedData,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
+            console.log('Réponse modification:', response.data);
             success(response.data.message || '✅ Demande modifiée avec succès !');
             setEditingRequest(null);
+            setShowEditModal(false);
             refreshAllData();
         } catch (error) {
             console.error('Erreur modification:', error);
-            error(error.response?.data?.message || 'Erreur lors de la modification');
+            const errorMsg = error.response?.data?.message || 'Erreur lors de la modification';
+            if (error.response?.data?.errors) {
+                const errorsList = error.response.data.errors.join('\n• ');
+                toastError(`• ${errorsList}`);
+            } else {
+                toastError(errorMsg);
+            }
         }
     };
 
     const handleCloseEdit = () => {
+        console.log('Fermeture du modal de modification');
         setEditingRequest(null);
+        setShowEditModal(false);
     };
 
-    const getStatusLabel = (status, motif_refus, request_type) => {
-        switch(status) {
+    const getStatusLabel = (status, motif_refus) => {
+        console.log('Statut reçu pour affichage:', status);
+        
+        // Normaliser le statut
+        let normalizedStatus = status;
+        if (!status || status === 'En attente' || status === 'en_attente') {
+            normalizedStatus = 'pending_manager';
+        }
+        
+        switch(normalizedStatus) {
             case 'pending_manager': 
-                return <span className="status status-pending">⏳ En attente manager - Modifiable</span>;
+                return <span className="status status-pending-manager">⏳ En attente manager - Modifiable</span>;
             case 'pending_admin': 
-                return <span className="status status-pending">🕐 En attente admin - Non modifiable</span>;
+                return <span className="status status-pending-admin">🕐 En attente admin - Non modifiable</span>;
             case 'approved': 
                 return <span className="status status-approved">✅ Approuvé</span>;
             case 'rejected': 
@@ -268,13 +332,14 @@ function EmployeeDashboard({ onLogout }) {
                     </div>
                 );
             default: 
-                return <span className="status">{status}</span>;
+                console.warn('Statut inconnu:', normalizedStatus);
+                return <span className="status status-pending-manager">⏳ En attente</span>;
         }
     };
 
     const handleRequestSuccess = () => {
         refreshAllData();
-        success('✅ Demande de congé envoyée avec succès !');
+        success('✅ Demande envoyée avec succès !');
         navigate('/dashboard/employee/requests');
     };
 
@@ -362,7 +427,7 @@ function EmployeeDashboard({ onLogout }) {
                                 <td>{req.displayDates}</td>
                                 <td>{req.type}</td>
                                 <td>{req.displayDuration}</td>
-                                <td>{getStatusLabel(req.status, req.motif_refus, req.request_type)}</td>
+                                <td>{getStatusLabel(req.status, req.motif_refus)}</td>
                                 <td>
                                     {justificatifs[req.id]?.length > 0 ? (
                                         <span className="status status-approved">📎 {justificatifs[req.id].length} fichier(s)</span>
@@ -373,30 +438,25 @@ function EmployeeDashboard({ onLogout }) {
                                     )}
                                 </td>
                                 <td>
-                                    {req.status === 'pending_manager' && req.request_type !== 'permission' && (
-                                        <div style={{ display: 'flex', gap: '5px' }}>
+                                    {req.status === 'pending_manager' && (
+                                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                            {req.request_type !== 'permission' && (
+                                                <button 
+                                                    className="btn btn-sm btn-primary" 
+                                                    onClick={() => handleModifyRequest(req)}
+                                                    style={{ background: '#ff9800', color: 'white', cursor: 'pointer' }}
+                                                    type="button"
+                                                >
+                                                    ✏️ Modifier
+                                                </button>
+                                            )}
                                             <button 
-                                                className="btn btn-sm btn-primary" 
-                                                onClick={() => handleModifyRequest(req)}
-                                                style={{ background: '#ff9800', color: 'white' }}
+                                                className="btn btn-sm btn-warning" 
+                                                onClick={() => handleDeleteRequest(req)}
+                                                style={{ background: '#6c757d', color: 'white', cursor: 'pointer' }}
+                                                type="button"
                                             >
-                                                ✏️ Modifier
-                                            </button>
-                                            <button 
-                                                className="btn btn-sm btn-danger" 
-                                                onClick={() => handleCancelRequest(req)}
-                                            >
-                                                🗑️ Annuler
-                                            </button>
-                                        </div>
-                                    )}
-                                    {req.status === 'pending_manager' && req.request_type === 'permission' && (
-                                        <div style={{ display: 'flex', gap: '5px' }}>
-                                            <button 
-                                                className="btn btn-sm btn-danger" 
-                                                onClick={() => handleCancelPermission(req.id)}
-                                            >
-                                                🗑️ Annuler
+                                                🗑️ Supprimer
                                             </button>
                                         </div>
                                     )}
@@ -419,11 +479,26 @@ function EmployeeDashboard({ onLogout }) {
             
             <div className="info-box" style={{ marginTop: '20px', background: '#e8f4fd' }}>
                 <strong>ℹ️ Informations :</strong><br/>
-                • 📝 Les demandes avec le statut "En attente manager" peuvent être modifiées, annulées ou complétées par un justificatif.<br/>
+                • 📝 Les demandes avec le statut "En attente manager" peuvent être modifiées, supprimées ou complétées par un justificatif.<br/>
                 • ⚠️ Une fois validées par le manager, les demandes ne peuvent plus être modifiées.<br/>
                 • 🔔 Vous serez notifié à chaque étape de validation ou de refus.<br/>
                 • 📅 ⚠️ Les dates de congé doivent être **aujourd'hui ou dans le futur** (pas de dates passées).
             </div>
+            
+            {/* Modal d'édition */}
+            {showEditModal && editingRequest && (
+                <div className="modal-overlay" onClick={(e) => {
+                    if (e.target === e.currentTarget) handleCloseEdit();
+                }}>
+                    <div className="modal" style={{ maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
+                        <EditLeaveRequest 
+                            request={editingRequest} 
+                            onSave={handleSaveEdit}
+                            onCancel={handleCloseEdit}
+                        />
+                    </div>
+                </div>
+            )}
         </>
     );
 
@@ -468,7 +543,7 @@ function EmployeeDashboard({ onLogout }) {
                                 <td>{req.type}</td>
                                 <td>{req.displayDuration}</td>
                                 <td>{req.motif || '-'}</td>
-                                <td>{getStatusLabel(req.status, req.motif_refus, req.request_type)}</td>
+                                <td>{getStatusLabel(req.status, req.motif_refus)}</td>
                                 <td>{req.motif_refus || '-'}</td>
                                 <td>
                                     {justificatifs[req.id]?.length > 0 ? (
@@ -480,41 +555,36 @@ function EmployeeDashboard({ onLogout }) {
                                     )}
                                 </td>
                                 <td>
-                                    {req.status === 'pending_manager' && req.request_type !== 'permission' && (
-                                        <div style={{ display: 'flex', gap: '5px' }}>
-                                            <button 
-                                                className="btn btn-sm btn-primary" 
-                                                onClick={() => handleModifyRequest(req)}
-                                                style={{ background: '#ff9800', color: 'white' }}
-                                            >
-                                                ✏️ Modifier
-                                            </button>
-                                            <button 
-                                                className="btn btn-sm btn-danger" 
-                                                onClick={() => handleCancelRequest(req)}
-                                            >
-                                                🗑️ Annuler
-                                            </button>
-                                        </div>
-                                    )}
-                                    {req.status === 'pending_manager' && req.request_type === 'permission' && (
-                                        <div style={{ display: 'flex', gap: '5px' }}>
+                                    {req.status === 'pending_manager' && (
+                                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                            {req.request_type !== 'permission' && (
+                                                <button 
+                                                    className="btn btn-sm btn-primary" 
+                                                    onClick={() => handleModifyRequest(req)}
+                                                    style={{ background: '#ff9800', color: 'white', cursor: 'pointer' }}
+                                                    type="button"
+                                                >
+                                                    ✏️ Modifier
+                                                </button>
+                                            )}
                                             <button 
                                                 className="btn btn-sm btn-danger" 
-                                                onClick={() => handleCancelPermission(req.id)}
+                                                onClick={() => handleDeleteRequest(req)}
+                                                style={{ cursor: 'pointer' }}
+                                                type="button"
                                             >
-                                                🗑️ Annuler
+                                                🗑️ Supprimer
                                             </button>
                                         </div>
-                                    )}
-                                    {req.status !== 'pending_manager' && req.status !== 'pending_admin' && (
-                                        <span className="info-text" style={{ fontSize: '11px', color: '#888' }}>
-                                            Non modifiable
-                                        </span>
                                     )}
                                     {req.status === 'pending_admin' && (
                                         <span className="info-text" style={{ fontSize: '11px', color: '#ff9800' }}>
                                             ⏳ Déjà validé par manager
+                                        </span>
+                                    )}
+                                    {(req.status === 'approved' || req.status === 'rejected') && (
+                                        <span className="info-text" style={{ fontSize: '11px', color: '#888' }}>
+                                            Non modifiable
                                         </span>
                                     )}
                                 </td>
@@ -539,6 +609,21 @@ function EmployeeDashboard({ onLogout }) {
                     setSearchTerm('');
                 }}>🔄 Afficher tout</button>
             </div>
+            
+            {/* Modal d'édition pour la page Mes demandes */}
+            {showEditModal && editingRequest && (
+                <div className="modal-overlay" onClick={(e) => {
+                    if (e.target === e.currentTarget) handleCloseEdit();
+                }}>
+                    <div className="modal" style={{ maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
+                        <EditLeaveRequest 
+                            request={editingRequest} 
+                            onSave={handleSaveEdit}
+                            onCancel={handleCloseEdit}
+                        />
+                    </div>
+                </div>
+            )}
         </>
     );
 
@@ -556,6 +641,25 @@ function EmployeeDashboard({ onLogout }) {
     );
 
     const currentPath = location.pathname;
+
+    // Modal global d'édition (pour les pages sans le modal)
+    const renderEditModal = () => {
+        if (!showEditModal || !editingRequest) return null;
+        
+        return (
+            <div className="modal-overlay" onClick={(e) => {
+                if (e.target === e.currentTarget) handleCloseEdit();
+            }}>
+                <div className="modal" style={{ maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
+                    <EditLeaveRequest 
+                        request={editingRequest} 
+                        onSave={handleSaveEdit}
+                        onCancel={handleCloseEdit}
+                    />
+                </div>
+            </div>
+        );
+    };
 
     if (currentPath.includes('/balance')) {
         return (
@@ -632,6 +736,7 @@ function EmployeeDashboard({ onLogout }) {
                     </main>
                 </div>
                 <Footer />
+                {renderEditModal()}
                 <ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
@@ -648,6 +753,7 @@ function EmployeeDashboard({ onLogout }) {
                     </main>
                 </div>
                 <Footer />
+                {renderEditModal()}
                 <ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
@@ -669,6 +775,7 @@ function EmployeeDashboard({ onLogout }) {
         );
     }
 
+    // Dashboard par défaut
     return (
         <>
             <Navbar user={user} role="employee" onLogout={onLogout} />
@@ -679,19 +786,6 @@ function EmployeeDashboard({ onLogout }) {
                 </main>
             </div>
             <Footer />
-            
-            {editingRequest && (
-                <div className="modal-overlay">
-                    <div className="modal" style={{ maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
-                        <EditLeaveRequest 
-                            request={editingRequest} 
-                            onSave={handleSaveEdit}
-                            onCancel={handleCloseEdit}
-                        />
-                    </div>
-                </div>
-            )}
-            
             <ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );

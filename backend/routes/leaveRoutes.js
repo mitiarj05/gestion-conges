@@ -3,10 +3,43 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
-// ============ FONCTIONS UTILITAIRES DE VALIDATION ============
+// ============ CONFIGURATION MULTER ============
 
-const validateLeaveRequest = async (userId, type_id, start_date, end_date, isModification = false) => {
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, '..', 'uploads', 'justificatifs');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (allowedTypes.includes(ext)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Type de fichier non autorisé'));
+        }
+    }
+});
+
+// ============ FONCTIONS UTILITAIRES ============
+
+const validateLeaveRequest = async (userId, type_id, start_date, end_date, isModification = false, excludeRequestId = null) => {
     const errors = [];
     
     const today = new Date();
@@ -72,55 +105,41 @@ const validateLeaveRequest = async (userId, type_id, start_date, end_date, isMod
         errors.push(`Vous devez faire votre demande au moins ${preavisMin} jours à l'avance`);
     }
     
-    const overlapping = await pool.query(
-        `SELECT COUNT(*) FROM demandes_conges 
-         WHERE utilisateur_id = $1 
-         AND statut IN ('pending_manager', 'pending_admin', 'approved')
-         AND id != $2
-         AND (
-            (date_debut <= $3 AND date_fin >= $3) OR
-            (date_debut <= $4 AND date_fin >= $4) OR
-            (date_debut >= $3 AND date_fin <= $4)
-         )`,
-        [userId, isModification ? 0 : -1, start_date, end_date]
-    );
+    // CORRECTION : Vérification des chevauchements en excluant la demande en cours de modification
+    let overlappingQuery;
+    let overlappingParams;
+    
+    if (isModification && excludeRequestId) {
+        // Pour une modification : exclure la demande en cours de modification
+        overlappingQuery = `
+            SELECT COUNT(*) FROM demandes_conges 
+            WHERE utilisateur_id = $1 
+            AND statut IN ('pending_manager', 'pending_admin', 'approved')
+            AND id != $2
+            AND (
+                (date_debut <= $3 AND date_fin >= $3) OR
+                (date_debut <= $4 AND date_fin >= $4) OR
+                (date_debut >= $3 AND date_fin <= $4)
+            )`;
+        overlappingParams = [userId, excludeRequestId, start_date, end_date];
+    } else {
+        // Pour une nouvelle demande
+        overlappingQuery = `
+            SELECT COUNT(*) FROM demandes_conges 
+            WHERE utilisateur_id = $1 
+            AND statut IN ('pending_manager', 'pending_admin', 'approved')
+            AND (
+                (date_debut <= $2 AND date_fin >= $2) OR
+                (date_debut <= $3 AND date_fin >= $3) OR
+                (date_debut >= $2 AND date_fin <= $3)
+            )`;
+        overlappingParams = [userId, start_date, end_date];
+    }
+    
+    const overlapping = await pool.query(overlappingQuery, overlappingParams);
     
     if (parseInt(overlapping.rows[0].count) > 0) {
         errors.push("Vous avez déjà une demande de congé sur cette période");
-    }
-    
-    const lastRequest = await pool.query(
-        `SELECT date_fin FROM demandes_conges 
-         WHERE utilisateur_id = $1 
-         AND statut IN ('approved', 'pending_manager', 'pending_admin')
-         AND id != $2
-         ORDER BY date_fin DESC LIMIT 1`,
-        [userId, isModification ? 0 : -1]
-    );
-    
-    if (lastRequest.rows.length > 0 && !isModification) {
-        const lastEnd = new Date(lastRequest.rows[0].date_fin);
-        const minGap = new Date(lastEnd);
-        minGap.setDate(minGap.getDate() + 7);
-        if (start < minGap) {
-            errors.push("Vous devez attendre 7 jours entre deux demandes de congé");
-        }
-    }
-    
-    const yearTotal = await pool.query(
-        `SELECT SUM(nombre_jours) as total 
-         FROM demandes_conges 
-         WHERE utilisateur_id = $1 
-         AND EXTRACT(YEAR FROM date_debut) = $2
-         AND statut IN ('approved', 'pending_manager', 'pending_admin')
-         AND id != $3`,
-        [userId, currentYear, isModification ? 0 : -1]
-    );
-    
-    const totalUsed = parseFloat(yearTotal.rows[0].total) || 0;
-    const maxAnnual = 30;
-    if (totalUsed + days > maxAnnual && type_id !== 3) {
-        errors.push(`Vous dépassez le plafond annuel de ${maxAnnual} jours de congé (tous types confondus)`);
     }
     
     return { isValid: errors.length === 0, errors, days, typeRule };
@@ -192,7 +211,7 @@ router.get('/balance', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ MES DEMANDES (CONGÉS + PERMISSIONS) ============
+// ============ MES DEMANDES ============
 
 router.get('/my-requests', authMiddleware, async (req, res) => {
     try {
@@ -201,8 +220,8 @@ router.get('/my-requests', authMiddleware, async (req, res) => {
         const congesResult = await pool.query(
             `SELECT 
                 dc.id,
-                dc.date_debut as start_date,
-                dc.date_fin as end_date,
+                TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as start_date,
+                TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as end_date,
                 dc.type_conge_id as type_id,
                 tc.nom as type,
                 dc.nombre_jours as duration,
@@ -210,11 +229,7 @@ router.get('/my-requests', authMiddleware, async (req, res) => {
                 dc.motif,
                 dc.motif_refus,
                 dc.cree_le,
-                'conges' as request_type,
-                NULL as date_permission,
-                NULL as heure_debut,
-                NULL as heure_fin,
-                NULL as duree_heures
+                'conges' as request_type
              FROM demandes_conges dc
              JOIN types_conges tc ON dc.type_conge_id = tc.id
              WHERE dc.utilisateur_id = $1
@@ -225,8 +240,8 @@ router.get('/my-requests', authMiddleware, async (req, res) => {
         const permissionsResult = await pool.query(
             `SELECT 
                 dp.id,
-                dp.date_permission as start_date,
-                dp.date_permission as end_date,
+                TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as start_date,
+                TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as end_date,
                 4 as type_id,
                 'Permission' as type,
                 dp.duree_heures as duration,
@@ -235,7 +250,7 @@ router.get('/my-requests', authMiddleware, async (req, res) => {
                 dp.motif_refus,
                 dp.cree_le,
                 'permission' as request_type,
-                dp.date_permission,
+                TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_permission,
                 dp.heure_debut,
                 dp.heure_fin,
                 dp.duree_heures
@@ -257,36 +272,12 @@ router.get('/my-requests', authMiddleware, async (req, res) => {
 
 // ============ DEMANDE DE CONGÉ ============
 
-router.get('/request/:id', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const requestId = req.params.id;
-        
-        const result = await pool.query(
-            `SELECT dc.*, tc.nom as type_name
-             FROM demandes_conges dc
-             JOIN types_conges tc ON dc.type_conge_id = tc.id
-             WHERE dc.id = $1 AND dc.utilisateur_id = $2`,
-            [requestId, userId]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Demande non trouvée' });
-        }
-        
-        res.json(result.rows[0]);
-    } catch (error) {
-        console.error('Erreur get request:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
-});
-
 router.post('/request', authMiddleware, async (req, res) => {
     const { type_id, start_date, end_date, motif } = req.body;
     const userId = req.user.id;
     
     try {
-        const validation = await validateLeaveRequest(userId, type_id, start_date, end_date);
+        const validation = await validateLeaveRequest(userId, type_id, start_date, end_date, false, null);
         
         if (!validation.isValid) {
             return res.status(400).json({ 
@@ -321,10 +312,10 @@ router.post('/request', authMiddleware, async (req, res) => {
             
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'demande_recue', 'Nouvelle demande de congé', 
-                         '${employe.prenom} ${employe.nom} a fait une demande de congé du ${start_date} au ${end_date} (${days} jours)', 
+                 VALUES ($1, 'demande_recue', 'Nouvelle demande de conge', 
+                         $2, 
                          '/dashboard/manager/validations', NOW())`,
-                [managerId]
+                [managerId, `${employe.prenom} ${employe.nom} a fait une demande de conge du ${start_date} au ${end_date} (${days} jours)`]
             );
         }
         
@@ -338,14 +329,23 @@ router.post('/request', authMiddleware, async (req, res) => {
     }
 });
 
+// CORRECTION PRINCIPALE : Route update-request corrigée
 router.put('/update-request/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
     const userId = req.user.id;
     const { type_id, start_date, end_date, motif } = req.body;
     
+    console.log('=== UPDATE REQUEST ===');
+    console.log('RequestId:', requestId);
+    console.log('UserId:', userId);
+    console.log('Body:', { type_id, start_date, end_date, motif });
+    
     try {
+        // Vérifier que la demande existe et appartient à l'utilisateur
         const requestCheck = await pool.query(
-            `SELECT dc.*, u.manager_id, u.nom, u.prenom
+            `SELECT dc.id, dc.utilisateur_id, dc.type_conge_id, dc.date_debut, dc.date_fin, 
+                    dc.nombre_jours, dc.motif, dc.statut,
+                    u.manager_id, u.nom, u.prenom
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'pending_manager'`,
@@ -354,15 +354,31 @@ router.put('/update-request/:id', authMiddleware, async (req, res) => {
         
         if (requestCheck.rows.length === 0) {
             return res.status(404).json({ 
-                message: 'Demande non trouvable ou déjà traitée. Seules les demandes en attente peuvent être modifiées.' 
+                message: 'Demande non trouvable ou déjà traitée. Seules les demandes en attente manager peuvent être modifiées.' 
             });
         }
         
         const demande = requestCheck.rows[0];
+        console.log('Demande trouvée:', {
+            id: demande.id,
+            type_conge_id: demande.type_conge_id,
+            date_debut: demande.date_debut,
+            date_fin: demande.date_fin,
+            statut: demande.statut
+        });
         
-        const validation = await validateLeaveRequest(userId, type_id, start_date, end_date, true);
+        // CORRECTION : Valider en excluant la demande en cours de modification
+        const validation = await validateLeaveRequest(
+            userId, 
+            type_id, 
+            start_date, 
+            end_date, 
+            true,  // isModification = true
+            parseInt(requestId)  // excludeRequestId = l'ID de la demande en cours de modification
+        );
         
         if (!validation.isValid) {
+            console.log('Validation échouée:', validation.errors);
             return res.status(400).json({ 
                 message: "Règles non respectées",
                 errors: validation.errors 
@@ -372,23 +388,35 @@ router.put('/update-request/:id', authMiddleware, async (req, res) => {
         const days = validation.days;
         const oldDates = `${demande.date_debut} -> ${demande.date_fin}`;
         
+        console.log('Mise à jour:', {
+            type_id,
+            start_date,
+            end_date,
+            days,
+            motif: motif || demande.motif
+        });
+        
+        // Mettre à jour la demande
         await pool.query(
             `UPDATE demandes_conges 
              SET type_conge_id = $1, date_debut = $2, date_fin = $3, 
-                 nombre_jours = $4, motif = $5, modifie_le = NOW()
+                 nombre_jours = $4, motif = $5, modifie_le = NOW(), statut = 'pending_manager'
              WHERE id = $6`,
             [type_id, start_date, end_date, days, motif || demande.motif, requestId]
         );
         
+        // Notifier le manager du changement
         if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'demande_modifiee', 'Demande de congé modifiée',
-                         '${demande.prenom} ${demande.nom} a modifié sa demande de congé (anciennement: ${oldDates}). Veuillez la revalider.',
+                 VALUES ($1, 'demande_modifiee', 'Demande de conge modifiee',
+                         $2,
                          '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id]
+                [demande.manager_id, `${demande.prenom} ${demande.nom} a modifie sa demande de conge (anciennement: ${oldDates}). Nouvelles dates: ${start_date} -> ${end_date}. Veuillez la revalider.`]
             );
         }
+        
+        console.log('Modification réussie');
         
         res.json({ 
             message: 'Demande modifiée avec succès. Votre manager a été notifié du changement.',
@@ -402,6 +430,7 @@ router.put('/update-request/:id', authMiddleware, async (req, res) => {
     }
 });
 
+// Annuler une demande de congé
 router.delete('/cancel-request/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
     const userId = req.user.id;
@@ -431,10 +460,10 @@ router.delete('/cancel-request/:id', authMiddleware, async (req, res) => {
         if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'demande_annulee', 'Demande de congé annulée',
-                         '${demande.prenom} ${demande.nom} a annulé sa demande de congé (${demande.date_debut} -> ${demande.date_fin}).',
+                 VALUES ($1, 'demande_annulee', 'Demande de conge annulee',
+                         $2,
                          '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id]
+                [demande.manager_id, `${demande.prenom} ${demande.nom} a annule sa demande de conge (${demande.date_debut} -> ${demande.date_fin}).`]
             );
         }
         
@@ -454,10 +483,16 @@ router.get('/team-pending', authMiddleware, async (req, res) => {
         
         const congesResult = await pool.query(
             `SELECT 
-                dc.*, 
+                dc.id,
+                TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
+                TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
+                dc.nombre_jours,
+                dc.motif,
+                dc.statut,
                 u.nom, u.prenom, u.email, u.service, 
                 tc.nom as type_name,
-                'conges' as request_type
+                'conges' as request_type,
+                dc.cree_le
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              JOIN types_conges tc ON dc.type_conge_id = tc.id
@@ -468,13 +503,20 @@ router.get('/team-pending', authMiddleware, async (req, res) => {
         
         const permissionsResult = await pool.query(
             `SELECT 
-                dp.*,
+                dp.id,
+                TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_debut,
+                TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_fin,
+                dp.duree_heures as nombre_jours,
+                dp.motif,
+                dp.statut,
                 u.nom, u.prenom, u.email, u.service,
                 'Permission' as type_name,
                 'permission' as request_type,
-                dp.date_permission as date_debut,
-                dp.date_permission as date_fin,
-                dp.duree_heures as nombre_jours
+                dp.date_permission,
+                dp.heure_debut,
+                dp.heure_fin,
+                dp.duree_heures,
+                dp.cree_le
              FROM demandes_permissions dp
              JOIN users u ON dp.utilisateur_id = u.id
              WHERE u.manager_id = $1 AND dp.statut = 'pending_manager'
@@ -526,10 +568,10 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
             
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'pre_approuve_permission', 'Permission pré-approuvée par votre manager', 
-                         'Votre demande de permission du ${demande.date_permission} a été validée par votre manager. En attente de validation finale par l\'administrateur.', 
+                 VALUES ($1, 'pre_approuve_permission', 'Permission pre-approuvee par votre manager', 
+                         $2,
                          '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                [demande.utilisateur_id, `Votre demande de permission du ${demande.date_permission} a ete validee par votre manager. En attente de validation finale par l administrateur.`]
             );
             
             const adminResult = await pool.query(
@@ -543,10 +585,10 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
             if (adminResult.rows.length > 0) {
                 await pool.query(
                     `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'validation_permission_requise', 'Permission à valider définitivement', 
-                             'Une demande de permission de ${demande.prenom} ${demande.nom} a été pré-approuvée par le manager et attend votre validation finale.', 
+                     VALUES ($1, 'validation_permission_requise', 'Permission a valider definitivement', 
+                             $2,
                              '/dashboard/admin', NOW())`,
-                    [adminResult.rows[0].id]
+                    [adminResult.rows[0].id, `Une demande de permission de ${demande.prenom} ${demande.nom} a ete pre-approuvee par le manager et attend votre validation finale.`]
                 );
             }
             
@@ -580,10 +622,10 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
             
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'pre_approuve', 'Demande pré-approuvée par votre manager', 
-                         'Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été validée par votre manager. En attente de validation finale par l\'administrateur.', 
+                 VALUES ($1, 'pre_approuve', 'Demande pre-approuvee par votre manager', 
+                         $2,
                          '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                [demande.utilisateur_id, `Votre demande de conge du ${demande.date_debut} au ${demande.date_fin} a ete validee par votre manager. En attente de validation finale par l administrateur.`]
             );
             
             const adminResult = await pool.query(
@@ -597,10 +639,10 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
             if (adminResult.rows.length > 0) {
                 await pool.query(
                     `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'validation_requise', 'Demande à valider définitivement', 
-                             'Une demande de congé de ${demande.prenom} ${demande.nom} (${demande.date_debut} -> ${demande.date_fin}) a été pré-approuvée par le manager. Veuillez la valider ou la refuser.',
+                     VALUES ($1, 'validation_requise', 'Demande a valider definitivement', 
+                             $2,
                              '/dashboard/admin', NOW())`,
-                    [adminResult.rows[0].id]
+                    [adminResult.rows[0].id, `Une demande de conge de ${demande.prenom} ${demande.nom} (${demande.date_debut} -> ${demande.date_fin}) a ete pre-approuvee par le manager. Veuillez la valider ou la refuser.`]
                 );
             }
             
@@ -648,10 +690,10 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
             
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_manager_permission', 'Permission refusée par votre manager', 
-                         'Votre demande de permission du ${demande.date_permission} a été refusée par votre manager.\n\nMotif : ${motifFinal}', 
+                 VALUES ($1, 'refus_manager_permission', 'Permission refusee par votre manager', 
+                         $2,
                          '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                [demande.utilisateur_id, `Votre demande de permission du ${demande.date_permission} a ete refusee par votre manager.\n\nMotif : ${motifFinal}`]
             );
             
             res.json({ message: 'Permission refusée', motif: motifFinal });
@@ -684,10 +726,10 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
             
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_manager', 'Demande de congé refusée par votre manager', 
-                         'Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été refusée par votre manager.\n\nMotif : ${motifFinal}', 
+                 VALUES ($1, 'refus_manager', 'Demande de conge refusee par votre manager', 
+                         $2,
                          '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                [demande.utilisateur_id, `Votre demande de conge du ${demande.date_debut} au ${demande.date_fin} a ete refusee par votre manager.\n\nMotif : ${motifFinal}`]
             );
             
             res.json({ message: 'Demande refusée', motif: motifFinal });
@@ -844,9 +886,9 @@ router.post('/permission-request', authMiddleware, async (req, res) => {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
                  VALUES ($1, 'permission_recue', 'Nouvelle demande de permission', 
-                         '${employe.prenom} ${employe.nom} a fait une demande de permission le ${date_permission} de ${heure_debut} à ${heure_fin} (${duree_heures}h)', 
+                         $2,
                          '/dashboard/manager/validations', NOW())`,
-                [managerId]
+                [managerId, `${employe.prenom} ${employe.nom} a fait une demande de permission le ${date_permission} de ${heure_debut} à ${heure_fin} (${duree_heures}h)`]
             );
         }
         
@@ -876,7 +918,7 @@ router.delete('/cancel-permission/:id', authMiddleware, async (req, res) => {
         
         if (requestCheck.rows.length === 0) {
             return res.status(404).json({ 
-                message: 'Demande non trouvable ou déjà traitée. Impossible d\'annuler.' 
+                message: 'Demande non trouvable ou déjà traitée. Impossible d annuler.' 
             });
         }
         
@@ -890,10 +932,10 @@ router.delete('/cancel-permission/:id', authMiddleware, async (req, res) => {
         if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'permission_annulee', 'Demande de permission annulée', 
-                         'L\'employé a annulé sa demande de permission.',
+                 VALUES ($1, 'permission_annulee', 'Demande de permission annulee', 
+                         $2,
                          '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id]
+                [demande.manager_id, `L employe a annule sa demande de permission.`]
             );
         }
         
@@ -905,7 +947,7 @@ router.delete('/cancel-permission/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ ROUTES POUR LE MANAGER (STATS + ABSENCES) ============
+// ============ ROUTES POUR LE MANAGER ============
 
 router.get('/team-stats', authMiddleware, async (req, res) => {
     try {
@@ -1003,22 +1045,32 @@ router.get('/team-absences', authMiddleware, async (req, res) => {
         const managerId = req.user.id;
         
         const congesResult = await pool.query(
-            `SELECT dc.date_debut, dc.date_fin, dc.statut, tc.nom as type_name,
-                    u.nom, u.prenom, u.id as user_id, 'conges' as absence_type
+            `SELECT 
+                TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut, 
+                TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin, 
+                dc.statut, 
+                tc.nom as type_name,
+                u.nom, u.prenom, u.id as user_id, 
+                'conges' as absence_type
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              JOIN types_conges tc ON dc.type_conge_id = tc.id
-             WHERE u.manager_id = $1
+             WHERE u.manager_id = $1 AND dc.statut IN ('approved', 'pending_manager', 'pending_admin')
              ORDER BY dc.date_debut ASC`,
             [managerId]
         );
         
         const permissionsResult = await pool.query(
-            `SELECT dp.date_permission as date_debut, dp.date_permission as date_fin, dp.statut, 'Permission' as type_name,
-                    u.nom, u.prenom, u.id as user_id, 'permission' as absence_type
+            `SELECT 
+                TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_debut, 
+                TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_fin, 
+                dp.statut, 
+                'Permission' as type_name,
+                u.nom, u.prenom, u.id as user_id, 
+                'permission' as absence_type
              FROM demandes_permissions dp
              JOIN users u ON dp.utilisateur_id = u.id
-             WHERE u.manager_id = $1
+             WHERE u.manager_id = $1 AND dp.statut IN ('approved', 'pending_manager', 'pending_admin')
              ORDER BY dp.date_permission ASC`,
             [managerId]
         );
@@ -1028,6 +1080,93 @@ router.get('/team-absences', authMiddleware, async (req, res) => {
         
     } catch (error) {
         console.error('Erreur team absences:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
+// ============ UPLOAD JUSTIFICATIFS ============
+
+router.post('/upload-justificatif', authMiddleware, upload.single('file'), async (req, res) => {
+    try {
+        const { demandeId } = req.body;
+        
+        if (!req.file) {
+            return res.status(400).json({ message: 'Aucun fichier uploadé' });
+        }
+        
+        const result = await pool.query(
+            `INSERT INTO justificatifs (demande_id, nom_fichier, chemin_fichier, type_fichier, taille, cree_le)
+             VALUES ($1, $2, $3, $4, $5, NOW())
+             RETURNING id`,
+            [demandeId, req.file.originalname, req.file.path, req.file.mimetype, req.file.size]
+        );
+        
+        res.status(201).json({ 
+            message: 'Justificatif uploadé avec succès',
+            id: result.rows[0].id
+        });
+    } catch (error) {
+        console.error('Erreur upload:', error);
+        res.status(500).json({ message: 'Erreur lors de l\'upload' });
+    }
+});
+
+router.get('/justificatifs/:demandeId', authMiddleware, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM justificatifs WHERE demande_id = $1 ORDER BY cree_le DESC`,
+            [req.params.demandeId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erreur justificatifs:', error);
+        res.json([]);
+    }
+});
+
+router.get('/download-justificatif/:fileId', authMiddleware, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM justificatifs WHERE id = $1`,
+            [req.params.fileId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Fichier non trouvé' });
+        }
+        
+        const file = result.rows[0];
+        res.download(file.chemin_fichier, file.nom_fichier);
+    } catch (error) {
+        console.error('Erreur download:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
+router.delete('/delete-justificatif/:fileId', authMiddleware, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM justificatifs WHERE id = $1`,
+            [req.params.fileId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Fichier non trouvé' });
+        }
+        
+        const file = result.rows[0];
+        
+        // Supprimer le fichier physique
+        if (fs.existsSync(file.chemin_fichier)) {
+            fs.unlinkSync(file.chemin_fichier);
+        }
+        
+        // Supprimer de la base
+        await pool.query('DELETE FROM justificatifs WHERE id = $1', [req.params.fileId]);
+        
+        res.json({ message: 'Justificatif supprimé' });
+    } catch (error) {
+        console.error('Erreur delete justificatif:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });

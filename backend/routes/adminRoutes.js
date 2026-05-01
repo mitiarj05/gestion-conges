@@ -1,4 +1,3 @@
-// backend/routes/adminRoutes.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
@@ -99,7 +98,7 @@ router.get('/employees-only', async (req, res) => {
     }
 });
 
-// AJOUTER EMPLOYÉ (créer un nouveau compte)
+// AJOUTER EMPLOYÉ
 router.post('/create-employee', async (req, res) => {
     const { nom, prenom, email, password, telephone, service } = req.body;
     
@@ -225,7 +224,7 @@ router.put('/users/:id', async (req, res) => {
     }
 });
 
-// RÉINITIALISER LE MOT DE PASSE D'UN UTILISATEUR
+// RÉINITIALISER LE MOT DE PASSE
 router.put('/users/:id/reset-password', async (req, res) => {
     const userId = req.params.id;
     const { password } = req.body;
@@ -264,7 +263,7 @@ router.delete('/users/:id', async (req, res) => {
     }
 });
 
-// EXPORT EXCEL DES UTILISATEURS
+// EXPORT EXCEL
 router.get('/export-users', async (req, res) => {
     try {
         const result = await pool.query(
@@ -343,14 +342,19 @@ router.post('/resend-activation/:userId', async (req, res) => {
 
 // ============ VALIDATION ADMIN (2ème étape) ============
 
-// Récupérer les demandes pré-approuvées par les managers (en attente validation admin)
+// Récupérer les demandes pré-approuvées
 router.get('/pending-approvals', async (req, res) => {
     try {
-        // Demandes de congés pré-approuvées
         const congesResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.service, tc.nom as type_name,
+            `SELECT dc.id, 
+                    TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
+                    TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
+                    dc.nombre_jours, dc.motif, dc.statut,
+                    u.nom, u.prenom, u.email, u.service,
+                    tc.nom as type_name,
                     m.nom as manager_nom, m.prenom as manager_prenom,
-                    'conges' as request_type
+                    'conges' as request_type,
+                    dc.date_approbation
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              JOIN types_conges tc ON dc.type_conge_id = tc.id
@@ -359,11 +363,16 @@ router.get('/pending-approvals', async (req, res) => {
              ORDER BY dc.date_approbation ASC`
         );
         
-        // Demandes de permissions pré-approuvées
         const permissionsResult = await pool.query(
-            `SELECT dp.*, u.nom, u.prenom, u.email, u.service, 'Permission' as type_name,
+            `SELECT dp.id,
+                    TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_debut,
+                    TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_fin,
+                    dp.duree_heures as nombre_jours, dp.motif, dp.statut,
+                    u.nom, u.prenom, u.email, u.service,
+                    'Permission' as type_name,
                     m.nom as manager_nom, m.prenom as manager_prenom,
-                    'permission' as request_type
+                    'permission' as request_type,
+                    dp.date_approbation
              FROM demandes_permissions dp
              JOIN users u ON dp.utilisateur_id = u.id
              LEFT JOIN users m ON dp.approbateur_id = m.id
@@ -381,7 +390,7 @@ router.get('/pending-approvals', async (req, res) => {
     }
 });
 
-// Admin approuve définitivement une demande (congé ou permission)
+// Admin approuve définitivement
 router.put('/final-approve/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
@@ -389,7 +398,6 @@ router.put('/final-approve/:id', async (req, res) => {
     
     try {
         if (request_type === 'permission') {
-            // Approuver définitivement une permission
             const requestResult = await pool.query(
                 `SELECT dp.*, u.nom, u.prenom, u.email, u.manager_id
                  FROM demandes_permissions dp
@@ -414,27 +422,24 @@ router.put('/final-approve/:id', async (req, res) => {
             // Notification pour l'employé
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'approuve_final_permission', '✅ Permission définitivement approuvée', 
-                         'Félicitations ! Votre demande de permission du ${demande.date_permission} a été définitivement approuvée par l\'administrateur.', 
-                         '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                 VALUES ($1, 'approuve_final_permission', 'Permission definitivement approuvee', 
+                 $2, '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id, `Felicitations ! Votre demande de permission du ${demande.date_permission} a ete definitivement approuvee par l administrateur.`]
             );
             
             // Notification pour le manager
             if (demande.manager_id) {
                 await pool.query(
                     `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'approuve_final_permission', '✅ Permission approuvée définitivement', 
-                             'La demande de permission de ${demande.prenom} ${demande.nom} a été définitivement approuvée par l\'administrateur.', 
-                             '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id]
+                     VALUES ($1, 'approuve_final_permission_manager', 'Permission approuvee definitivement', 
+                     $2, '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id, `La demande de permission de ${demande.prenom} ${demande.nom} a ete definitivement approuvee par l administrateur.`]
                 );
             }
             
             res.json({ message: 'Permission définitivement approuvée' });
             
         } else {
-            // Approuver définitivement un congé
             const requestResult = await pool.query(
                 `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
                  FROM demandes_conges dc
@@ -468,20 +473,18 @@ router.put('/final-approve/:id', async (req, res) => {
             // Notification pour l'employé
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'approuve_final', '✅ Congé définitivement approuvé', 
-                         'Félicitations ! Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été définitivement approuvée par l\'administrateur.', 
-                         '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                 VALUES ($1, 'approuve_final', 'Conge definitivement approuve', 
+                 $2, '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id, `Felicitations ! Votre demande de conge du ${demande.date_debut} au ${demande.date_fin} a ete definitivement approuvee par l administrateur.`]
             );
             
             // Notification pour le manager
             if (demande.manager_id) {
                 await pool.query(
                     `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'approuve_final', '✅ Demande de congé approuvée définitivement', 
-                             'La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement approuvée par l\'administrateur.', 
-                             '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id]
+                     VALUES ($1, 'approuve_final_manager', 'Demande de conge approuvee definitivement', 
+                     $2, '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id, `La demande de conge de ${demande.prenom} ${demande.nom} a ete definitivement approuvee par l administrateur.`]
                 );
             }
             
@@ -490,11 +493,11 @@ router.put('/final-approve/:id', async (req, res) => {
         
     } catch (error) {
         console.error('Erreur final approve:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
     }
 });
 
-// Admin refuse définitivement une demande (congé ou permission)
+// Admin refuse définitivement
 router.put('/final-reject/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
@@ -503,7 +506,6 @@ router.put('/final-reject/:id', async (req, res) => {
     
     try {
         if (request_type === 'permission') {
-            // Refuser définitivement une permission
             const requestResult = await pool.query(
                 `SELECT dp.*, u.nom, u.prenom, u.email, u.manager_id
                  FROM demandes_permissions dp
@@ -528,27 +530,24 @@ router.put('/final-reject/:id', async (req, res) => {
             // Notification pour l'employé
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_admin_permission', '❌ Permission définitivement refusée', 
-                         'Votre demande de permission a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
-                         '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                 VALUES ($1, 'refus_admin_permission', 'Permission definitivement refusee', 
+                 $2, '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id, `Votre demande de permission a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
             );
             
             // Notification pour le manager
             if (demande.manager_id) {
                 await pool.query(
                     `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'refus_admin_permission', '❌ Permission définitivement refusée', 
-                             'La demande de permission de ${demande.prenom} ${demande.nom} a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
-                             '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id]
+                     VALUES ($1, 'refus_admin_permission_manager', 'Permission definitivement refusee', 
+                     $2, '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id, `La demande de permission de ${demande.prenom} ${demande.nom} a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
                 );
             }
             
             res.json({ message: 'Permission définitivement refusée' });
             
         } else {
-            // Refuser définitivement un congé
             const requestResult = await pool.query(
                 `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
                  FROM demandes_conges dc
@@ -573,20 +572,18 @@ router.put('/final-reject/:id', async (req, res) => {
             // Notification pour l'employé
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_admin', '❌ Demande de congé définitivement refusée', 
-                         'Votre demande de congé a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
-                         '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id]
+                 VALUES ($1, 'refus_admin', 'Demande de conge definitivement refusee', 
+                 $2, '/dashboard/employee/requests', NOW())`,
+                [demande.utilisateur_id, `Votre demande de conge a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
             );
             
             // Notification pour le manager
             if (demande.manager_id) {
                 await pool.query(
                     `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'refus_admin', '❌ Demande de congé refusée définitivement', 
-                             'La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement refusée par l\'administrateur.\n\nMotif : ${motifFinal}', 
-                             '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id]
+                     VALUES ($1, 'refus_admin_manager', 'Demande de conge refusee definitivement', 
+                     $2, '/dashboard/manager/validations', NOW())`,
+                    [demande.manager_id, `La demande de conge de ${demande.prenom} ${demande.nom} a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
                 );
             }
             
@@ -595,16 +592,21 @@ router.put('/final-reject/:id', async (req, res) => {
         
     } catch (error) {
         console.error('Erreur final reject:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
     }
 });
 
-// ============ GESTION DES DEMANDES (liste toutes les demandes) ============
+// ============ GESTION DES DEMANDES ============
 
 router.get('/leave-requests', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, tc.nom as type_name
+            `SELECT dc.id,
+                    TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
+                    TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
+                    dc.nombre_jours, dc.statut, dc.cree_le,
+                    u.nom, u.prenom,
+                    tc.nom as type_name
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              JOIN types_conges tc ON dc.type_conge_id = tc.id
@@ -688,9 +690,8 @@ router.put('/settings', async (req, res) => {
     res.json({ message: 'Paramètres enregistrés !' });
 });
 
-// ============ GESTION DES MANAGERS (AJOUT EMPLOYÉ À L'ÉQUIPE) ============
+// ============ GESTION DES MANAGERS ============
 
-// Assigner un manager à un employé
 router.put('/assign-manager/:employeeId', async (req, res) => {
     const { employeeId } = req.params;
     const { managerId } = req.body;
@@ -727,7 +728,6 @@ router.put('/assign-manager/:employeeId', async (req, res) => {
     }
 });
 
-// Récupérer tous les managers (pour sélection dans l'assignation)
 router.get('/managers-list', async (req, res) => {
     try {
         const result = await pool.query(

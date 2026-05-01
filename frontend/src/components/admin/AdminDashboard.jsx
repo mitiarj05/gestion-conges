@@ -1,5 +1,5 @@
 // frontend/src/components/admin/AdminDashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from '../common/Navbar';
@@ -19,109 +19,130 @@ function AdminDashboard({ onLogout }) {
     const location = useLocation();
 
     const API_URL = 'http://localhost:5000/api';
-    const getAuthHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+    
+    const getAuthHeaders = useCallback(() => ({ 
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } 
+    }), []);
+
+    const fetchStats = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/stats`, getAuthHeaders());
+            setStats(response.data);
+        } catch (error) { 
+            console.error('Erreur stats:', error); 
+        }
+    }, [API_URL, getAuthHeaders]);
+
+    const fetchLeaveRequests = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
+            setLeaveRequests(response.data);
+        } catch (error) { 
+            console.error('Erreur fetch leave requests:', error); 
+        }
+    }, [API_URL, getAuthHeaders]);
+
+    const fetchPendingApprovals = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/pending-approvals`, getAuthHeaders());
+            setPendingApprovals(response.data);
+        } catch (error) { 
+            console.error('Erreur fetch pending approvals:', error); 
+        }
+    }, [API_URL, getAuthHeaders]);
+
+    const fetchLogs = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/logs`, getAuthHeaders());
+            setLogs(response.data);
+        } catch (error) { 
+            console.error('Erreur fetch logs:', error); 
+        }
+    }, [API_URL, getAuthHeaders]);
+
+    const fetchAllData = useCallback(async () => {
+        setLoading(true);
+        await Promise.all([fetchStats(), fetchLeaveRequests(), fetchPendingApprovals(), fetchLogs()]);
+        setLoading(false);
+    }, [fetchStats, fetchLeaveRequests, fetchPendingApprovals, fetchLogs]);
 
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
         fetchAllData();
-    }, []);
-
-    const fetchAllData = async () => {
-        setLoading(true);
-        await Promise.all([fetchStats(), fetchLeaveRequests(), fetchPendingApprovals(), fetchLogs()]);
-        setLoading(false);
-    };
-
-    const fetchStats = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/stats`, getAuthHeaders());
-            setStats(response.data);
-        } catch (error) { console.error('Erreur stats:', error); }
-    };
-
-    const fetchLeaveRequests = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
-            setLeaveRequests(response.data);
-        } catch (error) { console.error('Erreur:', error); }
-    };
-
-    const fetchPendingApprovals = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/pending-approvals`, getAuthHeaders());
-            setPendingApprovals(response.data);
-        } catch (error) { console.error('Erreur:', error); }
-    };
-
-    const fetchLogs = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/logs`, getAuthHeaders());
-            setLogs(response.data);
-        } catch (error) { console.error('Erreur:', error); }
-    };
+    }, [fetchAllData]);
 
     const handleFinalApprove = async (id, request_type) => {
         const typeLabel = request_type === 'permission' ? 'permission' : 'congé';
         if (window.confirm(`✅ Valider définitivement cette demande de ${typeLabel} ?`)) {
             try {
-                await axios.put(`${API_URL}/admin/final-approve/${id}`, 
+                const response = await axios.put(`${API_URL}/admin/final-approve/${id}`, 
                     { request_type },
                     getAuthHeaders()
                 );
-                alert(`✅ Demande de ${typeLabel} définitivement approuvée !`);
-                fetchPendingApprovals();
-                fetchLeaveRequests();
+                alert(`✅ Demande de ${typeLabel} définitivement approuvée !\n\n${response.data.message || ''}`);
+                await fetchPendingApprovals();
+                await fetchLeaveRequests();
             } catch (error) { 
-                console.error('Erreur:', error);
-                alert('Erreur lors de l\'approbation'); 
+                console.error('Erreur approbation:', error);
+                const errorMsg = error.response?.data?.message || error.message || 'Erreur inconnue';
+                alert(`❌ Erreur lors de l'approbation:\n\n${errorMsg}`);
             }
         }
     };
 
     const handleFinalReject = async (id, request_type) => {
         const typeLabel = request_type === 'permission' ? 'permission' : 'congé';
-        const motif = prompt(`❌ Motif du refus de la ${typeLabel} :`);
-        if (motif !== null) {
+        const motif = prompt(`❌ Motif du refus de la ${typeLabel} :\n\nVeuillez indiquer la raison du refus (cette information sera communiquée à l'employé)`);
+        
+        if (motif !== null && motif.trim() !== '') {
             try {
-                await axios.put(`${API_URL}/admin/final-reject/${id}`, 
-                    { motif, request_type },
+                const response = await axios.put(`${API_URL}/admin/final-reject/${id}`, 
+                    { motif: motif.trim(), request_type },
                     getAuthHeaders()
                 );
-                alert(`❌ Demande de ${typeLabel} définitivement refusée.`);
-                fetchPendingApprovals();
-                fetchLeaveRequests();
+                alert(`❌ Demande de ${typeLabel} définitivement refusée.\n\nMotif : ${motif}\n\n${response.data.message || ''}`);
+                await fetchPendingApprovals();
+                await fetchLeaveRequests();
             } catch (error) { 
-                console.error('Erreur:', error);
-                alert('Erreur lors du refus'); 
+                console.error('Erreur refus:', error);
+                const errorMsg = error.response?.data?.message || error.message || 'Erreur inconnue';
+                alert(`❌ Erreur lors du refus:\n\n${errorMsg}`);
             }
+        } else if (motif !== null && motif.trim() === '') {
+            alert('Veuillez fournir un motif de refus');
         }
     };
 
     const getDisplayInfo = (req) => {
         if (req.request_type === 'permission') {
             return {
-                dates: `${req.date_permission || req.date_debut}`,
-                duration: `${req.duree_heures || req.nombre_jours} heures`,
+                dates: req.date_debut || req.date_permission || 'N/A',
+                duration: `${req.nombre_jours || req.duree_heures || 0} heures`,
                 type: '⏰ Permission',
                 managerName: `${req.manager_prenom || ''} ${req.manager_nom || ''}`.trim() || 'Manager'
             };
         }
         return {
-            dates: `${req.date_debut} - ${req.date_fin}`,
-            duration: `${req.nombre_jours} jours`,
-            type: req.type_name,
+            dates: `${req.date_debut || 'N/A'} - ${req.date_fin || 'N/A'}`,
+            duration: `${req.nombre_jours || 0} jours`,
+            type: req.type_name || 'Congé',
             managerName: `${req.manager_prenom || ''} ${req.manager_nom || ''}`.trim() || 'Manager'
         };
     };
 
     const getStatusLabel = (status) => {
         switch(status) {
-            case 'pending_manager': return <span className="status status-pending">⏳ En attente manager</span>;
-            case 'pending_admin': return <span className="status status-pending">🕐 En attente admin</span>;
-            case 'approved': return <span className="status status-approved">✅ Approuvé</span>;
-            case 'rejected': return <span className="status status-rejected">❌ Refusé</span>;
-            default: return <span className="status">{status}</span>;
+            case 'pending_manager': 
+                return <span className="status status-pending">⏳ En attente manager</span>;
+            case 'pending_admin': 
+                return <span className="status status-pending">🕐 En attente admin</span>;
+            case 'approved': 
+                return <span className="status status-approved">✅ Approuvé</span>;
+            case 'rejected': 
+                return <span className="status status-rejected">❌ Refusé</span>;
+            default: 
+                return <span className="status">{status || 'Inconnu'}</span>;
         }
     };
 
@@ -129,7 +150,16 @@ function AdminDashboard({ onLogout }) {
         if (typeName === 'RTT') {
             return 'Réduction du Temps de Travail (RTT)';
         }
-        return typeName;
+        return typeName || 'Congé';
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        try {
+            return new Date(dateString).toLocaleDateString('fr-FR');
+        } catch {
+            return dateString;
+        }
     };
 
     if (loading) {
@@ -181,14 +211,25 @@ function AdminDashboard({ onLogout }) {
                                     const info = getDisplayInfo(req);
                                     return (
                                         <tr key={`${req.request_type}-${req.id}`}>
-                                            <td>{req.prenom} {req.nom}</td>
+                                            <td>{req.prenom || '?'} {req.nom || '?'}</td>
                                             <td>{info.dates}</td>
                                             <td>{info.type}</td>
                                             <td>{info.duration}</td>
                                             <td>{info.managerName}</td>
                                             <td>
-                                                <button className="btn btn-sm btn-success" onClick={() => handleFinalApprove(req.id, req.request_type)}>✅ Approuver</button>
-                                                <button className="btn btn-sm btn-danger" onClick={() => handleFinalReject(req.id, req.request_type)}>❌ Refuser</button>
+                                                <button 
+                                                    className="btn btn-sm btn-success" 
+                                                    onClick={() => handleFinalApprove(req.id, req.request_type)}
+                                                    style={{ marginRight: '5px' }}
+                                                >
+                                                    ✅ Approuver
+                                                </button>
+                                                <button 
+                                                    className="btn btn-sm btn-danger" 
+                                                    onClick={() => handleFinalReject(req.id, req.request_type)}
+                                                >
+                                                    ❌ Refuser
+                                                </button>
                                             </td>
                                         </tr>
                                     );
@@ -216,12 +257,12 @@ function AdminDashboard({ onLogout }) {
                         <tbody>
                             {leaveRequests.slice(0, 10).map((req) => (
                                 <tr key={req.id}>
-                                    <td>{req.prenom} {req.nom}</td>
-                                    <td>{req.date_debut} - {req.date_fin}</td>
+                                    <td>{req.prenom || '?'} {req.nom || '?'}</td>
+                                    <td>{formatDate(req.date_debut)} - {formatDate(req.date_fin)}</td>
                                     <td>{getTypeLabel(req.type_name)}</td>
-                                    <td>{req.nombre_jours} jours</td>
+                                    <td>{req.nombre_jours || 0} jours</td>
                                     <td>{getStatusLabel(req.statut)}</td>
-                                    <td>{new Date(req.cree_le).toLocaleDateString('fr-FR')}</td>
+                                    <td>{formatDate(req.cree_le)}</td>
                                 </tr>
                             ))}
                             {leaveRequests.length === 0 && (
@@ -255,9 +296,9 @@ function AdminDashboard({ onLogout }) {
                     <tbody>
                         {logs.map((log) => (
                             <tr key={log.id}>
-                                <td>{new Date(log.cree_le).toLocaleString()}</td>
-                                <td>{log.prenom} {log.nom || 'Système'}</td>
-                                <td>{log.action}</td>
+                                <td>{formatDate(log.cree_le)}</td>
+                                <td>{log.prenom || ''} {log.nom || 'Système'}</td>
+                                <td>{log.action || '-'}</td>
                             </tr>
                         ))}
                         {logs.length === 0 && (
