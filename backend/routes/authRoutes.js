@@ -1,3 +1,4 @@
+// backend/routes/authRoutes.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
@@ -17,16 +18,10 @@ router.post('/register', async (req, res) => {
     const { nom, prenom, email, password, telephone, role_souhaite, adminCode, adminSecretKey } = req.body;
     
     try {
-        console.log('=== INSCRIPTION ===');
-        console.log('Email:', email);
-        console.log('Rôle souhaité:', role_souhaite);
-        
         const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         if (existingUser.rows.length > 0) {
             return res.status(400).json({ message: 'Cet email est déjà utilisé' });
         }
-        
-        const adminAlreadyExists = await adminExists();
         
         let roleNom = 'employe';
         
@@ -60,8 +55,8 @@ router.post('/register', async (req, res) => {
         const userId = userResult.rows[0].id;
         
         await pool.query(
-            `INSERT INTO utilisateurs_roles (utilisateur_id, role_id, assigne_le)
-             VALUES ($1, $2, NOW())`,
+            `INSERT INTO utilisateurs_roles (utilisateur_id, role_id)
+             VALUES ($1, $2)`,
             [userId, roleResult.rows[0].id]
         );
         
@@ -69,8 +64,8 @@ router.post('/register', async (req, res) => {
             const employeRole = await pool.query('SELECT id FROM roles WHERE nom = $1', ['employe']);
             if (employeRole.rows.length > 0) {
                 await pool.query(
-                    `INSERT INTO utilisateurs_roles (utilisateur_id, role_id, assigne_le)
-                     VALUES ($1, $2, NOW())`,
+                    `INSERT INTO utilisateurs_roles (utilisateur_id, role_id)
+                     VALUES ($1, $2)`,
                     [userId, employeRole.rows[0].id]
                 );
             }
@@ -128,8 +123,6 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
         }
         
-        await pool.query('UPDATE users SET derniere_connexion = NOW() WHERE id = $1', [user.id]);
-        
         const token = jwt.sign(
             { id: user.id, email: user.email, roles: user.roles },
             process.env.JWT_SECRET,
@@ -149,7 +142,7 @@ router.post('/login', async (req, res) => {
         
     } catch (error) {
         console.error('Erreur connexion:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
     }
 });
 

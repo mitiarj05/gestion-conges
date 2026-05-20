@@ -1,165 +1,345 @@
 // frontend/src/components/admin/AdminDashboard.jsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from '../common/Navbar';
 import Sidebar from '../common/Sidebar';
 import Footer from '../common/Footer';
-import UserManagement from './UserManagement';
-import CodeManagement from './CodeManagement';
-import Settings from './Settings';
+import ToastNotification from '../notifications/ToastNotification';
+import useToast from '../../hooks/useToast';
+import PayrollDashboard from '../payroll/PayrollDashboard';
+import GlobalCalendar from './GlobalCalendar';
 
 function AdminDashboard({ onLogout }) {
     const [user, setUser] = useState({});
-    const [stats, setStats] = useState({ employees: 0, managers: 0, pendingRequests: 0, alerts: 0, services: 0 });
-    const [leaveRequests, setLeaveRequests] = useState([]);
+    const [stats, setStats] = useState({
+        employees: 0,
+        managers: 0,
+        pendingRequests: 0,
+        alerts: 0,
+        services: 0
+    });
+    const [users, setUsers] = useState([]);
     const [pendingApprovals, setPendingApprovals] = useState([]);
-    const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const location = useLocation();
-
-    const API_URL = 'http://localhost:5000/api';
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [showPromoteModal, setShowPromoteModal] = useState(false);
+    const [showAssignManagerModal, setShowAssignManagerModal] = useState(false);
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [managers, setManagers] = useState([]);
+    const [createForm, setCreateForm] = useState({
+        nom: '', prenom: '', email: '', password: '', telephone: '', service: '', salaire_base: 500000
+    });
+    const [editForm, setEditForm] = useState({
+        nom: '', prenom: '', email: '', telephone: '', service: '', statut: 'actif', salaire_base: 500000
+    });
+    const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' });
+    const [promoteUserId, setPromoteUserId] = useState('');
+    const [assignForm, setAssignForm] = useState({ employeeId: '', managerId: '' });
+    const [employeesOnly, setEmployeesOnly] = useState([]);
+    const [leaveRequests, setLeaveRequests] = useState([]);
+    const [settings, setSettings] = useState({
+        cp_jours_par_an: 25,
+        max_conges_consecutifs: 20,
+        preavis_minimum: 2
+    });
+    const [processingId, setProcessingId] = useState(null);
     
-    const getAuthHeaders = useCallback(() => ({ 
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } 
-    }), []);
+    const location = useLocation();
+    const navigate = useNavigate();
+    const { toasts, removeToast, success, error: toastError } = useToast();
 
-    const fetchStats = useCallback(async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/stats`, getAuthHeaders());
-            setStats(response.data);
-        } catch (error) { 
-            console.error('Erreur stats:', error); 
-        }
-    }, [API_URL, getAuthHeaders]);
-
-    const fetchLeaveRequests = useCallback(async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
-            setLeaveRequests(response.data);
-        } catch (error) { 
-            console.error('Erreur fetch leave requests:', error); 
-        }
-    }, [API_URL, getAuthHeaders]);
-
-    const fetchPendingApprovals = useCallback(async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/pending-approvals`, getAuthHeaders());
-            setPendingApprovals(response.data);
-        } catch (error) { 
-            console.error('Erreur fetch pending approvals:', error); 
-        }
-    }, [API_URL, getAuthHeaders]);
-
-    const fetchLogs = useCallback(async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/logs`, getAuthHeaders());
-            setLogs(response.data);
-        } catch (error) { 
-            console.error('Erreur fetch logs:', error); 
-        }
-    }, [API_URL, getAuthHeaders]);
-
-    const fetchAllData = useCallback(async () => {
-        setLoading(true);
-        await Promise.all([fetchStats(), fetchLeaveRequests(), fetchPendingApprovals(), fetchLogs()]);
-        setLoading(false);
-    }, [fetchStats, fetchLeaveRequests, fetchPendingApprovals, fetchLogs]);
+    const getAuthHeaders = () => ({
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    });
 
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
         fetchAllData();
-    }, [fetchAllData]);
+        
+        const interval = setInterval(() => {
+            fetchAllData();
+        }, 30000);
+        
+        return () => clearInterval(interval);
+    }, []);
 
+    const fetchAllData = async () => {
+        await Promise.all([
+            fetchStats(),
+            fetchUsers(),
+            fetchPendingApprovals(),
+            fetchLeaveRequests(),
+            fetchManagers(),
+            fetchEmployeesOnly()
+        ]);
+        setLoading(false);
+    };
+
+    const fetchStats = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/stats', getAuthHeaders());
+            setStats(response.data);
+        } catch (error) {
+            console.error('Erreur stats:', error);
+        }
+    };
+
+    const fetchUsers = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/users', getAuthHeaders());
+            setUsers(response.data);
+        } catch (error) {
+            console.error('Erreur users:', error);
+        }
+    };
+
+    const fetchPendingApprovals = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/pending-approvals', getAuthHeaders());
+            setPendingApprovals(response.data);
+        } catch (error) {
+            console.error('Erreur pending approvals:', error);
+        }
+    };
+
+    const fetchLeaveRequests = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/leave-requests', getAuthHeaders());
+            setLeaveRequests(response.data);
+        } catch (error) {
+            console.error('Erreur leave requests:', error);
+        }
+    };
+
+    const fetchManagers = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/managers-list', getAuthHeaders());
+            setManagers(response.data);
+        } catch (error) {
+            console.error('Erreur managers:', error);
+        }
+    };
+
+    const fetchEmployeesOnly = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/employees-only', getAuthHeaders());
+            setEmployeesOnly(response.data);
+        } catch (error) {
+            console.error('Erreur employees only:', error);
+        }
+    };
+
+    const refreshAll = () => {
+        fetchAllData();
+        success('✅ Données actualisées');
+    };
+
+    // Gestion des utilisateurs
+    const handleCreateEmployee = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.post('http://localhost:5000/api/admin/create-employee', createForm, getAuthHeaders());
+            success('✅ Employé créé avec succès');
+            setShowCreateModal(false);
+            setCreateForm({ nom: '', prenom: '', email: '', password: '', telephone: '', service: '', salaire_base: 500000 });
+            refreshAll();
+        } catch (error) {
+            toastError(error.response?.data?.message || 'Erreur création');
+        }
+    };
+
+    const handleEditUser = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.put(`http://localhost:5000/api/admin/users/${selectedUser.id}`, editForm, getAuthHeaders());
+            success('✅ Utilisateur modifié');
+            setShowEditModal(false);
+            setSelectedUser(null);
+            refreshAll();
+        } catch (error) {
+            toastError(error.response?.data?.message || 'Erreur modification');
+        }
+    };
+
+    const handleResetPassword = async (e) => {
+        e.preventDefault();
+        if (passwordForm.password !== passwordForm.confirmPassword) {
+            toastError('Les mots de passe ne correspondent pas');
+            return;
+        }
+        if (passwordForm.password.length < 6) {
+            toastError('Le mot de passe doit contenir au moins 6 caractères');
+            return;
+        }
+        try {
+            await axios.put(`http://localhost:5000/api/admin/users/${selectedUser.id}/reset-password`, 
+                { password: passwordForm.password }, getAuthHeaders());
+            success('✅ Mot de passe réinitialisé');
+            setShowPasswordModal(false);
+            setSelectedUser(null);
+            setPasswordForm({ password: '', confirmPassword: '' });
+        } catch (error) {
+            toastError(error.response?.data?.message || 'Erreur');
+        }
+    };
+
+    const handleDeleteUser = async (userId) => {
+        if (!window.confirm('Supprimer définitivement cet utilisateur ?')) return;
+        try {
+            await axios.delete(`http://localhost:5000/api/admin/users/${userId}`, getAuthHeaders());
+            success('✅ Utilisateur supprimé');
+            refreshAll();
+        } catch (error) {
+            toastError('Erreur suppression');
+        }
+    };
+
+    const handlePromoteToManager = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.post('http://localhost:5000/api/admin/promote-to-manager', 
+                { userId: parseInt(promoteUserId) }, getAuthHeaders());
+            success('✅ Employé promu manager');
+            setShowPromoteModal(false);
+            setPromoteUserId('');
+            refreshAll();
+        } catch (error) {
+            toastError(error.response?.data?.message || 'Erreur promotion');
+        }
+    };
+
+    const handleAssignManager = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.put(`http://localhost:5000/api/admin/assign-manager/${assignForm.employeeId}`, 
+                { managerId: parseInt(assignForm.managerId) }, getAuthHeaders());
+            success('✅ Manager assigné');
+            setShowAssignManagerModal(false);
+            setAssignForm({ employeeId: '', managerId: '' });
+            refreshAll();
+        } catch (error) {
+            toastError(error.response?.data?.message || 'Erreur assignation');
+        }
+    };
+
+    const openEditModal = (user) => {
+        setSelectedUser(user);
+        setEditForm({
+            nom: user.nom || '',
+            prenom: user.prenom || '',
+            email: user.email || '',
+            telephone: user.telephone || '',
+            service: user.service || '',
+            statut: user.statut || 'actif',
+            salaire_base: user.salaire_base || 500000
+        });
+        setShowEditModal(true);
+    };
+
+    const openPasswordModal = (user) => {
+        setSelectedUser(user);
+        setPasswordForm({ password: '', confirmPassword: '' });
+        setShowPasswordModal(true);
+    };
+
+    const handleExportExcel = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/export-users', {
+                ...getAuthHeaders(),
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'utilisateurs.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            success('✅ Export réussi');
+        } catch (error) {
+            toastError('Erreur export');
+        }
+    };
+
+    // Export des demandes de congés
+    const handleExportDemandes = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/admin/export-demandes', {
+                ...getAuthHeaders(),
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `demandes_conges_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            success('✅ Export des demandes réussi');
+        } catch (error) {
+            toastError('Erreur export des demandes');
+        }
+    };
+
+    // Validation admin (2ème étape)
     const handleFinalApprove = async (id, request_type) => {
-        const typeLabel = request_type === 'permission' ? 'permission' : 'congé';
-        if (window.confirm(`✅ Valider définitivement cette demande de ${typeLabel} ?`)) {
-            try {
-                const response = await axios.put(`${API_URL}/admin/final-approve/${id}`, 
-                    { request_type },
-                    getAuthHeaders()
-                );
-                alert(`✅ Demande de ${typeLabel} définitivement approuvée !\n\n${response.data.message || ''}`);
-                await fetchPendingApprovals();
-                await fetchLeaveRequests();
-            } catch (error) { 
-                console.error('Erreur approbation:', error);
-                const errorMsg = error.response?.data?.message || error.message || 'Erreur inconnue';
-                alert(`❌ Erreur lors de l'approbation:\n\n${errorMsg}`);
-            }
+        if (!window.confirm('Approuver définitivement cette demande ?')) return;
+        setProcessingId(id);
+        try {
+            await axios.put(`http://localhost:5000/api/admin/final-approve/${id}`, 
+                { request_type }, getAuthHeaders());
+            success('✅ Demande approuvée définitivement');
+            refreshAll();
+        } catch (error) {
+            toastError(error.response?.data?.message || 'Erreur approbation');
+        } finally {
+            setProcessingId(null);
         }
     };
 
     const handleFinalReject = async (id, request_type) => {
-        const typeLabel = request_type === 'permission' ? 'permission' : 'congé';
-        const motif = prompt(`❌ Motif du refus de la ${typeLabel} :\n\nVeuillez indiquer la raison du refus (cette information sera communiquée à l'employé)`);
-        
-        if (motif !== null && motif.trim() !== '') {
-            try {
-                const response = await axios.put(`${API_URL}/admin/final-reject/${id}`, 
-                    { motif: motif.trim(), request_type },
-                    getAuthHeaders()
-                );
-                alert(`❌ Demande de ${typeLabel} définitivement refusée.\n\nMotif : ${motif}\n\n${response.data.message || ''}`);
-                await fetchPendingApprovals();
-                await fetchLeaveRequests();
-            } catch (error) { 
-                console.error('Erreur refus:', error);
-                const errorMsg = error.response?.data?.message || error.message || 'Erreur inconnue';
-                alert(`❌ Erreur lors du refus:\n\n${errorMsg}`);
-            }
-        } else if (motif !== null && motif.trim() === '') {
-            alert('Veuillez fournir un motif de refus');
-        }
-    };
-
-    const getDisplayInfo = (req) => {
-        if (req.request_type === 'permission') {
-            return {
-                dates: req.date_debut || req.date_permission || 'N/A',
-                duration: `${req.nombre_jours || req.duree_heures || 0} heures`,
-                type: '⏰ Permission',
-                managerName: `${req.manager_prenom || ''} ${req.manager_nom || ''}`.trim() || 'Manager'
-            };
-        }
-        return {
-            dates: `${req.date_debut || 'N/A'} - ${req.date_fin || 'N/A'}`,
-            duration: `${req.nombre_jours || 0} jours`,
-            type: req.type_name || 'Congé',
-            managerName: `${req.manager_prenom || ''} ${req.manager_nom || ''}`.trim() || 'Manager'
-        };
-    };
-
-    const getStatusLabel = (status) => {
-        switch(status) {
-            case 'pending_manager': 
-                return <span className="status status-pending">⏳ En attente manager</span>;
-            case 'pending_admin': 
-                return <span className="status status-pending">🕐 En attente admin</span>;
-            case 'approved': 
-                return <span className="status status-approved">✅ Approuvé</span>;
-            case 'rejected': 
-                return <span className="status status-rejected">❌ Refusé</span>;
-            default: 
-                return <span className="status">{status || 'Inconnu'}</span>;
-        }
-    };
-
-    const getTypeLabel = (typeName) => {
-        if (typeName === 'RTT') {
-            return 'Réduction du Temps de Travail (RTT)';
-        }
-        return typeName || 'Congé';
-    };
-
-    const formatDate = (dateString) => {
-        if (!dateString) return 'N/A';
+        const motif = prompt('Motif du refus :');
+        if (!motif) return;
+        setProcessingId(id);
         try {
-            return new Date(dateString).toLocaleDateString('fr-FR');
-        } catch {
-            return dateString;
+            await axios.put(`http://localhost:5000/api/admin/final-reject/${id}`, 
+                { motif, request_type }, getAuthHeaders());
+            success('❌ Demande refusée');
+            refreshAll();
+        } catch (error) {
+            toastError(error.response?.data?.message || 'Erreur refus');
+        } finally {
+            setProcessingId(null);
         }
+    };
+
+    // Paramètres
+    const handleSaveSettings = async () => {
+        try {
+            await axios.put('http://localhost:5000/api/admin/settings', settings, getAuthHeaders());
+            success('✅ Paramètres enregistrés');
+        } catch (error) {
+            toastError('Erreur paramètres');
+        }
+    };
+
+    const getStatusLabel = (statut) => {
+        switch(statut) {
+            case 'pending_manager': return <span className="status status-pending-manager">⏳ En attente manager</span>;
+            case 'pending_admin': return <span className="status status-pending-admin">🕐 En attente admin</span>;
+            case 'approved': return <span className="status status-approved">✅ Approuvé</span>;
+            case 'rejected': return <span className="status status-rejected">❌ Refusé</span>;
+            default: return <span className="status">{statut}</span>;
+        }
+    };
+
+    const formatNumber = (value) => {
+        const num = parseFloat(value);
+        return isNaN(num) ? '0' : num.toFixed(0);
     };
 
     if (loading) {
@@ -171,149 +351,43 @@ function AdminDashboard({ onLogout }) {
         );
     }
 
-    const DashboardHome = () => (
-        <>
-            <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
-            <div className="cards-grid">
-                <div className="stat-card"><div className="number">{stats.employees + stats.managers}</div><div className="label">Total utilisateurs</div></div>
-                <div className="stat-card blue"><div className="number">{stats.employees}</div><div className="label">Employés</div></div>
-                <div className="stat-card orange"><div className="number">{stats.managers}</div><div className="label">Managers</div></div>
-                <div className="stat-card red"><div className="number">{pendingApprovals.length}</div><div className="label">À valider (Admin)</div></div>
-                <div className="stat-card green"><div className="number">{stats.services}</div><div className="label">Services</div></div>
-            </div>
-            
-            <div className="admin-section">
-                <h3>⚙️ Actions Administrateur</h3>
-                <div className="btn-group">
-                    <button className="btn btn-primary" onClick={() => window.location.href = '/dashboard/admin/users'}>➕ Gérer utilisateurs</button>
-                    <button className="btn btn-primary" onClick={() => window.location.href = '/dashboard/admin/codes'}>🔐 Gérer codes</button>
-                    <button className="btn btn-primary" onClick={() => window.location.href = '/dashboard/admin/settings'}>⚙️ Paramètres</button>
-                </div>
-            </div>
-            
-            {pendingApprovals.length > 0 && (
-                <div className="admin-section">
-                    <h3>✅ Demandes pré-approuvées (à valider définitivement)</h3>
-                    <div className="table-container">
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Employé</th>
-                                    <th>Dates</th>
-                                    <th>Type</th>
-                                    <th>Durée</th>
-                                    <th>Validé par</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pendingApprovals.map((req) => {
-                                    const info = getDisplayInfo(req);
-                                    return (
-                                        <tr key={`${req.request_type}-${req.id}`}>
-                                            <td>{req.prenom || '?'} {req.nom || '?'}</td>
-                                            <td>{info.dates}</td>
-                                            <td>{info.type}</td>
-                                            <td>{info.duration}</td>
-                                            <td>{info.managerName}</td>
-                                            <td>
-                                                <button 
-                                                    className="btn btn-sm btn-success" 
-                                                    onClick={() => handleFinalApprove(req.id, req.request_type)}
-                                                    style={{ marginRight: '5px' }}
-                                                >
-                                                    ✅ Approuver
-                                                </button>
-                                                <button 
-                                                    className="btn btn-sm btn-danger" 
-                                                    onClick={() => handleFinalReject(req.id, req.request_type)}
-                                                >
-                                                    ❌ Refuser
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-            
-            <div className="admin-section">
-                <h3>📋 Toutes les demandes de congé</h3>
-                <div className="table-container">
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th>Employé</th>
-                                <th>Dates</th>
-                                <th>Type</th>
-                                <th>Durée</th>
-                                <th>Statut</th>
-                                <th>Date demande</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {leaveRequests.slice(0, 10).map((req) => (
-                                <tr key={req.id}>
-                                    <td>{req.prenom || '?'} {req.nom || '?'}</td>
-                                    <td>{formatDate(req.date_debut)} - {formatDate(req.date_fin)}</td>
-                                    <td>{getTypeLabel(req.type_name)}</td>
-                                    <td>{req.nombre_jours || 0} jours</td>
-                                    <td>{getStatusLabel(req.statut)}</td>
-                                    <td>{formatDate(req.cree_le)}</td>
-                                </tr>
-                            ))}
-                            {leaveRequests.length === 0 && (
-                                <tr>
-                                    <td colSpan="6" style={{ textAlign: 'center' }}>Aucune demande de congé</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <div className="info-box">
-                <strong>ℹ️ Processus :</strong> Manager (1ère validation) → Admin (validation finale)
-            </div>
-        </>
-    );
-
-    const LogsPage = () => (
-        <>
-            <h2>📜 Logs système</h2>
-            <div className="table-container">
-                <table className="table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Utilisateur</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {logs.map((log) => (
-                            <tr key={log.id}>
-                                <td>{formatDate(log.cree_le)}</td>
-                                <td>{log.prenom || ''} {log.nom || 'Système'}</td>
-                                <td>{log.action || '-'}</td>
-                            </tr>
-                        ))}
-                        {logs.length === 0 && (
-                            <tr>
-                                <td colSpan="3" style={{ textAlign: 'center' }}>Aucun log disponible</td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </>
-    );
-
     const currentPath = location.pathname;
 
+    // ============ ROUTE PAIE ============
+    if (currentPath.includes('/payroll')) {
+        return (
+            <>
+                <Navbar user={user} role="admin" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="admin" />
+                    <main className="main-content">
+                        <PayrollDashboard />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // ============ ROUTE CALENDRIER GÉNÉRAL ============
+    if (currentPath.includes('/calendar')) {
+        return (
+            <>
+                <Navbar user={user} role="admin" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="admin" />
+                    <main className="main-content">
+                        <GlobalCalendar />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // ============ ROUTE UTILISATEURS ============
     if (currentPath.includes('/users')) {
         return (
             <>
@@ -321,44 +395,264 @@ function AdminDashboard({ onLogout }) {
                 <div className="app-container">
                     <Sidebar role="admin" />
                     <main className="main-content">
-                        <UserManagement />
+                        <div>
+                            <div className="actions-bar" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h2>👥 Gestion des utilisateurs</h2>
+                                <div className="btn-group">
+                                    <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+                                        ➕ Ajouter un employé
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={() => setShowPromoteModal(true)}>
+                                        ⬆️ Promouvoir manager
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={() => setShowAssignManagerModal(true)}>
+                                        👔 Assigner manager
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={handleExportExcel}>
+                                        📥 Export Excel
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="table-container">
+                                <table className="table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Nom</th>
+                                            <th>Prénom</th>
+                                            <th>Email</th>
+                                            <th>Téléphone</th>
+                                            <th>Service</th>
+                                            <th>Salaire base</th>
+                                            <th>Rôles</th>
+                                            <th>Statut</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {users.map(u => (
+                                            <tr key={u.id}>
+                                                <td>{u.id}</td>
+                                                <td>{u.nom}</td>
+                                                <td>{u.prenom}</td>
+                                                <td>{u.email}</td>
+                                                <td>{u.telephone || '-'}</td>
+                                                <td>{u.service || '-'}</td>
+                                                <td>{formatNumber(u.salaire_base || 500000)} Ar</td>
+                                                <td>
+                                                    {u.roles && u.roles.map(role => (
+                                                        <span key={role} className={`role-badge-${role}`} style={{ marginRight: '4px' }}>
+                                                            {role}
+                                                        </span>
+                                                    ))}
+                                                </td>
+                                                <td>
+                                                    <span className={`status ${u.statut === 'actif' ? 'status-approved' : 'status-rejected'}`}>
+                                                        {u.statut}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                                        <button className="btn btn-sm btn-primary" onClick={() => openEditModal(u)}>✏️</button>
+                                                        <button className="btn btn-sm btn-secondary" onClick={() => openPasswordModal(u)}>🔑</button>
+                                                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteUser(u.id)}>🗑️</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Modal Création employé */}
+                            {showCreateModal && (
+                                <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowCreateModal(false); }}>
+                                    <div className="modal" style={{ maxWidth: '500px' }}>
+                                        <h3>➕ Ajouter un employé</h3>
+                                        <form onSubmit={handleCreateEmployee}>
+                                            <div className="form-row">
+                                                <div className="form-group">
+                                                    <label>Nom *</label>
+                                                    <input type="text" className="form-input" value={createForm.nom} onChange={(e) => setCreateForm({...createForm, nom: e.target.value})} required />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Prénom *</label>
+                                                    <input type="text" className="form-input" value={createForm.prenom} onChange={(e) => setCreateForm({...createForm, prenom: e.target.value})} required />
+                                                </div>
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Email *</label>
+                                                <input type="email" className="form-input" value={createForm.email} onChange={(e) => setCreateForm({...createForm, email: e.target.value})} required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Mot de passe *</label>
+                                                <input type="password" className="form-input" value={createForm.password} onChange={(e) => setCreateForm({...createForm, password: e.target.value})} required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Téléphone</label>
+                                                <input type="text" className="form-input" value={createForm.telephone} onChange={(e) => setCreateForm({...createForm, telephone: e.target.value})} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Service</label>
+                                                <input type="text" className="form-input" value={createForm.service} onChange={(e) => setCreateForm({...createForm, service: e.target.value})} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Salaire de base (Ar)</label>
+                                                <input type="number" className="form-input" value={createForm.salaire_base} onChange={(e) => setCreateForm({...createForm, salaire_base: e.target.value})} min="0" step="10000" />
+                                                <small className="info-text">Salaire mensuel de base en Ariary</small>
+                                            </div>
+                                            <div className="btn-group">
+                                                <button type="submit" className="btn btn-primary">✅ Créer</button>
+                                                <button type="button" className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>Annuler</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Modal Modification utilisateur */}
+                            {showEditModal && selectedUser && (
+                                <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowEditModal(false); setSelectedUser(null); }}}>
+                                    <div className="modal" style={{ maxWidth: '500px' }}>
+                                        <h3>✏️ Modifier {selectedUser.prenom} {selectedUser.nom}</h3>
+                                        <form onSubmit={handleEditUser}>
+                                            <div className="form-row">
+                                                <div className="form-group">
+                                                    <label>Nom</label>
+                                                    <input type="text" className="form-input" value={editForm.nom} onChange={(e) => setEditForm({...editForm, nom: e.target.value})} required />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Prénom</label>
+                                                    <input type="text" className="form-input" value={editForm.prenom} onChange={(e) => setEditForm({...editForm, prenom: e.target.value})} required />
+                                                </div>
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Email</label>
+                                                <input type="email" className="form-input" value={editForm.email} onChange={(e) => setEditForm({...editForm, email: e.target.value})} required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Téléphone</label>
+                                                <input type="text" className="form-input" value={editForm.telephone} onChange={(e) => setEditForm({...editForm, telephone: e.target.value})} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Service</label>
+                                                <input type="text" className="form-input" value={editForm.service} onChange={(e) => setEditForm({...editForm, service: e.target.value})} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Salaire de base (Ar)</label>
+                                                <input type="number" className="form-input" value={editForm.salaire_base} onChange={(e) => setEditForm({...editForm, salaire_base: e.target.value})} min="0" step="10000" />
+                                                <small className="info-text">Salaire mensuel de base en Ariary</small>
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Statut</label>
+                                                <select className="form-input" value={editForm.statut} onChange={(e) => setEditForm({...editForm, statut: e.target.value})}>
+                                                    <option value="actif">Actif</option>
+                                                    <option value="inactif">Inactif</option>
+                                                </select>
+                                            </div>
+                                            <div className="btn-group">
+                                                <button type="submit" className="btn btn-primary">💾 Enregistrer</button>
+                                                <button type="button" className="btn btn-secondary" onClick={() => { setShowEditModal(false); setSelectedUser(null); }}>Annuler</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Modal Réinitialisation mot de passe */}
+                            {showPasswordModal && selectedUser && (
+                                <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowPasswordModal(false); setSelectedUser(null); }}}>
+                                    <div className="modal" style={{ maxWidth: '400px' }}>
+                                        <h3>🔑 Réinitialiser le mot de passe</h3>
+                                        <p>Utilisateur : {selectedUser.prenom} {selectedUser.nom}</p>
+                                        <form onSubmit={handleResetPassword}>
+                                            <div className="form-group">
+                                                <label>Nouveau mot de passe</label>
+                                                <input type="password" className="form-input" value={passwordForm.password} onChange={(e) => setPasswordForm({...passwordForm, password: e.target.value})} required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Confirmer le mot de passe</label>
+                                                <input type="password" className="form-input" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} required />
+                                            </div>
+                                            <div className="btn-group">
+                                                <button type="submit" className="btn btn-primary">✅ Réinitialiser</button>
+                                                <button type="button" className="btn btn-secondary" onClick={() => { setShowPasswordModal(false); setSelectedUser(null); }}>Annuler</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Modal Promotion manager */}
+                            {showPromoteModal && (
+                                <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowPromoteModal(false); }}>
+                                    <div className="modal" style={{ maxWidth: '400px' }}>
+                                        <h3>⬆️ Promouvoir en manager</h3>
+                                        <form onSubmit={handlePromoteToManager}>
+                                            <div className="form-group">
+                                                <label>Sélectionner un employé</label>
+                                                <select className="form-input" value={promoteUserId} onChange={(e) => setPromoteUserId(e.target.value)} required>
+                                                    <option value="">-- Choisir --</option>
+                                                    {employeesOnly.map(emp => (
+                                                        <option key={emp.id} value={emp.id}>{emp.prenom} {emp.nom} (Salaire: {formatNumber(emp.salaire_base)} Ar)</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="info-box" style={{ background: '#fff3cd', marginBottom: '15px' }}>
+                                                ⚠️ La promotion au rang de manager augmentera automatiquement le salaire à 1 000 000 Ar.
+                                            </div>
+                                            <div className="btn-group">
+                                                <button type="submit" className="btn btn-primary">⬆️ Promouvoir</button>
+                                                <button type="button" className="btn btn-secondary" onClick={() => setShowPromoteModal(false)}>Annuler</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Modal Assigner manager */}
+                            {showAssignManagerModal && (
+                                <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowAssignManagerModal(false); }}>
+                                    <div className="modal" style={{ maxWidth: '400px' }}>
+                                        <h3>👔 Assigner un manager</h3>
+                                        <form onSubmit={handleAssignManager}>
+                                            <div className="form-group">
+                                                <label>Employé</label>
+                                                <select className="form-input" value={assignForm.employeeId} onChange={(e) => setAssignForm({...assignForm, employeeId: e.target.value})} required>
+                                                    <option value="">-- Choisir un employé --</option>
+                                                    {users.filter(u => u.roles && u.roles.includes('employe')).map(u => (
+                                                        <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Manager</label>
+                                                <select className="form-input" value={assignForm.managerId} onChange={(e) => setAssignForm({...assignForm, managerId: e.target.value})} required>
+                                                    <option value="">-- Choisir un manager --</option>
+                                                    {managers.map(m => (
+                                                        <option key={m.id} value={m.id}>{m.prenom} {m.nom}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="btn-group">
+                                                <button type="submit" className="btn btn-primary">👔 Assigner</button>
+                                                <button type="button" className="btn btn-secondary" onClick={() => setShowAssignManagerModal(false)}>Annuler</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </main>
                 </div>
                 <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
-    
-    if (currentPath.includes('/codes')) {
-        return (
-            <>
-                <Navbar user={user} role="admin" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="admin" />
-                    <main className="main-content">
-                        <CodeManagement />
-                    </main>
-                </div>
-                <Footer />
-            </>
-        );
-    }
-    
-    if (currentPath.includes('/logs')) {
-        return (
-            <>
-                <Navbar user={user} role="admin" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="admin" />
-                    <main className="main-content">
-                        <LogsPage />
-                    </main>
-                </div>
-                <Footer />
-            </>
-        );
-    }
-    
+
+    // ============ ROUTE PARAMÈTRES ============
     if (currentPath.includes('/settings')) {
         return (
             <>
@@ -366,24 +660,188 @@ function AdminDashboard({ onLogout }) {
                 <div className="app-container">
                     <Sidebar role="admin" />
                     <main className="main-content">
-                        <Settings />
+                        <div>
+                            <h2>⚙️ Paramètres de l'application</h2>
+                            <div className="admin-section">
+                                <h3>📅 Paramètres des congés</h3>
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Jours CP par an</label>
+                                        <input type="number" className="form-input" value={settings.cp_jours_par_an} onChange={(e) => setSettings({...settings, cp_jours_par_an: parseInt(e.target.value)})} />
+                                    </div>
+                                </div>
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Max jours consécutifs</label>
+                                        <input type="number" className="form-input" value={settings.max_conges_consecutifs} onChange={(e) => setSettings({...settings, max_conges_consecutifs: parseInt(e.target.value)})} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Préavis minimum (jours)</label>
+                                        <input type="number" className="form-input" value={settings.preavis_minimum} onChange={(e) => setSettings({...settings, preavis_minimum: parseInt(e.target.value)})} />
+                                    </div>
+                                </div>
+                                <button className="btn btn-primary" onClick={handleSaveSettings} style={{ width: 'auto', marginTop: '15px' }}>
+                                    💾 Enregistrer les paramètres
+                                </button>
+                            </div>
+                        </div>
                     </main>
                 </div>
                 <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
+    // ============ ROUTE LOGS ============
+    if (currentPath.includes('/logs')) {
+        return (
+            <>
+                <Navbar user={user} role="admin" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="admin" />
+                    <main className="main-content">
+                        <h2>📜 Logs d'activité</h2>
+                        <div className="info-box">
+                            <p>📢 Fonctionnalité en cours de développement.</p>
+                            <p>Les logs détaillés seront disponibles prochainement.</p>
+                        </div>
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // ============ DASHBOARD PAR DÉFAUT ============
     return (
         <>
             <Navbar user={user} role="admin" onLogout={onLogout} />
             <div className="app-container">
                 <Sidebar role="admin" />
                 <main className="main-content">
-                    <DashboardHome />
+                    <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
+                    <p>👑 Panneau d'administration</p>
+
+                    {/* Stats */}
+                    <div className="cards-grid">
+                        <div className="stat-card blue">
+                            <div className="number">{stats.employees}</div>
+                            <div className="label">👤 Employés</div>
+                        </div>
+                        <div className="stat-card green">
+                            <div className="number">{stats.managers}</div>
+                            <div className="label">👔 Managers</div>
+                        </div>
+                        <div className="stat-card orange">
+                            <div className="number">{stats.pendingRequests}</div>
+                            <div className="label">⏳ Demandes en attente</div>
+                        </div>
+                        <div className="stat-card red">
+                            <div className="number">{stats.alerts}</div>
+                            <div className="label">⚠️ Alertes solde bas</div>
+                        </div>
+                    </div>
+
+                    {/* Demandes en attente de validation admin */}
+                    {pendingApprovals.length > 0 && (
+                        <div className="admin-section" style={{ marginTop: '20px' }}>
+                            <h3>📋 Demandes en attente de votre validation (2ème étape)</h3>
+                            {pendingApprovals.map(req => (
+                                <div key={`${req.request_type}-${req.id}`} className="request-item">
+                                    <div className="request-info">
+                                        <strong>👤 {req.prenom} {req.nom}</strong>
+                                        <small>📅 {req.date_debut} → {req.date_fin} • {req.type_name} • {req.nombre_jours} jours</small>
+                                        <small style={{ display: 'block' }}>📝 Motif : {req.motif || 'Non spécifié'}</small>
+                                        {req.manager_nom && (
+                                            <small style={{ display: 'block', color: '#0f3460' }}>
+                                                ✅ Pré-validé par : {req.manager_prenom} {req.manager_nom}
+                                            </small>
+                                        )}
+                                    </div>
+                                    <div className="request-actions">
+                                        <button 
+                                            className="btn btn-success btn-sm" 
+                                            onClick={() => handleFinalApprove(req.id, req.request_type)}
+                                            disabled={processingId === req.id}
+                                        >
+                                            ✅ Approuver
+                                        </button>
+                                        <button 
+                                            className="btn btn-danger btn-sm" 
+                                            onClick={() => handleFinalReject(req.id, req.request_type)}
+                                            disabled={processingId === req.id}
+                                        >
+                                            ❌ Refuser
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Toutes les demandes traitées avec bouton export */}
+                    <div className="table-container" style={{ marginTop: '20px' }}>
+                        <div className="actions-bar" style={{ justifyContent: 'space-between', padding: '15px 15px 0 15px' }}>
+                            <h3 style={{ margin: 0 }}>📋 Demandes traitées (validées ou refusées)</h3>
+                            <button className="btn btn-sm btn-secondary" onClick={handleExportDemandes}>
+                                📥 Exporter Excel
+                            </button>
+                        </div>
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Employé</th>
+                                    <th>Dates</th>
+                                    <th>Type</th>
+                                    <th>Jours</th>
+                                    <th>Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {leaveRequests
+                                    .filter(req => req.statut !== 'pending_manager')
+                                    .slice(0, 10)
+                                    .map(req => (
+                                        <tr key={req.id}>
+                                            <td>{req.prenom} {req.nom}</td>
+                                            <td>{req.date_debut} → {req.date_fin}</td>
+                                            <td>{req.type_name}</td>
+                                            <td>{req.nombre_jours}</td>
+                                            <td>{getStatusLabel(req.statut)}</td>
+                                        </tr>
+                                    ))}
+                                {leaveRequests.filter(req => req.statut !== 'pending_manager').length === 0 && (
+                                    <tr>
+                                        <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>
+                                            Aucune demande traitée pour le moment
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Raccourcis */}
+                    <div className="btn-group mt-20">
+                        <button className="btn btn-primary" onClick={() => navigate('/dashboard/admin/users')}>
+                            👥 Gérer les utilisateurs
+                        </button>
+                        <button className="btn btn-primary" onClick={() => navigate('/dashboard/admin/payroll')}>
+                            💰 Gestion de la paie
+                        </button>
+                        <button className="btn btn-primary" onClick={() => navigate('/dashboard/admin/calendar')}>
+                            📅 Calendrier général
+                        </button>
+                        <button className="btn btn-secondary" onClick={() => navigate('/dashboard/admin/settings')}>
+                            ⚙️ Paramètres
+                        </button>
+                    </div>
                 </main>
             </div>
             <Footer />
+            <ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );
 }

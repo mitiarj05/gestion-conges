@@ -9,6 +9,7 @@ import TeamList from './TeamList';
 import PendingValidations from './PendingValidations';
 import TeamStatistics from './TeamStatistics';
 import TeamCalendar from './TeamCalendar';
+import ManagerStats from './ManagerStats';
 import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
 
@@ -16,12 +17,11 @@ function ManagerDashboard({ onLogout }) {
     const [user, setUser] = useState({});
     const [pendingRequests, setPendingRequests] = useState([]);
     const [teamMembers, setTeamMembers] = useState([]);
-    const [balance, setBalance] = useState({ paid: 15, rtt: 6, permission: 1 });
+    const [balance, setBalance] = useState({ cp_restant: 15, rtt_restant: 6, permission: 1 });
     const [loading, setLoading] = useState(true);
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Hook pour les notifications toast
     const { toasts, removeToast, success, error, warning, info } = useToast();
 
     useEffect(() => {
@@ -107,45 +107,59 @@ function ManagerDashboard({ onLogout }) {
         );
     }
 
-    // Dashboard Home
+    // Dashboard Home avec statistiques améliorées
     const DashboardHome = () => (
         <>
             <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
             
-            <div className="manager-section">
-                <h3>👥 SECTION MANAGER - 1ère validation</h3>
-                <div className="cards-grid">
-                    <div className="stat-card blue">
-                        <div className="number">{teamMembers.length}</div>
-                        <div className="label">👥 Membres dans mon équipe</div>
-                    </div>
-                    <div className="stat-card orange">
-                        <div className="number">{pendingRequests.length}</div>
-                        <div className="label">⏳ Demandes à valider (1ère étape)</div>
-                    </div>
-                </div>
-                <div className="btn-group mt-20">
-                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team')}>
-                        👥 Gérer mon équipe
-                    </button>
-                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/validations')}>
-                        ✅ Valider les demandes
-                    </button>
-                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/statistics')}>
-                        📊 Statistiques équipe
-                    </button>
-                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team-calendar')}>
-                        📅 Calendrier équipe
-                    </button>
-                </div>
-            </div>
+            {/* Statistiques améliorées */}
+            <ManagerStats />
             
+            {/* Demandes en attente */}
             {pendingRequests.length > 0 && (
                 <>
-                    <h3>📋 Demandes en attente de validation</h3>
+                    <h3 style={{ marginTop: '30px' }}>📋 Demandes en attente de validation (1ère étape)</h3>
                     <PendingValidations requests={pendingRequests} onRefresh={refreshData} />
                 </>
             )}
+            
+            {pendingRequests.length === 0 && (
+                <div className="info-box" style={{ marginTop: '20px', background: '#d4edda' }}>
+                    ✅ Aucune demande en attente. Toutes les demandes ont été traitées.
+                </div>
+            )}
+            
+            {/* Mon solde */}
+            <div className="cards-grid mt-20">
+                <div className="card">
+                    <h3>🏖️ Congés Payés</h3>
+                    <div className="value">{balance.cp_restant || 15} jours</div>
+                    <div className="small">Mon solde restant</div>
+                </div>
+                <div className="card">
+                    <h3>📅 RTT</h3>
+                    <div className="value">{balance.rtt_restant || 6} jours</div>
+                    <div className="small">Mon solde restant</div>
+                </div>
+                <div className="card">
+                    <h3>⏰ Permissions</h3>
+                    <div className="value">{balance.permission || 1}h</div>
+                    <div className="small">Utilisées ce mois</div>
+                </div>
+            </div>
+            
+            {/* Boutons d'action rapide */}
+            <div className="btn-group mt-20">
+                <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team')}>
+                    👥 Gérer mon équipe
+                </button>
+                <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/validations')}>
+                    ✅ Valider les demandes
+                </button>
+                <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team-calendar')}>
+                    📅 Calendrier équipe
+                </button>
+            </div>
             
             {teamMembers.length === 0 && (
                 <div className="info-box" style={{ marginTop: '20px', background: '#e8f4fd' }}>
@@ -159,34 +173,13 @@ function ManagerDashboard({ onLogout }) {
                 1️⃣ Vous validez la demande (1ère étape) → L'employé est notifié<br/>
                 2️⃣ L'administrateur valide définitivement (2ème étape) → L'employé est notifié
             </div>
-            
-            <div className="cards-grid mt-20">
-                <div className="card">
-                    <h3>🏖️ Congés Payés</h3>
-                    <div className="value">{balance.paid || 15} jours</div>
-                    <div className="small">Mon solde restant</div>
-                </div>
-                <div className="card">
-                    <h3>📅 Réduction du Temps de Travail (RTT)</h3>
-                    <div className="value">{balance.rtt || 6} jours</div>
-                    <div className="small">Mon solde restant</div>
-                </div>
-                <div className="card">
-                    <h3>⏰ Permissions</h3>
-                    <div className="value">{balance.permission || 1}h</div>
-                    <div className="small">Utilisées ce mois</div>
-                </div>
-            </div>
         </>
     );
 
     const currentPath = location.pathname;
     console.log('🔍 Current path in ManagerDashboard:', currentPath);
 
-    // ⚠️ IMPORTANT: L'ordre des conditions est crucial !
-    // Les chemins plus spécifiques doivent être vérifiés en premier
-
-    // 1. Route pour Calendrier équipe (le plus spécifique)
+    // Route pour Calendrier équipe
     if (currentPath === '/dashboard/manager/team-calendar' || currentPath.includes('/team-calendar')) {
         console.log('✅ Affichage de TeamCalendar');
         return (
@@ -204,7 +197,7 @@ function ManagerDashboard({ onLogout }) {
         );
     }
 
-    // 2. Route pour Mon équipe (TeamList)
+    // Route pour Mon équipe (TeamList)
     if (currentPath === '/dashboard/manager/team' || currentPath.includes('/team')) {
         console.log('✅ Affichage de TeamList');
         return (
@@ -222,7 +215,7 @@ function ManagerDashboard({ onLogout }) {
         );
     }
 
-    // 3. Route pour Validations
+    // Route pour Validations
     if (currentPath.includes('/validations')) {
         console.log('✅ Affichage de PendingValidations');
         return (
@@ -240,7 +233,7 @@ function ManagerDashboard({ onLogout }) {
         );
     }
 
-    // 4. Route pour Statistiques
+    // Route pour Statistiques
     if (currentPath.includes('/statistics')) {
         console.log('✅ Affichage de TeamStatistics');
         return (
@@ -259,7 +252,7 @@ function ManagerDashboard({ onLogout }) {
     }
 
     // Dashboard par défaut
-    console.log('✅ Affichage du Dashboard par défaut');
+    console.log('✅ Affichage du Dashboard par défaut avec statistiques améliorées');
     return (
         <>
             <Navbar user={user} role="manager" onLogout={onLogout} />

@@ -4,13 +4,17 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 function LeaveRequest({ onSuccess }) {
-    const [formData, setFormData] = useState({ type_id: 1, start_date: '', end_date: '', motif: '' });
+    const [formData, setFormData] = useState({ 
+        type_id: 1, 
+        start_date: '', 
+        end_date: '', 
+        motif: '' 
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [errorsList, setErrorsList] = useState([]);
     const navigate = useNavigate();
 
-    // Obtenir la date d'aujourd'hui au format YYYY-MM-DD
     const getTodayDate = () => {
         const today = new Date();
         const year = today.getFullYear();
@@ -52,7 +56,7 @@ function LeaveRequest({ onSuccess }) {
         
         const token = localStorage.getItem('token');
         if (!token) {
-            setError('Vous n\'êtes pas authentifié. Veuillez vous reconnecter.');
+            setError('Vous n\'êtes pas authentifié');
             setLoading(false);
             navigate('/login');
             return;
@@ -64,12 +68,12 @@ function LeaveRequest({ onSuccess }) {
             });
             
             if (response.status === 201) {
-                alert('✅ Demande de congé envoyée !\n\nEn attente de validation par votre manager.\n\nVous pouvez modifier ou annuler votre demande tant qu\'elle n\'a pas été validée par le manager.');
-                if (onSuccess) {
-                    onSuccess();
-                } else {
-                    navigate('/dashboard/employee/requests');
-                }
+                const message = formData.type_id === 1 
+                    ? '✅ Demande de congés payés envoyée !'
+                    : '⚠️ Demande de congé sans solde envoyée (non rémunéré)';
+                alert(message + '\n\nEn attente de validation par votre manager.\n\nVous pouvez modifier ou annuler votre demande tant qu\'elle n\'a pas été validée.');
+                if (onSuccess) onSuccess();
+                else navigate('/dashboard/employee/requests');
             }
         } catch (err) {
             console.error('Erreur:', err);
@@ -79,7 +83,6 @@ function LeaveRequest({ onSuccess }) {
                 localStorage.removeItem('user');
                 setTimeout(() => navigate('/login'), 2000);
             } else if (err.response?.data?.errors) {
-                // Afficher la liste des erreurs
                 setErrorsList(err.response.data.errors);
                 setError('Veuillez corriger les erreurs suivantes :');
             } else {
@@ -90,47 +93,29 @@ function LeaveRequest({ onSuccess }) {
         }
     };
 
-    // Obtenir le libellé du type de congé
-    const getTypeLabel = (typeId) => {
-        switch(parseInt(typeId)) {
-            case 1: return '🏖️ Congés Payés (CP)';
-            case 2: return '⚡ Réduction du Temps de Travail (RTT)';
-            case 3: return '📝 Congé sans solde';
-            default: return 'Congés Payés';
-        }
-    };
-
     return (
         <div>
             <h2>📅 Demander un congé</h2>
             
-            {/* Affichage des règles par type de congé */}
             <div className="info-box" style={{ background: '#e8f4fd', marginBottom: '20px' }}>
                 <strong>📋 Règles selon le type de congé :</strong><br/>
-                {formData.type_id == 1 && (
+                {formData.type_id === 1 && (
                     <>
-                        • 🏖️ <strong>Congés Payés (CP)</strong> : 25 jours/an, max 20 jours consécutifs<br/>
+                        • 🏖️ <strong>Congés Payés</strong> : 25 jours/an, max 20 jours consécutifs<br/>
                         • ⏰ Préavis minimum : 2 jours<br/>
-                        • 💰 Rémunéré : Oui
+                        • 💰 Rémunéré : <strong style={{ color: '#28a745' }}>✅ Oui</strong>
                     </>
                 )}
-                {formData.type_id == 2 && (
-                    <>
-                        • ⚡ <strong>RTT</strong> : 12 jours/an, max 10 jours consécutifs<br/>
-                        • ⏰ Préavis minimum : 1 jour<br/>
-                        • 💰 Rémunéré : Oui
-                    </>
-                )}
-                {formData.type_id == 3 && (
+                {formData.type_id === 2 && (
                     <>
                         • 📝 <strong>Congé sans solde</strong> : Pas de limite annuelle, max 5 jours consécutifs<br/>
-                        • ⏰ Préavis minimum : 5 jours<br/>
-                        • 💰 Rémunéré : Non
+                        • ⏰ Préavis minimum : 1 jour<br/>
+                        • 💰 Rémunéré : <strong style={{ color: '#dc3545' }}>❌ Non</strong>
                     </>
                 )}
                 <br/>
                 • ⚠️ Délai minimum entre deux demandes : 7 jours<br/>
-                • 📅 Plafond annuel tous types confondus : 30 jours
+                • 📅 Dates à partir d'aujourd'hui uniquement
             </div>
             
             {error && <div className="error-message">{error}</div>}
@@ -158,9 +143,8 @@ function LeaveRequest({ onSuccess }) {
                             setError('');
                         }}
                     >
-                        <option value="1">🏖️ Congés Payés (CP) - 25j/an</option>
-                        <option value="2">⚡ Réduction du Temps de Travail (RTT) - 12j/an</option>
-                        <option value="3">📝 Congé sans solde - Non rémunéré</option>
+                        <option value="1">🏖️ Congés Payés (25j/an - Rémunéré)</option>
+                        <option value="2">📝 Congé sans solde (Non rémunéré - 5j max)</option>
                     </select>
                 </div>
                 
@@ -213,6 +197,13 @@ function LeaveRequest({ onSuccess }) {
                     />
                 </div>
                 
+                {formData.type_id === 2 && (
+                    <div className="info-box" style={{ background: '#fff3cd', borderLeftColor: '#ffc107', marginBottom: '15px' }}>
+                        ⚠️ <strong>Attention :</strong> Le congé sans solde n'est <strong>PAS RÉMUNÉRÉ</strong>. 
+                        Votre salaire sera diminué proportionnellement aux jours d'absence.
+                    </div>
+                )}
+                
                 <div className="btn-group">
                     <button type="submit" className="btn btn-primary" disabled={loading}>
                         {loading ? 'Envoi en cours...' : '📤 Envoyer la demande'}
@@ -227,8 +218,7 @@ function LeaveRequest({ onSuccess }) {
                 <strong>ℹ️ Processus de validation en 2 étapes :</strong><br/>
                 1️⃣ Votre manager valide la demande (1ère étape)<br/>
                 2️⃣ L'administrateur valide définitivement (2ème étape)<br/>
-                <strong>📝 Vous pouvez modifier ou annuler votre demande tant qu'elle est en attente de validation par le manager.</strong><br/>
-                <strong>⚠️ Les dates de congé doivent être aujourd'hui ou dans le futur.</strong>
+                <strong>📝 Vous pouvez modifier ou annuler votre demande tant qu'elle est en attente de validation par le manager.</strong>
             </div>
         </div>
     );

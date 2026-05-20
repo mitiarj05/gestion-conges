@@ -1,14 +1,13 @@
+// backend/routes/adminRoutes.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
 const XLSX = require('xlsx');
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { requireRoles } = require('../middleware/roleCheck');
-const { sendActivationEmail, sendPasswordChangedEmail } = require('../utils/emailService');
+const { sendAdminApprovalEmail, sendAdminRejectionEmail } = require('../utils/emailService');
 
-// Middleware admin
 router.use(authMiddleware);
 router.use(requireRoles(['admin']));
 
@@ -32,7 +31,7 @@ router.get('/stats', async (req, res) => {
         );
         
         const alertsResult = await pool.query(
-            `SELECT COUNT(*) FROM solde_conges WHERE restant_jours < 5 AND annee = $1`,
+            `SELECT COUNT(*) FROM solde_conges WHERE restant_jours < 5 AND annee = $1 AND type_conge_id = 1`,
             [new Date().getFullYear()]
         );
         
@@ -55,13 +54,11 @@ router.get('/stats', async (req, res) => {
 
 // ============ GESTION DES UTILISATEURS ============
 
-// Récupérer tous les utilisateurs
 router.get('/users', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.nom, u.prenom, u.email, u.telephone, u.service, u.statut,
-                    array_agg(r.nom) as roles,
-                    u.cree_le
+            `SELECT u.id, u.nom, u.prenom, u.email, u.telephone, u.service, u.statut, u.salaire_base,
+                    array_agg(r.nom) as roles, u.cree_le
              FROM users u
              LEFT JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
              LEFT JOIN roles r ON ur.role_id = r.id
@@ -75,19 +72,19 @@ router.get('/users', async (req, res) => {
     }
 });
 
-// Récupérer les employés (non managers)
 router.get('/employees-only', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.nom, u.prenom, u.email, u.service
+            `SELECT u.id, u.nom, u.prenom, u.email, u.service, u.salaire_base
              FROM users u
              JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
              JOIN roles r ON ur.role_id = r.id
              WHERE r.nom = 'employe'
-             AND u.id NOT IN (
-                 SELECT utilisateur_id FROM utilisateurs_roles ur2 
-                 JOIN roles r2 ON ur2.role_id = r2.id 
-                 WHERE r2.nom = 'manager'
+             AND NOT EXISTS (
+                 SELECT 1 FROM utilisateurs_roles ur2 
+                 WHERE ur2.utilisateur_id = u.id AND ur2.role_id IN (
+                     SELECT id FROM roles WHERE nom IN ('manager', 'admin')
+                 )
              )
              ORDER BY u.nom ASC`
         );
@@ -98,9 +95,52 @@ router.get('/employees-only', async (req, res) => {
     }
 });
 
-// AJOUTER EMPLOYÉ
+// ============ EMPLOYÉS POUR LA PAIE ============
+
+// backend/routes/adminRoutes.js
+// REMPLACEZ COMPLÈTEMENT la route /employees-for-payroll par celle-ci :
+
+router.get('/employees-for-payroll', async (req, res) => {
+    try {
+        // Requête CORRIGÉE avec les rôles et salaires
+        const result = await pool.query(`
+            SELECT 
+                u.id, 
+                u.nom, 
+                u.prenom, 
+                u.email, 
+                u.service, 
+                u.statut, 
+                COALESCE(u.salaire_base, 500000) as salaire_base,
+                COALESCE(array_agg(DISTINCT r.nom) FILTER (WHERE r.nom IS NOT NULL), '{}') as roles
+            FROM users u
+            LEFT JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
+            LEFT JOIN roles r ON ur.role_id = r.id
+            GROUP BY u.id
+            ORDER BY u.nom ASC
+        `);
+        
+        // Filtrer pour ne garder que les employés (ceux qui ont le rôle employe OU manager)
+        const employes = result.rows.filter(user => 
+            user.roles.includes('employe') || user.roles.includes('manager')
+        );
+        
+        console.log('✅ Employés pour paie trouvés:', employes.length);
+        console.log('📋 Détail avec rôles:', employes.map(e => ({
+            nom: `${e.prenom} ${e.nom}`,
+            roles: e.roles,
+            salaire: e.salaire_base
+        })));
+        
+        res.json(employes);
+    } catch (error) {
+        console.error('❌ Erreur employees-for-payroll:', error);
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+    }
+});
+
 router.post('/create-employee', async (req, res) => {
-    const { nom, prenom, email, password, telephone, service } = req.body;
+    const { nom, prenom, email, password, telephone, service, salaire_base } = req.body;
     
     try {
         const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -108,42 +148,32 @@ router.post('/create-employee', async (req, res) => {
             return res.status(400).json({ message: 'Cet email est déjà utilisé' });
         }
         
-        const activationToken = crypto.randomBytes(32).toString('hex');
-        const tokenExpire = new Date();
-        tokenExpire.setHours(tokenExpire.getHours() + 48);
-        
         const employeRole = await pool.query('SELECT id FROM roles WHERE nom = $1', ['employe']);
         const hashedPassword = await bcrypt.hash(password, 10);
         
         const userResult = await pool.query(
-            `INSERT INTO users (nom, prenom, email, password_hash, telephone, service, statut, token_activation, token_activation_expire, cree_le)
-             VALUES ($1, $2, $3, $4, $5, $6, 'invited', $7, $8, NOW())
+            `INSERT INTO users (nom, prenom, email, password_hash, telephone, service, statut, salaire_base, cree_le)
+             VALUES ($1, $2, $3, $4, $5, $6, 'actif', $7, NOW())
              RETURNING id`,
-            [nom, prenom, email, hashedPassword, telephone || null, service || null, activationToken, tokenExpire]
+            [nom, prenom, email, hashedPassword, telephone || null, service || null, salaire_base || 500000]
         );
         
         const userId = userResult.rows[0].id;
         
         await pool.query(
-            `INSERT INTO utilisateurs_roles (utilisateur_id, role_id, assigne_le, assigne_par)
-             VALUES ($1, $2, NOW(), $3)`,
-            [userId, employeRole.rows[0].id, req.user.id]
+            `INSERT INTO utilisateurs_roles (utilisateur_id, role_id)
+             VALUES ($1, $2)`,
+            [userId, employeRole.rows[0].id]
         );
         
         const currentYear = new Date().getFullYear();
-        const typesConges = await pool.query('SELECT id, jours_par_defaut FROM types_conges WHERE jours_par_defaut IS NOT NULL');
+        await pool.query(
+            `INSERT INTO solde_conges (utilisateur_id, annee, type_conge_id, total_jours, restant_jours)
+             VALUES ($1, $2, 1, 25, 25)`,
+            [userId, currentYear]
+        );
         
-        for (const type of typesConges.rows) {
-            await pool.query(
-                `INSERT INTO solde_conges (utilisateur_id, annee, type_conge_id, total_jours, restant_jours)
-                 VALUES ($1, $2, $3, $4, $4)`,
-                [userId, currentYear, type.id, type.jours_par_defaut]
-            );
-        }
-        
-        await sendActivationEmail(email, nom, prenom, activationToken);
-        
-        res.status(201).json({ message: 'Employé créé avec succès. Un email d\'activation lui a été envoyé.' });
+        res.status(201).json({ message: 'Employé créé avec succès' });
         
     } catch (error) {
         console.error('Erreur création employé:', error);
@@ -151,13 +181,12 @@ router.post('/create-employee', async (req, res) => {
     }
 });
 
-// PROMOUVOIR EMPLOYÉ EN MANAGER
 router.post('/promote-to-manager', async (req, res) => {
     const { userId } = req.body;
     
     try {
         const userCheck = await pool.query(
-            `SELECT u.id, u.nom, u.prenom, array_agg(r.nom) as roles
+            `SELECT u.id, u.nom, u.prenom, u.salaire_base, array_agg(r.nom) as roles
              FROM users u
              LEFT JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
              LEFT JOIN roles r ON ur.role_id = r.id
@@ -184,12 +213,18 @@ router.post('/promote-to-manager', async (req, res) => {
         const managerRole = await pool.query('SELECT id FROM roles WHERE nom = $1', ['manager']);
         
         await pool.query(
-            `INSERT INTO utilisateurs_roles (utilisateur_id, role_id, assigne_le, assigne_par)
-             VALUES ($1, $2, NOW(), $3)`,
-            [userId, managerRole.rows[0].id, req.user.id]
+            `INSERT INTO utilisateurs_roles (utilisateur_id, role_id)
+             VALUES ($1, $2)`,
+            [userId, managerRole.rows[0].id]
         );
         
-        res.json({ message: `${user.prenom} ${user.nom} est maintenant manager !` });
+        // Augmenter le salaire pour le nouveau manager (optionnel)
+        await pool.query(
+            `UPDATE users SET salaire_base = 1000000 WHERE id = $1 AND salaire_base < 1000000`,
+            [userId]
+        );
+        
+        res.json({ message: `${user.prenom} ${user.nom} est maintenant manager ! Salaire mis à jour à 1 000 000 Ar` });
         
     } catch (error) {
         console.error('Erreur promotion manager:', error);
@@ -197,23 +232,16 @@ router.post('/promote-to-manager', async (req, res) => {
     }
 });
 
-// MODIFIER UN UTILISATEUR
 router.put('/users/:id', async (req, res) => {
-    const { nom, prenom, email, telephone, service, statut } = req.body;
+    const { nom, prenom, email, telephone, service, statut, salaire_base } = req.body;
     const userId = req.params.id;
     
     try {
         await pool.query(
             `UPDATE users SET 
-                nom = $1, 
-                prenom = $2, 
-                email = $3, 
-                telephone = $4, 
-                service = $5, 
-                statut = $6, 
-                modifie_le = NOW()
-             WHERE id = $7`,
-            [nom, prenom, email, telephone || null, service || null, statut || 'actif', userId]
+                nom = $1, prenom = $2, email = $3, telephone = $4, service = $5, statut = $6, salaire_base = $7
+             WHERE id = $8`,
+            [nom, prenom, email, telephone || null, service || null, statut || 'actif', salaire_base || 500000, userId]
         );
         
         res.json({ message: 'Utilisateur modifié avec succès' });
@@ -224,38 +252,24 @@ router.put('/users/:id', async (req, res) => {
     }
 });
 
-// RÉINITIALISER LE MOT DE PASSE
 router.put('/users/:id/reset-password', async (req, res) => {
     const userId = req.params.id;
     const { password } = req.body;
     
     try {
-        const userResult = await pool.query('SELECT nom, prenom, email FROM users WHERE id = $1', [userId]);
-        if (userResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Utilisateur non trouvé' });
-        }
-        
-        const user = userResult.rows[0];
         const hashedPassword = await bcrypt.hash(password, 10);
-        
-        await pool.query('UPDATE users SET password_hash = $1, modifie_le = NOW() WHERE id = $2', [hashedPassword, userId]);
-        
-        await sendPasswordChangedEmail(user.email, user.nom, user.prenom);
-        
+        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, userId]);
         res.json({ message: 'Mot de passe réinitialisé avec succès' });
-        
     } catch (error) {
         console.error('Erreur reset password:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
-// SUPPRIMER UN UTILISATEUR
 router.delete('/users/:id', async (req, res) => {
-    const userId = req.params.id;
-    
     try {
-        await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+        await pool.query('DELETE FROM demandes_conges WHERE utilisateur_id = $1', [req.params.id]);
+        await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
         res.json({ message: 'Utilisateur supprimé avec succès' });
     } catch (error) {
         console.error('Erreur suppression:', error);
@@ -263,11 +277,10 @@ router.delete('/users/:id', async (req, res) => {
     }
 });
 
-// EXPORT EXCEL
 router.get('/export-users', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.nom, u.prenom, u.email, u.telephone, u.service, u.statut,
+            `SELECT u.id, u.nom, u.prenom, u.email, u.telephone, u.service, u.statut, u.salaire_base,
                     array_agg(r.nom) as roles, u.cree_le
              FROM users u
              LEFT JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
@@ -283,66 +296,82 @@ router.get('/export-users', async (req, res) => {
             'Email': row.email,
             'Téléphone': row.telephone || '',
             'Service': row.service || '',
+            'Salaire de base': `${row.salaire_base || 0} Ar`,
             'Rôle': row.roles.join(', '),
-            'Statut': row.statut === 'actif' ? 'Actif' : row.statut === 'invited' ? 'Invité' : 'Inactif',
-            'Date création': new Date(row.cree_le).toLocaleDateString('fr-FR')
+            'Statut': row.statut === 'actif' ? 'Actif' : 'Inactif'
         }));
         
         const ws = XLSX.utils.json_to_sheet(data);
-        
-        ws['!cols'] = [
-            { wch: 5 }, { wch: 15 }, { wch: 15 }, { wch: 30 },
-            { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 15 }
-        ];
-        
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Utilisateurs');
-        
         const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
         
-        res.setHeader('Content-Disposition', 'attachment; filename=utilisateurs_' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.xlsx');
+        res.setHeader('Content-Disposition', 'attachment; filename=utilisateurs.xlsx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
-        
     } catch (error) {
         console.error('Erreur export:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
-// RENVOYER EMAIL D'ACTIVATION
-router.post('/resend-activation/:userId', async (req, res) => {
-    const userId = req.params.userId;
-    
+// ============ EXPORT DEMANDES EXCEL ============
+router.get('/export-demandes', async (req, res) => {
     try {
-        const userResult = await pool.query('SELECT * FROM users WHERE id = $1 AND statut = $2', [userId, 'invited']);
-        if (userResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Utilisateur non trouvé ou déjà actif' });
-        }
+        const result = await pool.query(`
+            SELECT 
+                u.nom, 
+                u.prenom, 
+                COALESCE(u.service, '-') as service,
+                CASE 
+                    WHEN dc.type_conge_id = 1 THEN '🏖️ Congés Payés'
+                    ELSE '📝 Congé sans solde'
+                END as type_conge,
+                TO_CHAR(dc.date_debut, 'DD/MM/YYYY') as date_debut,
+                TO_CHAR(dc.date_fin, 'DD/MM/YYYY') as date_fin,
+                dc.nombre_jours,
+                CASE 
+                    WHEN dc.statut = 'approved' THEN 'Approuvé'
+                    WHEN dc.statut = 'pending_manager' THEN 'En attente manager'
+                    WHEN dc.statut = 'pending_admin' THEN 'En attente admin'
+                    WHEN dc.statut = 'rejected' THEN 'Refusé'
+                    ELSE dc.statut
+                END as statut,
+                TO_CHAR(dc.cree_le, 'DD/MM/YYYY HH24:MI') as date_demande,
+                COALESCE(dc.motif, '-') as motif,
+                COALESCE(dc.motif_refus, '-') as motif_refus,
+                COALESCE(m.prenom || ' ' || m.nom, '-') as manager_nom
+            FROM demandes_conges dc
+            JOIN users u ON dc.utilisateur_id = u.id
+            LEFT JOIN users m ON u.manager_id = m.id
+            ORDER BY dc.cree_le DESC
+        `);
         
-        const user = userResult.rows[0];
-        const activationToken = crypto.randomBytes(32).toString('hex');
-        const tokenExpire = new Date();
-        tokenExpire.setHours(tokenExpire.getHours() + 48);
+        const ws = XLSX.utils.json_to_sheet(result.rows);
         
-        await pool.query(
-            'UPDATE users SET token_activation = $1, token_activation_expire = $2 WHERE id = $3',
-            [activationToken, tokenExpire, userId]
-        );
+        ws['!cols'] = [
+            { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 },
+            { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 18 },
+            { wch: 18 }, { wch: 30 }, { wch: 30 }, { wch: 20 }
+        ];
         
-        await sendActivationEmail(user.email, user.nom, user.prenom, activationToken);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Demandes_Conges');
         
-        res.json({ message: 'Email d\'activation renvoyé' });
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        
+        res.setHeader('Content-Disposition', 'attachment; filename=demandes_conges_' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
         
     } catch (error) {
-        console.error('Erreur renvoi email:', error);
+        console.error('Erreur export demandes:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
-// ============ VALIDATION ADMIN (2ème étape) ============
+// ============ VALIDATION ADMIN ============
 
-// Récupérer les demandes pré-approuvées
 router.get('/pending-approvals', async (req, res) => {
     try {
         const congesResult = await pool.query(
@@ -351,145 +380,95 @@ router.get('/pending-approvals', async (req, res) => {
                     TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
                     dc.nombre_jours, dc.motif, dc.statut,
                     u.nom, u.prenom, u.email, u.service,
-                    tc.nom as type_name,
+                    CASE 
+                        WHEN dc.type_conge_id = 1 THEN '🏖️ Congés Payés'
+                        ELSE '📝 Congé sans solde'
+                    END as type_name,
                     m.nom as manager_nom, m.prenom as manager_prenom,
                     'conges' as request_type,
                     dc.date_approbation
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
-             JOIN types_conges tc ON dc.type_conge_id = tc.id
              LEFT JOIN users m ON dc.approbateur_id = m.id
              WHERE dc.statut = 'pending_admin'
              ORDER BY dc.date_approbation ASC`
         );
         
-        const permissionsResult = await pool.query(
-            `SELECT dp.id,
-                    TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_debut,
-                    TO_CHAR(dp.date_permission, 'YYYY-MM-DD') as date_fin,
-                    dp.duree_heures as nombre_jours, dp.motif, dp.statut,
-                    u.nom, u.prenom, u.email, u.service,
-                    'Permission' as type_name,
-                    m.nom as manager_nom, m.prenom as manager_prenom,
-                    'permission' as request_type,
-                    dp.date_approbation
-             FROM demandes_permissions dp
-             JOIN users u ON dp.utilisateur_id = u.id
-             LEFT JOIN users m ON dp.approbateur_id = m.id
-             WHERE dp.statut = 'pending_admin'
-             ORDER BY dp.date_approbation ASC`
-        );
-        
-        const allPending = [...congesResult.rows, ...permissionsResult.rows];
-        allPending.sort((a, b) => new Date(a.date_approbation) - new Date(b.date_approbation));
-        
-        res.json(allPending);
+        res.json(congesResult.rows);
     } catch (error) {
         console.error('Erreur pending approvals:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
-// Admin approuve définitivement
 router.put('/final-approve/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
-    const { request_type } = req.body;
     
     try {
-        if (request_type === 'permission') {
-            const requestResult = await pool.query(
-                `SELECT dp.*, u.nom, u.prenom, u.email, u.manager_id
-                 FROM demandes_permissions dp
-                 JOIN users u ON dp.utilisateur_id = u.id
-                 WHERE dp.id = $1 AND dp.statut = 'pending_admin'`,
-                [requestId]
-            );
-            
-            if (requestResult.rows.length === 0) {
-                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
-            }
-            
-            const demande = requestResult.rows[0];
-            
-            await pool.query(
-                `UPDATE demandes_permissions 
-                 SET statut = 'approved', approbateur_id = $1, date_approbation = NOW()
-                 WHERE id = $2`,
-                [adminId, requestId]
-            );
-            
-            // Notification pour l'employé
-            await pool.query(
-                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'approuve_final_permission', 'Permission definitivement approuvee', 
-                 $2, '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id, `Felicitations ! Votre demande de permission du ${demande.date_permission} a ete definitivement approuvee par l administrateur.`]
-            );
-            
-            // Notification pour le manager
-            if (demande.manager_id) {
-                await pool.query(
-                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'approuve_final_permission_manager', 'Permission approuvee definitivement', 
-                     $2, '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id, `La demande de permission de ${demande.prenom} ${demande.nom} a ete definitivement approuvee par l administrateur.`]
-                );
-            }
-            
-            res.json({ message: 'Permission définitivement approuvée' });
-            
-        } else {
-            const requestResult = await pool.query(
-                `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
-                 FROM demandes_conges dc
-                 JOIN users u ON dc.utilisateur_id = u.id
-                 WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
-                [requestId]
-            );
-            
-            if (requestResult.rows.length === 0) {
-                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
-            }
-            
-            const demande = requestResult.rows[0];
-            
-            await pool.query(
-                `UPDATE demandes_conges 
-                 SET statut = 'approved', approbateur_id = $1, date_approbation = NOW()
-                 WHERE id = $2`,
-                [adminId, requestId]
-            );
-            
-            // Déduire du solde
+        const requestResult = await pool.query(
+            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
+             FROM demandes_conges dc
+             JOIN users u ON dc.utilisateur_id = u.id
+             WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
+            [requestId]
+        );
+        
+        if (requestResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
+        }
+        
+        const demande = requestResult.rows[0];
+        
+        await pool.query(
+            `UPDATE demandes_conges 
+             SET statut = 'approved', approbateur_id = $1, date_approbation = NOW()
+             WHERE id = $2`,
+            [adminId, requestId]
+        );
+        
+        if (demande.type_conge_id === 1) {
             const currentYear = new Date().getFullYear();
             await pool.query(
                 `UPDATE solde_conges 
                  SET pris_jours = pris_jours + $1, restant_jours = restant_jours - $1
-                 WHERE utilisateur_id = $2 AND annee = $3 AND type_conge_id = $4`,
-                [demande.nombre_jours, demande.utilisateur_id, currentYear, demande.type_conge_id]
+                 WHERE utilisateur_id = $2 AND annee = $3 AND type_conge_id = 1`,
+                [demande.nombre_jours, demande.utilisateur_id, currentYear]
             );
-            
-            // Notification pour l'employé
+        }
+        
+        await pool.query(
+            `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+             VALUES ($1, 'approuve_final', 'Congé définitivement approuvé', 
+             $2, '/dashboard/employee/requests', NOW())`,
+            [demande.utilisateur_id, `Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été définitivement approuvée.`]
+        );
+        
+        if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'approuve_final', 'Conge definitivement approuve', 
-                 $2, '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id, `Felicitations ! Votre demande de conge du ${demande.date_debut} au ${demande.date_fin} a ete definitivement approuvee par l administrateur.`]
+                 VALUES ($1, 'approuve_final_manager', 'Demande de congé approuvée', 
+                 $2, '/dashboard/manager/validations', NOW())`,
+                [demande.manager_id, `La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement approuvée.`]
             );
-            
-            // Notification pour le manager
-            if (demande.manager_id) {
-                await pool.query(
-                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'approuve_final_manager', 'Demande de conge approuvee definitivement', 
-                     $2, '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id, `La demande de conge de ${demande.prenom} ${demande.nom} a ete definitivement approuvee par l administrateur.`]
+        }
+        
+        try {
+            const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
+            if (employeEmailResult.rows.length > 0) {
+                const employe = employeEmailResult.rows[0];
+                await sendAdminApprovalEmail(
+                    employe.email,
+                    `${employe.prenom} ${demande.nom}`,
+                    `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.nombre_jours
                 );
             }
-            
-            res.json({ message: 'Demande définitivement approuvée' });
+        } catch (emailError) {
+            console.error('Erreur envoi email:', emailError);
         }
+        
+        res.json({ message: 'Demande définitivement approuvée' });
         
     } catch (error) {
         console.error('Erreur final approve:', error);
@@ -497,106 +476,72 @@ router.put('/final-approve/:id', async (req, res) => {
     }
 });
 
-// Admin refuse définitivement
 router.put('/final-reject/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
-    const { motif, request_type } = req.body;
-    const motifFinal = motif || 'Non spécifié par l\'administrateur';
+    const { motif } = req.body;
+    const motifFinal = motif || 'Non spécifié';
     
     try {
-        if (request_type === 'permission') {
-            const requestResult = await pool.query(
-                `SELECT dp.*, u.nom, u.prenom, u.email, u.manager_id
-                 FROM demandes_permissions dp
-                 JOIN users u ON dp.utilisateur_id = u.id
-                 WHERE dp.id = $1 AND dp.statut = 'pending_admin'`,
-                [requestId]
-            );
-            
-            if (requestResult.rows.length === 0) {
-                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
-            }
-            
-            const demande = requestResult.rows[0];
-            
-            await pool.query(
-                `UPDATE demandes_permissions 
-                 SET statut = 'rejected', approbateur_id = $1, date_approbation = NOW(), motif_refus = $2
-                 WHERE id = $3`,
-                [adminId, motifFinal, requestId]
-            );
-            
-            // Notification pour l'employé
-            await pool.query(
-                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_admin_permission', 'Permission definitivement refusee', 
-                 $2, '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id, `Votre demande de permission a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
-            );
-            
-            // Notification pour le manager
-            if (demande.manager_id) {
-                await pool.query(
-                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'refus_admin_permission_manager', 'Permission definitivement refusee', 
-                     $2, '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id, `La demande de permission de ${demande.prenom} ${demande.nom} a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
-                );
-            }
-            
-            res.json({ message: 'Permission définitivement refusée' });
-            
-        } else {
-            const requestResult = await pool.query(
-                `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
-                 FROM demandes_conges dc
-                 JOIN users u ON dc.utilisateur_id = u.id
-                 WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
-                [requestId]
-            );
-            
-            if (requestResult.rows.length === 0) {
-                return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
-            }
-            
-            const demande = requestResult.rows[0];
-            
-            await pool.query(
-                `UPDATE demandes_conges 
-                 SET statut = 'rejected', approbateur_id = $1, date_approbation = NOW(), motif_refus = $2
-                 WHERE id = $3`,
-                [adminId, motifFinal, requestId]
-            );
-            
-            // Notification pour l'employé
-            await pool.query(
-                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_admin', 'Demande de conge definitivement refusee', 
-                 $2, '/dashboard/employee/requests', NOW())`,
-                [demande.utilisateur_id, `Votre demande de conge a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
-            );
-            
-            // Notification pour le manager
-            if (demande.manager_id) {
-                await pool.query(
-                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                     VALUES ($1, 'refus_admin_manager', 'Demande de conge refusee definitivement', 
-                     $2, '/dashboard/manager/validations', NOW())`,
-                    [demande.manager_id, `La demande de conge de ${demande.prenom} ${demande.nom} a ete definitivement refusee par l administrateur.\n\nMotif : ${motifFinal}`]
-                );
-            }
-            
-            res.json({ message: 'Demande définitivement refusée' });
+        const requestResult = await pool.query(
+            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
+             FROM demandes_conges dc
+             JOIN users u ON dc.utilisateur_id = u.id
+             WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
+            [requestId]
+        );
+        
+        if (requestResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Demande non trouvée ou déjà traitée' });
         }
+        
+        const demande = requestResult.rows[0];
+        
+        await pool.query(
+            `UPDATE demandes_conges 
+             SET statut = 'rejected', approbateur_id = $1, date_approbation = NOW(), motif_refus = $2
+             WHERE id = $3`,
+            [adminId, motifFinal, requestId]
+        );
+        
+        await pool.query(
+            `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+             VALUES ($1, 'refus_admin', 'Demande de congé refusée', 
+             $2, '/dashboard/employee/requests', NOW())`,
+            [demande.utilisateur_id, `Votre demande de congé a été refusée par l'administrateur. Motif : ${motifFinal}`]
+        );
+        
+        if (demande.manager_id) {
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'refus_admin_manager', 'Demande de congé refusée', 
+                 $2, '/dashboard/manager/validations', NOW())`,
+                [demande.manager_id, `La demande de congé de ${demande.prenom} ${demande.nom} a été refusée définitivement.`]
+            );
+        }
+        
+        try {
+            const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
+            if (employeEmailResult.rows.length > 0) {
+                const employe = employeEmailResult.rows[0];
+                await sendAdminRejectionEmail(
+                    employe.email,
+                    `${employe.prenom} ${demande.nom}`,
+                    `${demande.date_debut} au ${demande.date_fin}`,
+                    motifFinal
+                );
+            }
+        } catch (emailError) {
+            console.error('Erreur envoi email:', emailError);
+        }
+        
+        res.json({ message: 'Demande définitivement refusée' });
         
     } catch (error) {
         console.error('Erreur final reject:', error);
-        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+        res.status(500).json({ message: 'Erreur serveur' });
     }
 });
-
-// ============ GESTION DES DEMANDES ============
 
 router.get('/leave-requests', async (req, res) => {
     try {
@@ -606,10 +551,12 @@ router.get('/leave-requests', async (req, res) => {
                     TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
                     dc.nombre_jours, dc.statut, dc.cree_le,
                     u.nom, u.prenom,
-                    tc.nom as type_name
+                    CASE 
+                        WHEN dc.type_conge_id = 1 THEN '🏖️ Congés Payés'
+                        ELSE '📝 Congé sans solde'
+                    END as type_name
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
-             JOIN types_conges tc ON dc.type_conge_id = tc.id
              ORDER BY dc.cree_le DESC`
         );
         res.json(result.rows);
@@ -619,70 +566,12 @@ router.get('/leave-requests', async (req, res) => {
     }
 });
 
-// ============ CODES D'INSCRIPTION ============
-
-router.get('/codes', async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT ci.*, r.nom as role_name
-             FROM codes_inscription ci
-             JOIN roles r ON ci.role_id = r.id
-             ORDER BY ci.cree_le DESC`
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Erreur codes:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
-});
-
-router.post('/generate-code', async (req, res) => {
-    const { role, max_utilisations, description } = req.body;
-    
-    try {
-        const roleResult = await pool.query('SELECT id FROM roles WHERE nom = $1', [role]);
-        if (roleResult.rows.length === 0) {
-            return res.status(400).json({ message: 'Rôle invalide' });
-        }
-        
-        const code = `${role.toUpperCase()}_${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-        
-        await pool.query(
-            `INSERT INTO codes_inscription (code, role_id, description, max_utilisations, cree_le)
-             VALUES ($1, $2, $3, $4, NOW())`,
-            [code, roleResult.rows[0].id, description || null, max_utilisations || null]
-        );
-        
-        res.json({ message: 'Code généré', code });
-    } catch (error) {
-        console.error('Erreur generate-code:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
-});
-
-router.delete('/codes/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM codes_inscription WHERE id = $1', [req.params.id]);
-        res.json({ message: 'Code supprimé' });
-    } catch (error) {
-        console.error('Erreur delete code:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
-    }
-});
-
-// ============ LOGS ============
-router.get('/logs', async (req, res) => {
-    res.json([]);
-});
-
 // ============ PARAMÈTRES ============
 router.get('/settings', async (req, res) => {
     res.json({
         cp_jours_par_an: 25,
-        rtt_jours_par_an: 12,
         max_conges_consecutifs: 20,
-        preavis_minimum: 2,
-        permission_max_heures_mois: 4
+        preavis_minimum: 2
     });
 });
 
@@ -695,33 +584,10 @@ router.put('/settings', async (req, res) => {
 router.put('/assign-manager/:employeeId', async (req, res) => {
     const { employeeId } = req.params;
     const { managerId } = req.body;
-    const adminId = req.user.id;
     
     try {
-        const employeeCheck = await pool.query(`SELECT * FROM users WHERE id = $1`, [employeeId]);
-        if (employeeCheck.rows.length === 0) {
-            return res.status(404).json({ message: 'Employé non trouvé' });
-        }
-        
-        const managerCheck = await pool.query(
-            `SELECT u.* FROM users u
-             JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
-             JOIN roles r ON ur.role_id = r.id
-             WHERE u.id = $1 AND r.nom = 'manager'`,
-            [managerId]
-        );
-        
-        if (managerCheck.rows.length === 0) {
-            return res.status(404).json({ message: 'Manager non trouvé ou invalide' });
-        }
-        
-        await pool.query(
-            `UPDATE users SET manager_id = $1, modifie_le = NOW() WHERE id = $2`,
-            [managerId, employeeId]
-        );
-        
-        res.json({ message: 'Manager assigné avec succès à l\'employé' });
-        
+        await pool.query(`UPDATE users SET manager_id = $1 WHERE id = $2`, [managerId, employeeId]);
+        res.json({ message: 'Manager assigné avec succès' });
     } catch (error) {
         console.error('Erreur assign manager:', error);
         res.status(500).json({ message: 'Erreur serveur' });
@@ -743,6 +609,11 @@ router.get('/managers-list', async (req, res) => {
         console.error('Erreur managers-list:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
+});
+
+// ============ LOGS ============
+router.get('/logs', async (req, res) => {
+    res.json([]);
 });
 
 module.exports = router;

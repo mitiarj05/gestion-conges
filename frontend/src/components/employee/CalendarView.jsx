@@ -11,10 +11,6 @@ function CalendarView({ requests, onRequestUpdate }) {
     const currentMonth = currentDate.getMonth();
 
     useEffect(() => {
-        console.log('CalendarView - requests reçues:', requests);
-        if (requests && requests.length > 0) {
-            console.log('Exemple de statut:', requests[0].status);
-        }
         generateCalendar();
         calculateStats();
     }, [currentDate, requests]);
@@ -55,7 +51,7 @@ function CalendarView({ requests, onRequestUpdate }) {
         if (!requests || requests.length === 0) return { status: null, requests: [] };
         
         const dayRequests = requests.filter(req => {
-            // Pour les permissions
+            // Pour les permissions (désactivées mais gardé pour compatibilité)
             if (req.request_type === 'permission') {
                 const permDate = normalizeDate(req.start_date || req.date_permission);
                 return permDate && normalizedDate.getTime() === permDate.getTime();
@@ -101,7 +97,13 @@ function CalendarView({ requests, onRequestUpdate }) {
         }
     };
 
-    // CORRECTION : Fonction pour obtenir la classe CSS selon le statut
+    // Obtenir le type d'affichage (2 types seulement)
+    const getTypeDisplay = (req) => {
+        if (req.request_type === 'permission') return '⏰ Permission';
+        if (req.type_id === 1 || req.type === '🏖️ Congés Payés') return '🏖️ Congés Payés';
+        return '📝 Congé sans solde';
+    };
+
     const getDayClassName = (day) => {
         if (!day.isCurrentMonth) return 'other-month';
         
@@ -255,7 +257,6 @@ function CalendarView({ requests, onRequestUpdate }) {
                 ))}
                 {calendarDays.map((day, index) => {
                     const isCurrentDay = isToday(day.date);
-                    // CORRECTION : Utiliser les classes CSS au lieu des styles inline
                     const dayClassName = getDayClassName(day);
                     
                     return (
@@ -295,7 +296,7 @@ function CalendarView({ requests, onRequestUpdate }) {
                             <div key={idx} className="detail-item">
                                 <div className="detail-item-header">
                                     <span className="detail-icon">{getStatusIcon(req.status)}</span>
-                                    <strong>{req.type}</strong>
+                                    <strong>{getTypeDisplay(req)}</strong>
                                     <span className={`detail-status status-${req.status}`}>
                                         {getStatusLabel(req.status)}
                                     </span>
@@ -304,7 +305,7 @@ function CalendarView({ requests, onRequestUpdate }) {
                                     📆 {req.request_type === 'permission' ? req.start_date : `Du ${req.start_date} au ${req.end_date}`}
                                 </div>
                                 <div className="detail-item-duration">
-                                    ⏱️ Durée : {req.duration} {req.type === 'Permission' ? 'heure(s)' : 'jour(s)'}
+                                    ⏱️ Durée : {req.duration} {req.type === '⏰ Permission' ? 'heure(s)' : 'jour(s)'}
                                 </div>
                                 {req.motif && <div className="detail-item-motif">📝 Motif : {req.motif}</div>}
                                 {req.motif_refus && <div className="detail-item-refus">❌ Motif du refus : {req.motif_refus}</div>}

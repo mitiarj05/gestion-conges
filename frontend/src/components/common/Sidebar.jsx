@@ -11,28 +11,31 @@ function Sidebar({ role }) {
             return [
                 { path: '/dashboard/admin', label: '📊 Dashboard', key: 'dashboard' },
                 { path: '/dashboard/admin/users', label: '👥 Utilisateurs', key: 'users' },
-                { path: '/dashboard/admin/codes', label: '🔐 Codes', key: 'codes' },
+                { path: '/dashboard/admin/payroll', label: '💰 Paie', key: 'payroll' },
+                { path: '/dashboard/admin/calendar', label: '📅 Calendrier général', key: 'calendar' },
                 { path: '/dashboard/admin/logs', label: '📜 Logs', key: 'logs' },
                 { path: '/dashboard/admin/settings', label: '⚙️ Paramètres', key: 'settings' }
             ];
         }
-                if (role === 'manager') {
+        if (role === 'manager') {
             return [
                 { path: '/dashboard/manager', label: '📊 Dashboard', key: 'dashboard' },
                 { path: '/dashboard/manager/team', label: '👥 Mon équipe', key: 'team' },
                 { path: '/dashboard/manager/validations', label: '✅ Validations', key: 'validations' },
                 { path: '/dashboard/manager/statistics', label: '📊 Statistiques', key: 'statistics' },
-                { path: '/dashboard/manager/team-calendar', label: '📅 Calendrier équipe', key: 'team-calendar' } // <-- Ce lien
+                { path: '/dashboard/manager/team-calendar', label: '📅 Calendrier équipe', key: 'team-calendar' }
             ];
         }
+        // Employé
         return [
             { path: '/dashboard/employee', label: '📊 Dashboard', key: 'dashboard' },
             { path: '/dashboard/employee/balance', label: '💰 Mon solde', key: 'balance' },
             { path: '/dashboard/employee/requests', label: '📋 Mes demandes', key: 'requests' },
             { path: '/dashboard/employee/new-request', label: '➕ Nouvelle demande', key: 'new-request' },
-            { path: '/dashboard/employee/permission', label: '⏰ Permission', key: 'permission' },
+            //{ path: '/dashboard/employee/permission', label: '⏰ Permission', key: 'permission' },
             { path: '/dashboard/employee/calendar', label: '📅 Calendrier', key: 'calendar' },
             { path: '/dashboard/employee/statistics', label: '📊 Statistiques', key: 'statistics' },
+            { path: '/dashboard/employee/payroll', label: '💰 Mes bulletins', key: 'payroll' },
             { path: '/dashboard/employee/manager-profile', label: '👨‍💼 Mon manager', key: 'manager-profile' }
         ];
     };
