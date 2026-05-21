@@ -309,9 +309,9 @@ function PayrollDashboard() {
 
     const getStatusBadge = (statut) => {
         switch (statut) {
-            case 'paye': return <span className="status status-approved">Payé</span>;
-            case 'valide': return <span className="status status-pending-manager">Validé</span>;
-            default: return <span className="status">{statut}</span>;
+            case 'paye': return <span className="badge-paid">Payé</span>;
+            case 'valide': return <span className="badge-valid">Validé</span>;
+            default: return <span className="badge-default">{statut}</span>;
         }
     };
 
@@ -321,10 +321,10 @@ function PayrollDashboard() {
     };
 
     const getRoleDisplay = (roles) => {
-        if (!roles) return { icon: '👤', text: 'Employé' };
-        if (roles.includes('manager')) return { icon: '👔', text: 'Manager' };
-        if (roles.includes('admin')) return { icon: '👑', text: 'Admin' };
-        return { icon: '👤', text: 'Employé' };
+        if (!roles) return { icon: '👤', text: 'Employé', color: '#10b981' };
+        if (roles.includes('manager')) return { icon: '👔', text: 'Manager', color: '#4f46e5' };
+        if (roles.includes('admin')) return { icon: '👑', text: 'Admin', color: '#8b5cf6' };
+        return { icon: '👤', text: 'Employé', color: '#10b981' };
     };
 
     if (loading) {
@@ -336,124 +336,226 @@ function PayrollDashboard() {
         );
     }
 
-    return (
-        <div>
-            <h2>Gestion de la Paie</h2>
+    const totalNet = stats?.total_net || 0;
+    const totalEmployesPayes = stats?.total_employes_payes || 0;
+    const employesNonPayes = stats?.employes_non_payes || 0;
+    const moyenneSalaire = stats?.moyenne_salaire || 0;
 
-            {stats && (
-                <div className="cards-grid" style={{ marginBottom: '25px' }}>
-                    <div className="stat-card blue">
-                        <div className="number">{stats.total_employes_payes || 0}</div>
-                        <div className="label">Employés payés ce mois</div>
+    return (
+        <div className="payroll-dashboard">
+            {/* En-tête */}
+            <div className="dashboard-header">
+                <div className="dashboard-header-content">
+                    <h1 className="dashboard-title">Gestion de la Paie</h1>
+                    <p className="dashboard-subtitle">Générez et gérez les bulletins de salaire</p>
+                </div>
+                <div className="dashboard-header-actions">
+                    <button className="btn-refresh" onClick={fetchAllData}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        Actualiser
+                    </button>
+                </div>
+            </div>
+
+            {/* Cartes statistiques modernes */}
+            <div className="payroll-stats-grid">
+                <div className="payroll-stat-card">
+                    <div className="payroll-stat-icon blue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
                     </div>
-                    <div className="stat-card green">
-                        <div className="number">{stats.total_net ? `${formatNumber(stats.total_net)} Ar` : '0 Ar'}</div>
-                        <div className="label">Total net versé</div>
-                    </div>
-                    <div className="stat-card orange">
-                        <div className="number">{stats.employes_non_payes || 0}</div>
-                        <div className="label">Employés non payés</div>
-                    </div>
-                    <div className="stat-card red">
-                        <div className="number">{stats.moyenne_salaire ? `${formatNumber(stats.moyenne_salaire)} Ar` : '0 Ar'}</div>
-                        <div className="label">Salaire moyen</div>
+                    <div className="payroll-stat-info">
+                        <div className="payroll-stat-value">{totalEmployesPayes}</div>
+                        <div className="payroll-stat-label">Employés payés</div>
+                        <div className="payroll-stat-trend">ce mois</div>
                     </div>
                 </div>
-            )}
 
-            <div className="actions-bar">
-                <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
+                <div className="payroll-stat-card">
+                    <div className="payroll-stat-icon green">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </div>
+                    <div className="payroll-stat-info">
+                        <div className="payroll-stat-value">{formatNumber(totalNet)} Ar</div>
+                        <div className="payroll-stat-label">Total net versé</div>
+                        <div className="payroll-stat-trend">cumulé</div>
+                    </div>
+                </div>
+
+                <div className="payroll-stat-card">
+                    <div className="payroll-stat-icon orange">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 8v4l3 3M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                        </svg>
+                    </div>
+                    <div className="payroll-stat-info">
+                        <div className="payroll-stat-value">{employesNonPayes}</div>
+                        <div className="payroll-stat-label">Non payés</div>
+                        <div className="payroll-stat-trend">à traiter</div>
+                    </div>
+                </div>
+
+                <div className="payroll-stat-card">
+                    <div className="payroll-stat-icon purple">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2v4M12 22v-4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M22 12h-4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                        </svg>
+                    </div>
+                    <div className="payroll-stat-info">
+                        <div className="payroll-stat-value">{formatNumber(moyenneSalaire)} Ar</div>
+                        <div className="payroll-stat-label">Salaire moyen</div>
+                        <div className="payroll-stat-trend">par employé</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Actions */}
+            <div className="payroll-actions">
+                <button className="btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
                     Générer un bulletin
                 </button>
-                <button className="btn btn-secondary" onClick={handleGenererTous}>
+                <button className="btn-secondary" onClick={handleGenererTous}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
                     Générer pour tous ({moisNoms[formData.mois - 1]} {formData.annee})
                 </button>
             </div>
 
-            <div className="table-container">
-                <h3 style={{ padding: '15px 15px 0 15px' }}>Bulletins de paie</h3>
-                <table className="table">
-                    <thead>
-                        <tr>
-                            <th>Employé</th>
-                            <th>Poste</th>
-                            <th>Période</th>
-                            <th>Salaire base</th>
-                            <th>Prime</th>
-                            <th>Absences</th>
-                            <th>Net à payer</th>
-                            <th>Statut</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {bulletins.length === 0 ? (
+            {/* Liste des bulletins */}
+            <div className="payroll-table-container">
+                <div className="table-header">
+                    <h3>Bulletins de paie</h3>
+                    <div className="table-stats">
+                        {bulletins.length} bulletin(s)
+                    </div>
+                </div>
+                <div className="table-wrapper">
+                    <table className="payroll-table">
+                        <thead>
                             <tr>
-                                <td colSpan="9" style={{ textAlign: 'center', padding: '30px' }}>
-                                    Aucun bulletin de paie
-                                        </td>
+                                <th>Employé</th>
+                                <th>Poste</th>
+                                <th>Période</th>
+                                <th>Salaire base</th>
+                                <th>Prime</th>
+                                <th>Absences</th>
+                                <th>Net à payer</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
                             </tr>
-                        ) : (
-                            bulletins.map(b => {
-                                const role = getRoleDisplay(b.roles);
-                                return (
-                                    <tr key={b.id}>
-                                        <td><strong>{b.prenom} {b.nom}</strong></td>
-                                        <td>{role.icon} {role.text}</td>
-                                        <td>{moisNoms[b.mois - 1]} {b.annee}</td>
-                                        <td>{formatNumber(b.salaire_base)} Ar</td>
-                                        <td>{parseFloat(b.prime_transport || 0) > 0 ? `${formatNumber(b.prime_transport)} Ar` : '-'}</td>
-                                        <td>{b.jours_absence_non_paye > 0 ? `${b.jours_absence_non_paye}j (-${formatNumber(b.retenue_absence)} Ar)` : '-'}</td>
-                                        <td><strong style={{ color: '#28a745' }}>{formatNumber(b.net_a_payer)} Ar</strong></td>
-                                        <td>{getStatusBadge(b.statut)}</td>
-                                        <td>
-                                            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                                                {b.statut !== 'paye' && (
-                                                    <>
-                                                        <button 
-                                                            className="btn btn-sm btn-primary"
-                                                            onClick={() => handleModifier(b)}
-                                                            style={{ background: '#ff9800', color: 'white' }}
-                                                        >
-                                                            Modifier
-                                                        </button>
-                                                        <button 
-                                                            className="btn btn-sm btn-success"
-                                                            onClick={() => handleMarquerPaye(b.id)}
-                                                        >
-                                                            Payé
-                                                        </button>
-                                                    </>
-                                                )}
-                                                <button 
-                                                    className="btn btn-sm btn-danger"
-                                                    onClick={() => handleSupprimer(b.id)}
-                                                >
-                                                    Supprimer
-                                                </button>
-                                                <button 
-                                                    className="btn btn-sm btn-primary"
-                                                    onClick={() => generatePDF(b)}
-                                                    style={{ background: '#dc3545' }}
-                                                >
-                                                    PDF
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })
-                        )}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {bulletins.length === 0 ? (
+                                <tr>
+                                    <td colSpan="9" className="empty-state">
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
+                                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                        <p>Aucun bulletin de paie</p>
+                                        <span>Générez un bulletin pour commencer</span>
+                                    </td>
+                                </tr>
+                            ) : (
+                                bulletins.map(b => {
+                                    const role = getRoleDisplay(b.roles);
+                                    return (
+                                        <tr key={b.id}>
+                                            <td>
+                                                <div className="employee-cell">
+                                                    <div className="employee-avatar" style={{ background: role.color }}>
+                                                        {b.prenom?.charAt(0)}{b.nom?.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="employee-name">{b.prenom} {b.nom}</div>
+                                                        <div className="employee-email">{b.email}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span className="role-badge" style={{ background: `${role.color}15`, color: role.color }}>
+                                                    {role.icon} {role.text}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div className="period-cell">
+                                                    <span className="month">{moisNoms[b.mois - 1]}</span>
+                                                    <span className="year">{b.annee}</span>
+                                                </div>
+                                            </td>
+                                            <td className="amount">{formatNumber(b.salaire_base)} Ar</td>
+                                            <td className="amount">{parseFloat(b.prime_transport || 0) > 0 ? `${formatNumber(b.prime_transport)} Ar` : '-'}</td>
+                                            <td className="absence-cell">
+                                                {b.jours_absence_non_paye > 0 ? (
+                                                    <span className="absence-badge">
+                                                        {b.jours_absence_non_paye}j (-{formatNumber(b.retenue_absence)} Ar)
+                                                    </span>
+                                                ) : '-'}
+                                            </td>
+                                            <td className="net-amount">{formatNumber(b.net_a_payer)} Ar</td>
+                                            <td>{getStatusBadge(b.statut)}</td>
+                                            <td>
+                                                <div className="action-buttons">
+                                                    {b.statut !== 'paye' && (
+                                                        <>
+                                                            <button className="action-btn edit" onClick={() => handleModifier(b)} title="Modifier">
+                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                    <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
+                                                                    <path d="M4 20h16"/>
+                                                                </svg>
+                                                            </button>
+                                                            <button className="action-btn pay" onClick={() => handleMarquerPaye(b.id)} title="Marquer payé">
+                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                    <path d="M20 6L9 17l-5-5"/>
+                                                                </svg>
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    <button className="action-btn delete" onClick={() => handleSupprimer(b.id)} title="Supprimer">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button className="action-btn pdf" onClick={() => generatePDF(b)} title="PDF">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                                                            <path d="M14 2v6h6"/>
+                                                            <path d="M12 18v-4M9 16h6"/>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
+            {/* Modal de génération/modification */}
             {showModal && (
                 <div className="modal-overlay" onClick={(e) => {
                     if (e.target === e.currentTarget) { setShowModal(false); resetForm(); }
                 }}>
                     <div className="modal" style={{ maxWidth: '650px' }}>
-                        <h3>{selectedBulletin ? 'Modifier le bulletin' : 'Générer un bulletin de paie'}</h3>
+                        <div className="modal-header">
+                            <h3>{selectedBulletin ? 'Modifier le bulletin' : 'Générer un bulletin de paie'}</h3>
+                            <button className="modal-close" onClick={() => { setShowModal(false); resetForm(); }}>✖</button>
+                        </div>
 
                         {message && (
                             <div className={message.includes('succès') ? 'success-message' : 'error-message'}>
@@ -464,9 +566,9 @@ function PayrollDashboard() {
                         <form onSubmit={selectedBulletin ? handleSaveModification : handleGenererBulletin}>
                             {!selectedBulletin && (
                                 <>
-                                    <div className="filters-bar" style={{ marginBottom: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-                                        <div className="form-row">
-                                            <div className="form-group" style={{ flex: 2 }}>
+                                    <div className="filters-section">
+                                        <div className="filter-row">
+                                            <div className="filter-field">
                                                 <label>Rechercher</label>
                                                 <input
                                                     type="text"
@@ -476,7 +578,7 @@ function PayrollDashboard() {
                                                     onChange={(e) => setSearchTerm(e.target.value)}
                                                 />
                                             </div>
-                                            <div className="form-group">
+                                            <div className="filter-field">
                                                 <label>Rôle</label>
                                                 <select
                                                     className="form-input"
@@ -489,7 +591,7 @@ function PayrollDashboard() {
                                                 </select>
                                             </div>
                                             {services.length > 0 && (
-                                                <div className="form-group">
+                                                <div className="filter-field">
                                                     <label>Service</label>
                                                     <select
                                                         className="form-input"
@@ -503,19 +605,14 @@ function PayrollDashboard() {
                                                     </select>
                                                 </div>
                                             )}
-                                            <div className="form-group" style={{ justifyContent: 'flex-end' }}>
+                                            <div className="filter-field">
                                                 <label>&nbsp;</label>
-                                                <button 
-                                                    type="button" 
-                                                    className="btn btn-sm btn-secondary" 
-                                                    onClick={resetFilters}
-                                                    style={{ marginTop: '5px' }}
-                                                >
+                                                <button type="button" className="btn-reset" onClick={resetFilters}>
                                                     Réinitialiser
                                                 </button>
                                             </div>
                                         </div>
-                                        <div className="info-text" style={{ fontSize: '12px', marginTop: '10px' }}>
+                                        <div className="filter-info">
                                             {filteredEmployees.length} employé(s) trouvé(s) sur {employees.length}
                                         </div>
                                     </div>
@@ -542,16 +639,6 @@ function PayrollDashboard() {
                                                 );
                                             })}
                                         </select>
-                                        {filteredEmployees.length === 0 && employees.length > 0 && (
-                                            <small className="info-text" style={{ color: '#ff9800', display: 'block', marginTop: '5px' }}>
-                                                Aucun employé ne correspond aux critères de recherche. Modifiez vos filtres.
-                                            </small>
-                                        )}
-                                        {employees.length === 0 && (
-                                            <small className="info-text" style={{ color: '#dc3545', display: 'block', marginTop: '5px' }}>
-                                                Aucun employé trouvé. Veuillez créer un employé depuis "Gestion des utilisateurs".
-                                            </small>
-                                        )}
                                     </div>
                                 </>
                             )}
@@ -593,7 +680,6 @@ function PayrollDashboard() {
                                     step="10000"
                                     required
                                 />
-                                <small className="info-text">Salaire mensuel de base en Ariary</small>
                             </div>
 
                             <div className="form-group">
@@ -606,26 +692,32 @@ function PayrollDashboard() {
                                     min="0"
                                     step="10000"
                                 />
-                                <small className="info-text">Prime exceptionnelle en Ariary (transport, performance, etc.)</small>
                             </div>
 
-                            <div className="info-box" style={{ background: '#e8f4fd', marginTop: '15px' }}>
-                                <strong>Aperçu :</strong><br/>
-                                Salaire brut : {formatNumber(parseFloat(formData.salaire_base || 0) + parseFloat(formData.prime || 0))} Ar<br/>
-                                Prime : {formatNumber(formData.prime || 0)} Ar<br/>
-                                <strong>Net estimé : {formatNumber((parseFloat(formData.salaire_base) || 0) + (parseFloat(formData.prime) || 0))} Ar</strong>
-                                <br/><small style={{ color: '#888' }}>* Les retenues pour absences seront calculées automatiquement</small>
+                            <div className="preview-box">
+                                <div className="preview-title">Aperçu</div>
+                                <div className="preview-content">
+                                    <div className="preview-line">
+                                        <span>Salaire brut :</span>
+                                        <strong>{formatNumber(parseFloat(formData.salaire_base || 0) + parseFloat(formData.prime || 0))} Ar</strong>
+                                    </div>
+                                    <div className="preview-line">
+                                        <span>Prime :</span>
+                                        <span>{formatNumber(formData.prime || 0)} Ar</span>
+                                    </div>
+                                    <div className="preview-line net">
+                                        <span>Net estimé :</span>
+                                        <strong style={{ color: '#10b981' }}>{formatNumber((parseFloat(formData.salaire_base) || 0) + (parseFloat(formData.prime) || 0))} Ar</strong>
+                                    </div>
+                                </div>
+                                <div className="preview-note">* Les retenues pour absences seront calculées automatiquement</div>
                             </div>
 
                             <div className="btn-group" style={{ marginTop: '20px' }}>
-                                <button type="submit" className="btn btn-primary">
+                                <button type="submit" className="btn-primary">
                                     {selectedBulletin ? 'Enregistrer' : 'Générer le bulletin'}
                                 </button>
-                                <button 
-                                    type="button" 
-                                    className="btn btn-secondary" 
-                                    onClick={() => { setShowModal(false); resetForm(); }}
-                                >
+                                <button type="button" className="btn-secondary" onClick={() => { setShowModal(false); resetForm(); }}>
                                     Annuler
                                 </button>
                             </div>

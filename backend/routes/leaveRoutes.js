@@ -780,18 +780,29 @@ router.get('/team-stats', authMiddleware, async (req, res) => {
             }
         });
         
-        // Demandes par mois
-        const parMois = await pool.query(`
+        // Demandes par mois - VERSION CORRIGÉE AVEC TOUS LES MOIS
+        const currentYear = new Date().getFullYear();
+        const monthlyResult = await pool.query(`
+            WITH months AS (
+                SELECT generate_series(1, 12) AS mois_num
+            ),
+            stats AS (
+                SELECT 
+                    EXTRACT(MONTH FROM date_debut) as mois,
+                    COUNT(*) as total
+                FROM demandes_conges
+                WHERE utilisateur_id = ANY($1::int[])
+                AND EXTRACT(YEAR FROM date_debut) = $2
+                GROUP BY EXTRACT(MONTH FROM date_debut)
+            )
             SELECT 
-                EXTRACT(YEAR FROM date_debut) as annee,
-                EXTRACT(MONTH FROM date_debut) as mois,
-                COUNT(*) as total
-            FROM demandes_conges
-            WHERE utilisateur_id = ANY($1::int[])
-            AND date_debut >= NOW() - INTERVAL '12 months'
-            GROUP BY annee, mois
-            ORDER BY annee DESC, mois DESC
-        `, [teamIds]);
+                months.mois_num as mois,
+                COALESCE(stats.total, 0) as total,
+                $2 as annee
+            FROM months
+            LEFT JOIN stats ON months.mois_num = stats.mois
+            ORDER BY months.mois_num ASC
+        `, [teamIds, currentYear]);
         
         res.json({
             totalRequests: parseInt(globalStats.rows[0].total) || 0,
@@ -810,7 +821,7 @@ router.get('/team-stats', authMiddleware, async (req, res) => {
                 totalDays: parseInt(row.total_days) || 0
             })),
             requestsByType: requestsByType,
-            monthlyData: parMois.rows
+            monthlyData: monthlyResult.rows
         });
         
     } catch (error) {
@@ -823,11 +834,88 @@ router.get('/team-stats', authMiddleware, async (req, res) => {
 
 router.get('/notifications', authMiddleware, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT * FROM notifications WHERE utilisateur_id = $1 ORDER BY cree_le DESC LIMIT 20`,
-            [req.user.id]
+        const userId = req.user.id;
+        const userRoles = req.user.roles || [];
+        const isAdmin = userRoles.includes('admin');
+        const isManager = userRoles.includes('manager');
+        
+        let notifications = [];
+        
+        // 1. Notifications personnelles de l'utilisateur
+        const personalNotifs = await pool.query(
+            `SELECT * FROM notifications 
+             WHERE utilisateur_id = $1 
+             ORDER BY cree_le DESC 
+             LIMIT 30`,
+            [userId]
         );
-        res.json(result.rows);
+        notifications.push(...personalNotifs.rows);
+        
+        // 2. Si manager, ajouter les notifications concernant son équipe
+        if (isManager) {
+            const teamNotifs = await pool.query(`
+                SELECT 
+                    n.*,
+                    'team' as source
+                FROM notifications n
+                JOIN users u ON n.utilisateur_id = u.id
+                WHERE u.manager_id = $1
+                ORDER BY n.cree_le DESC
+                LIMIT 20
+            `, [userId]);
+            notifications.push(...teamNotifs.rows);
+            
+            // Demandes en attente de validation manager
+            const pendingManagerNotifs = await pool.query(`
+                SELECT 
+                    'demande_attente' as type,
+                    'Nouvelle demande à valider' as titre,
+                    CONCAT(u.prenom, ' ', u.nom, ' a fait une demande de congé') as message,
+                    '/dashboard/manager/validations' as lien,
+                    dc.cree_le,
+                    false as est_lu
+                FROM demandes_conges dc
+                JOIN users u ON dc.utilisateur_id = u.id
+                WHERE u.manager_id = $1 AND dc.statut = 'pending_manager'
+                ORDER BY dc.cree_le DESC
+            `, [userId]);
+            notifications.push(...pendingManagerNotifs.rows);
+        }
+        
+        // 3. Si admin, ajouter les notifications système
+        if (isAdmin) {
+            const adminNotifs = await pool.query(`
+                SELECT 
+                    'system' as type,
+                    'Information système' as titre,
+                    message,
+                    lien,
+                    cree_le,
+                    false as est_lu
+                FROM notifications
+                WHERE utilisateur_id IS NULL AND type IN ('admin_broadcast', 'system')
+                ORDER BY cree_le DESC
+                LIMIT 10
+            `);
+            notifications.push(...adminNotifs.rows);
+        }
+        
+        // Supprimer les doublons par id
+        const uniqueNotifs = [];
+        const seenIds = new Set();
+        for (const notif of notifications) {
+            if (notif.id && !seenIds.has(notif.id)) {
+                seenIds.add(notif.id);
+                uniqueNotifs.push(notif);
+            } else if (!notif.id) {
+                uniqueNotifs.push(notif);
+            }
+        }
+        
+        // Trier par date décroissante
+        uniqueNotifs.sort((a, b) => new Date(b.cree_le) - new Date(a.cree_le));
+        
+        res.json(uniqueNotifs.slice(0, 30));
     } catch (error) {
         console.error('Erreur notifications:', error);
         res.json([]);

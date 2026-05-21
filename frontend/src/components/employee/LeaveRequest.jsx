@@ -95,10 +95,15 @@ function LeaveRequest({ onSuccess }) {
 
     return (
         <div>
-            <h2>Demander un congé</h2>
+            <div className="dashboard-header">
+                <div className="dashboard-header-content">
+                    <h1 className="dashboard-title">Demander un congé</h1>
+                    <p className="dashboard-subtitle">Soumettez une nouvelle demande de congé</p>
+                </div>
+            </div>
             
             <div className="info-box" style={{ background: '#e8f4fd', marginBottom: '20px' }}>
-                <strong>Regles selon le type de congé :</strong><br/>
+                <strong>Règles selon le type de congé :</strong><br/>
                 {formData.type_id === 1 && (
                     <>
                         • <strong>Congés Payés</strong> : 25 jours/an, max 20 jours consécutifs<br/>
@@ -114,7 +119,7 @@ function LeaveRequest({ onSuccess }) {
                     </>
                 )}
                 <br/>
-                • Delai minimum entre deux demandes : 7 jours<br/>
+                • Délai minimum entre deux demandes : 7 jours<br/>
                 • Dates à partir d'aujourd'hui uniquement
             </div>
             
@@ -131,7 +136,7 @@ function LeaveRequest({ onSuccess }) {
                 </div>
             )}
             
-            <form onSubmit={handleSubmit} className="admin-section">
+            <form onSubmit={handleSubmit} className="admin-section" style={{ maxWidth: '600px' }}>
                 <div className="form-group">
                     <label>Type de congé</label>
                     <select 
@@ -166,7 +171,7 @@ function LeaveRequest({ onSuccess }) {
                             min={todayDate}
                             required 
                         />
-                        <small className="info-text">Date à partir d'aujourd'hui uniquement</small>
+                        <small className="info-text">📅 Date à partir d'aujourd'hui uniquement</small>
                     </div>
                     <div className="form-group">
                         <label>Date de fin</label>
@@ -182,7 +187,7 @@ function LeaveRequest({ onSuccess }) {
                             min={formData.start_date || todayDate}
                             required 
                         />
-                        <small className="info-text">Doit être après ou égale à la date de début</small>
+                        <small className="info-text">📅 Doit être après ou égale à la date de début</small>
                     </div>
                 </div>
                 
@@ -204,21 +209,30 @@ function LeaveRequest({ onSuccess }) {
                     </div>
                 )}
                 
-                <div className="btn-group">
-                    <button type="submit" className="btn btn-primary" disabled={loading}>
+                <div className="payroll-actions" style={{ marginTop: '20px' }}>
+                    <button type="submit" className="btn-primary" disabled={loading}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                        </svg>
                         {loading ? 'Envoi en cours...' : 'Envoyer la demande'}
                     </button>
-                    <button type="button" className="btn btn-secondary" onClick={() => navigate('/dashboard/employee')}>
+                    <button type="button" className="btn-secondary" onClick={() => navigate('/dashboard/employee')}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
                         Annuler
                     </button>
                 </div>
             </form>
             
-            <div className="info-box" style={{ marginTop: '20px', background: '#e8f4fd' }}>
-                <strong>Processus de validation en 2 étapes :</strong><br/>
-                1ère étape : Votre manager valide la demande<br/>
-                2ème étape : L'administrateur valide définitivement<br/>
-                <strong>Vous pouvez modifier ou annuler votre demande tant qu'elle est en attente de validation par le manager.</strong>
+            <div className="info-card-tip">
+                <div className="tip-icon">ℹ️</div>
+                <div className="tip-content">
+                    <strong>Processus de validation en 2 étapes :</strong><br/>
+                    1ère étape : Votre manager valide la demande<br/>
+                    2ème étape : L'administrateur valide définitivement<br/>
+                    <strong>Vous pouvez modifier ou annuler votre demande tant qu'elle est en attente de validation par le manager.</strong>
+                </div>
             </div>
         </div>
     );

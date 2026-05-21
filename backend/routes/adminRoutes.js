@@ -760,6 +760,59 @@ router.get('/managers-list', async (req, res) => {
     }
 });
 
+// ============ NOTIFICATIONS ADMIN ============
+router.get('/notifications', async (req, res) => {
+    try {
+        // Notifications pour admin : validations en attente, nouveaux utilisateurs, etc.
+        const adminId = req.user.id;
+        
+        // Demandes en attente de validation admin
+        const pendingValidations = await pool.query(`
+            SELECT 
+                'validation_requise' as type,
+                'Demande à valider' as titre,
+                CONCAT(u.prenom, ' ', u.nom, ' a fait une demande de ', 
+                    CASE WHEN dc.type_conge_id = 1 THEN 'congés payés' ELSE 'congé sans solde' END,
+                    ' du ', TO_CHAR(dc.date_debut, 'DD/MM/YYYY'), ' au ', TO_CHAR(dc.date_fin, 'DD/MM/YYYY')) as message,
+                '/dashboard/admin' as lien,
+                dc.cree_le as cree_le,
+                false as est_lu
+            FROM demandes_conges dc
+            JOIN users u ON dc.utilisateur_id = u.id
+            WHERE dc.statut = 'pending_admin'
+            ORDER BY dc.cree_le DESC
+            LIMIT 20
+        `);
+        
+        // Notifications génériques admin
+        const adminNotifications = await pool.query(`
+            SELECT * FROM notifications 
+            WHERE utilisateur_id = $1 OR (utilisateur_id IS NULL AND type IN ('admin_broadcast', 'system'))
+            ORDER BY cree_le DESC 
+            LIMIT 20
+        `, [adminId]);
+        
+        // Fusionner les notifications
+        const allNotifications = [...pendingValidations.rows, ...adminNotifications.rows];
+        allNotifications.sort((a, b) => new Date(b.cree_le) - new Date(a.cree_le));
+        
+        res.json(allNotifications.slice(0, 20));
+    } catch (error) {
+        console.error('Erreur notifications admin:', error);
+        res.json([]);
+    }
+});
+
+router.put('/notifications/:id/read', async (req, res) => {
+    try {
+        await pool.query(`UPDATE notifications SET est_lu = true WHERE id = $1 AND utilisateur_id = $2`, 
+            [req.params.id, req.user.id]);
+        res.json({ message: 'Notification lue' });
+    } catch (error) {
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
 // ============ LOGS ============
 router.get('/logs', async (req, res) => {
     res.json([]);

@@ -6,6 +6,7 @@ function CalendarView({ requests, onRequestUpdate }) {
     const [calendarDays, setCalendarDays] = useState([]);
     const [selectedDayInfo, setSelectedDayInfo] = useState(null);
     const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0 });
+    const [viewMode, setViewMode] = useState('month');
 
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth();
@@ -74,16 +75,6 @@ function CalendarView({ requests, onRequestUpdate }) {
         return { status: priorityStatus, requests: dayRequests };
     };
 
-    const getStatusIcon = (status) => {
-        switch(status) {
-            case 'approved': return '✓';
-            case 'pending_admin': return '○';
-            case 'pending_manager': return '◐';
-            case 'rejected': return '✗';
-            default: return '•';
-        }
-    };
-
     const getStatusLabel = (status) => {
         switch(status) {
             case 'approved': return 'Approuvé';
@@ -118,10 +109,8 @@ function CalendarView({ requests, onRequestUpdate }) {
         const prevMonthDays = getDaysInMonth(currentYear, currentMonth - 1);
         const days = [];
         
-        // Ajustement pour que la semaine commence Lundi (1) au lieu de Dimanche (0)
         let startOffset = firstDay === 0 ? 6 : firstDay - 1;
         
-        // Jours du mois précédent
         for (let i = startOffset - 1; i >= 0; i--) {
             const date = new Date(currentYear, currentMonth - 1, prevMonthDays - i);
             const { status, requests: reqs } = getStatusForDate(date);
@@ -135,7 +124,6 @@ function CalendarView({ requests, onRequestUpdate }) {
             });
         }
         
-        // Jours du mois courant
         for (let i = 1; i <= daysInMonth; i++) {
             const date = new Date(currentYear, currentMonth, i);
             const { status, requests: reqs } = getStatusForDate(date);
@@ -149,7 +137,6 @@ function CalendarView({ requests, onRequestUpdate }) {
             });
         }
         
-        // Compléter pour avoir 42 jours (6 lignes)
         const remainingDays = 42 - days.length;
         for (let i = 1; i <= remainingDays; i++) {
             const date = new Date(currentYear, currentMonth + 1, i);
@@ -187,7 +174,6 @@ function CalendarView({ requests, onRequestUpdate }) {
 
     const weekDays = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
-    // Formater la date pour l'affichage
     const formatDateFR = (date) => {
         return date.toLocaleDateString('fr-FR', {
             day: '2-digit',
@@ -196,119 +182,232 @@ function CalendarView({ requests, onRequestUpdate }) {
         });
     };
 
+    // Calcul des demandes à venir
+    const upcomingRequests = requests
+        .filter(r => {
+            const startDate = new Date(r.start_date);
+            return startDate >= new Date() && r.status !== 'rejected';
+        })
+        .sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
+        .slice(0, 5);
+
     return (
-        <div className="calendar-container">
-            <h2>Calendrier des congés</h2>
-            
-            {/* Statistiques */}
-            <div className="calendar-stats">
-                <div className="stat-badge total">
-                    <span className="stat-number">{stats.total}</span>
-                    <span className="stat-label">Total demandes</span>
+        <div className="calendar-container-modern">
+            {/* En-tête */}
+            <div className="calendar-header-modern">
+                <div>
+                    <h1 className="calendar-title">Mon calendrier</h1>
+                    <p className="calendar-subtitle">Visualisation de mes demandes de congé</p>
                 </div>
-                <div className="stat-badge approved">
-                    <span className="stat-number">{stats.approved}</span>
-                    <span className="stat-label">Approuvées</span>
-                </div>
-                <div className="stat-badge pending">
-                    <span className="stat-number">{stats.pending}</span>
-                    <span className="stat-label">En attente</span>
-                </div>
-                <div className="stat-badge rejected">
-                    <span className="stat-number">{stats.rejected}</span>
-                    <span className="stat-label">Refusées</span>
+                <div className="view-toggle">
+                    <button className={`view-btn ${viewMode === 'month' ? 'active' : ''}`} onClick={() => setViewMode('month')}>
+                        📅 Mois
+                    </button>
+                    <button className={`view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}>
+                        📋 Liste
+                    </button>
                 </div>
             </div>
-            
-            {/* En-tête du calendrier */}
-            <div className="calendar-header">
-                <button className="btn btn-sm btn-secondary" onClick={() => changeMonth(-1)}>◀ Mois précédent</button>
-                <h3>{getMonthName(currentMonth)} {currentYear}</h3>
-                <button className="btn btn-sm btn-secondary" onClick={() => changeMonth(1)}>Mois suivant ▶</button>
-                <button className="btn btn-sm btn-primary" onClick={() => { setCurrentDate(new Date()); setSelectedDayInfo(null); }}>Aujourd'hui</button>
+
+            {/* Mini-statistiques */}
+            <div className="calendar-stats-bar">
+                <div className="stat-item">
+                    <span className="stat-dot total-dot"></span>
+                    <div className="stat-info">
+                        <span className="stat-number">{stats.total}</span>
+                        <span className="stat-label">Total</span>
+                    </div>
+                </div>
+                <div className="stat-item">
+                    <span className="stat-dot approved-dot"></span>
+                    <div className="stat-info">
+                        <span className="stat-number">{stats.approved}</span>
+                        <span className="stat-label">Approuvés</span>
+                    </div>
+                </div>
+                <div className="stat-item">
+                    <span className="stat-dot pending-dot"></span>
+                    <div className="stat-info">
+                        <span className="stat-number">{stats.pending}</span>
+                        <span className="stat-label">En attente</span>
+                    </div>
+                </div>
+                <div className="stat-item">
+                    <span className="stat-dot rejected-dot"></span>
+                    <div className="stat-info">
+                        <span className="stat-number">{stats.rejected}</span>
+                        <span className="stat-label">Refusés</span>
+                    </div>
+                </div>
             </div>
-            
-            {/* Légende des couleurs */}
-            <div className="calendar-legend">
-                <div className="legend-item">
-                    <div className="legend-color approved-color"></div>
-                    <span>Congé approuvé</span>
+
+            {/* Navigation */}
+            <div className="calendar-nav">
+                <button className="nav-btn" onClick={() => changeMonth(-1)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M15 18l-6-6 6-6"/>
+                    </svg>
+                    Mois précédent
+                </button>
+                <div className="current-month">
+                    <span className="month-name">{getMonthName(currentMonth)}</span>
+                    <span className="year-name">{currentYear}</span>
                 </div>
-                <div className="legend-item">
-                    <div className="legend-color pending-admin-color"></div>
-                    <span>En attente validation admin</span>
+                <button className="nav-btn" onClick={() => changeMonth(1)}>
+                    Mois suivant
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 18l6-6-6-6"/>
+                    </svg>
+                </button>
+                <button className="today-btn" onClick={() => { setCurrentDate(new Date()); setSelectedDayInfo(null); }}>
+                    Aujourd'hui
+                </button>
+            </div>
+
+            {/* Légende compacte */}
+            <div className="calendar-legend-compact">
+                <div className="legend-item-compact">
+                    <div className="legend-color-compact approved"></div>
+                    <span>Approuvé</span>
                 </div>
-                <div className="legend-item">
-                    <div className="legend-color pending-manager-color"></div>
-                    <span>En attente validation manager</span>
+                <div className="legend-item-compact">
+                    <div className="legend-color-compact pending-admin"></div>
+                    <span>Attente admin</span>
                 </div>
-                <div className="legend-item">
-                    <div className="legend-color rejected-color"></div>
-                    <span>Congé refusé</span>
+                <div className="legend-item-compact">
+                    <div className="legend-color-compact pending-manager"></div>
+                    <span>Attente manager</span>
                 </div>
-                <div className="legend-item">
-                    <div className="legend-color today-color"></div>
+                <div className="legend-item-compact">
+                    <div className="legend-color-compact rejected"></div>
+                    <span>Refusé</span>
+                </div>
+                <div className="legend-item-compact">
+                    <div className="legend-color-compact today"></div>
                     <span>Aujourd'hui</span>
                 </div>
             </div>
-            
-            {/* Grille du calendrier */}
-            <div className="calendar-grid">
-                {weekDays.map(day => (
-                    <div key={day} className="calendar-weekday">{day}</div>
-                ))}
-                {calendarDays.map((day, index) => {
-                    const isCurrentDay = isToday(day.date);
-                    const dayClassName = getDayClassName(day);
-                    
-                    return (
-                        <div 
-                            key={index}
-                            className={`calendar-cell ${dayClassName} ${!day.isCurrentMonth ? 'other-month' : ''}`}
-                            onClick={() => handleDayClick(day)}
-                        >
-                            <div className="calendar-day-header">
-                                <span className={`calendar-day-number ${isCurrentDay ? 'today' : ''}`}>
-                                    {day.dayNumber}
-                                </span>
-                                {day.requestsCount > 0 && (
-                                    <span className="calendar-event-icon">{getStatusIcon(day.status)}</span>
-                                )}
-                            </div>
-                            {day.requestsCount > 0 && (
-                                <div className="calendar-event-info">
-                                    <small>{day.requestsCount} événement(s)</small>
+
+            {viewMode === 'month' ? (
+                <>
+                    {/* Grille du calendrier */}
+                    <div className="calendar-grid-modern">
+                        {weekDays.map(day => (
+                            <div key={day} className="calendar-weekday-modern">{day}</div>
+                        ))}
+                        {calendarDays.map((day, index) => {
+                            const isCurrentDay = isToday(day.date);
+                            const dayClassName = getDayClassName(day);
+                            
+                            return (
+                                <div 
+                                    key={index}
+                                    className={`calendar-cell-modern ${dayClassName} ${!day.isCurrentMonth ? 'other-month' : ''}`}
+                                    onClick={() => handleDayClick(day)}
+                                >
+                                    <div className="calendar-day-header-modern">
+                                        <span className={`calendar-day-number-modern ${isCurrentDay ? 'today' : ''}`}>
+                                            {day.dayNumber}
+                                        </span>
+                                        {day.requestsCount > 0 && (
+                                            <span className="calendar-event-badge">{day.requestsCount}</span>
+                                        )}
+                                    </div>
+                                    {day.requestsCount > 0 && day.requestsCount <= 2 && (
+                                        <div className="calendar-event-mini">
+                                            {day.requests.slice(0, 2).map((req, idx) => {
+                                                const typeIcon = req.type_id === 1 ? '🏖️' : '📝';
+                                                return (
+                                                    <div key={idx} className="mini-event" title={getTypeDisplay(req)}>
+                                                        {typeIcon}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-            
+                            );
+                        })}
+                    </div>
+                </>
+            ) : (
+                /* Vue liste des demandes */
+                <div className="absences-list-view">
+                    <div className="list-header">
+                        <span>Type</span>
+                        <span>Dates</span>
+                        <span>Durée</span>
+                        <span>Statut</span>
+                    </div>
+                    {requests.length === 0 ? (
+                        <div className="empty-list">Aucune demande</div>
+                    ) : (
+                        requests.map((req, idx) => (
+                            <div key={idx} className="list-item">
+                                <span className="list-employee">{getTypeDisplay(req)}</span>
+                                <span className="list-dates">{req.start_date} → {req.end_date}</span>
+                                <span className="list-type">{req.duration} {req.type === 'Permission' ? 'h' : 'j'}</span>
+                                <span className={`list-status status-${req.status}`}>
+                                    {getStatusLabel(req.status)}
+                                </span>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+
             {/* Panneau de détail */}
             {selectedDayInfo && selectedDayInfo.requests.length > 0 && (
-                <div className="calendar-detail-panel">
-                    <div className="detail-header">
+                <div className="calendar-detail-panel-modern">
+                    <div className="detail-header-modern">
                         <h4>{formatDateFR(selectedDayInfo.date)}</h4>
-                        <button className="detail-close" onClick={() => setSelectedDayInfo(null)}>✖</button>
+                        <button className="detail-close-modern" onClick={() => setSelectedDayInfo(null)}>✖</button>
                     </div>
-                    <div className="detail-body">
+                    <div className="detail-body-modern">
                         {selectedDayInfo.requests.map((req, idx) => (
-                            <div key={idx} className="detail-item">
-                                <div className="detail-item-header">
-                                    <span className={`detail-status-badge status-${req.status}`}>
+                            <div key={idx} className="detail-item-modern">
+                                <div className="detail-employee">
+                                    <div className="detail-avatar">
+                                        {getTypeDisplay(req).charAt(0)}
+                                    </div>
+                                    <div className="detail-info">
+                                        <div className="detail-name">{getTypeDisplay(req)}</div>
+                                        <div className="detail-type">
+                                            {req.request_type === 'permission' ? req.start_date : `Du ${req.start_date} au ${req.end_date}`}
+                                        </div>
+                                        <div className="detail-service">
+                                            Durée : {req.duration} {req.type === 'Permission' ? 'heure(s)' : 'jour(s)'}
+                                        </div>
+                                        {req.motif && <div className="detail-service">Motif : {req.motif}</div>}
+                                        {req.motif_refus && <div className="detail-service rejection">Motif du refus : {req.motif_refus}</div>}
+                                    </div>
+                                    <div className={`detail-status status-${req.status}`}>
                                         {getStatusLabel(req.status)}
-                                    </span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Section des demandes à venir */}
+            {upcomingRequests.length > 0 && (
+                <div className="upcoming-section">
+                    <h3>📋 Demandes à venir</h3>
+                    <div className="upcoming-list">
+                        {upcomingRequests.map((req, idx) => (
+                            <div key={idx} className="upcoming-item">
+                                <div className="upcoming-date">
+                                    {new Date(req.start_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                                </div>
+                                <div className="upcoming-info">
                                     <strong>{getTypeDisplay(req)}</strong>
+                                    <span>{req.start_date} → {req.end_date}</span>
                                 </div>
-                                <div className="detail-item-dates">
-                                    📆 {req.request_type === 'permission' ? req.start_date : `Du ${req.start_date} au ${req.end_date}`}
+                                <div className={`upcoming-status status-${req.status}`}>
+                                    {getStatusLabel(req.status).split(' ')[0]}
                                 </div>
-                                <div className="detail-item-duration">
-                                    ⏱️ Durée : {req.duration} {req.type === 'Permission' ? 'heure(s)' : 'jour(s)'}
-                                </div>
-                                {req.motif && <div className="detail-item-motif">📝 Motif : {req.motif}</div>}
-                                {req.motif_refus && <div className="detail-item-refus">❌ Motif du refus : {req.motif_refus}</div>}
                             </div>
                         ))}
                     </div>

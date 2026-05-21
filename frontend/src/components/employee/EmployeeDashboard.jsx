@@ -27,8 +27,6 @@ function EmployeeDashboard({ onLogout }) {
         permission: 0
     });
     const [requests, setRequests] = useState([]);
-    const [notifications, setNotifications] = useState([]);
-    const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [editingRequest, setEditingRequest] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -88,7 +86,7 @@ function EmployeeDashboard({ onLogout }) {
                 }
                 
                 let displayType = req.type;
-                if (req.type_id === 1 || req.type === 'Congés Payés' || req.type === 'Congés Payés') {
+                if (req.type_id === 1 || req.type === 'Congés Payés') {
                     displayType = 'Congés Payés';
                 } else {
                     displayType = 'Congé sans solde';
@@ -130,18 +128,6 @@ function EmployeeDashboard({ onLogout }) {
         }
     }, []);
 
-    const fetchNotifications = useCallback(async () => {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-            const response = await axios.get('http://localhost:5000/api/leaves/notifications', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setNotifications(response.data);
-            setUnreadCount(response.data.filter(n => !n.est_lu).length);
-        } catch (error) { console.error('Erreur notifications:', error); }
-    }, []);
-
     const fetchAllData = useCallback(async () => {
         await Promise.all([fetchBalance(), fetchRequests()]);
         setLoading(false);
@@ -149,54 +135,33 @@ function EmployeeDashboard({ onLogout }) {
 
     const refreshAllData = useCallback(() => {
         fetchAllData();
-        fetchNotifications();
-    }, [fetchAllData, fetchNotifications]);
+    }, [fetchAllData]);
 
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
         fetchAllData();
-        fetchNotifications();
-        const interval = setInterval(() => { fetchAllData(); fetchNotifications(); }, 30000);
+        const interval = setInterval(() => { fetchAllData(); }, 30000);
         return () => clearInterval(interval);
-    }, [fetchAllData, fetchNotifications]);
+    }, [fetchAllData]);
 
     useEffect(() => {
-    let filtered = [...requests];
-    
-    // Filtre par statut
-    if (filterStatus !== 'all') {
-        filtered = filtered.filter(r => r.status === filterStatus);
-    }
-    
-    // Filtre par type (uniquement CP=1 ou Sans solde=2)
-    if (filterType !== 'all') {
-        filtered = filtered.filter(r => r.type_id === parseInt(filterType));
-    }
-    
-    // Recherche par texte
-    if (searchTerm && searchTerm.trim() !== '') {
-        const term = searchTerm.toLowerCase().trim();
-        filtered = filtered.filter(r => {
-            return (r.start_date && r.start_date.toLowerCase().includes(term)) || 
-                   (r.motif && r.motif.toLowerCase().includes(term)) ||
-                   (r.type && r.type.toLowerCase().includes(term));
-        });
-    }
-    
-    setFilteredRequests(filtered);
-}, [requests, filterStatus, filterType, searchTerm]);
-
-    const markAsRead = async (id) => {
-        try {
-            const token = localStorage.getItem('token');
-            await axios.put(`http://localhost:5000/api/leaves/notifications/${id}/read`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
+        let filtered = [...requests];
+        if (filterStatus !== 'all') filtered = filtered.filter(r => r.status === filterStatus);
+        if (filterType !== 'all') {
+            if (filterType === 'permission') filtered = filtered.filter(r => r.request_type === 'permission');
+            else filtered = filtered.filter(r => r.type_id === parseInt(filterType));
+        }
+        if (searchTerm) {
+            filtered = filtered.filter(r => {
+                const searchLower = searchTerm.toLowerCase();
+                return (r.start_date || '').toLowerCase().includes(searchLower) || 
+                       (r.motif || '').toLowerCase().includes(searchLower) ||
+                       (r.type || '').toLowerCase().includes(searchLower);
             });
-            fetchNotifications();
-            success('Notification marquée comme lue');
-        } catch (error) { console.error('Erreur:', error); }
-    };
+        }
+        setFilteredRequests(filtered);
+    }, [requests, filterStatus, filterType, searchTerm]);
 
     const handleModifyRequest = (request) => {
         if (request.status !== 'pending_manager') { 
@@ -268,17 +233,17 @@ function EmployeeDashboard({ onLogout }) {
         
         switch(normalizedStatus) {
             case 'pending_manager': 
-                return <span className="status status-pending-manager">En attente manager - Modifiable</span>;
+                return <span className="status-badge status-badge-pending">En attente manager</span>;
             case 'pending_admin': 
-                return <span className="status status-pending-admin">En attente admin</span>;
+                return <span className="status-badge status-badge-admin">En attente admin</span>;
             case 'approved': 
-                return <span className="status status-approved">Approuvé</span>;
+                return <span className="status-badge status-badge-approved">Approuvé</span>;
             case 'rejected': 
-                return (<div><span className="status status-rejected">Refusé</span>
-                        {motif_refus && <small style={{ display: 'block', color: '#dc2626' }}>Motif : {motif_refus}</small>}
-                        </div>);
+                return (<><span className="status-badge status-badge-rejected">Refusé</span>
+                        {motif_refus && <div className="rejection-reason">Motif : {motif_refus}</div>}
+                        </>);
             default: 
-                return <span className="status status-pending-manager">En attente</span>;
+                return <span className="status-badge status-badge-pending">En attente</span>;
         }
     };
 
@@ -313,106 +278,242 @@ function EmployeeDashboard({ onLogout }) {
         );
     };
 
+    // DASHBOARD ACCUEIL
     const DashboardHome = () => (
         <>
-            <h1>Bonjour {user.prenom} {user.nom}</h1>
-            <p style={{ color: '#64748b', marginBottom: '24px' }}>Tableau de bord Employé</p>
+            <div className="dashboard-header">
+                <div className="dashboard-header-content">
+                    <h1 className="dashboard-title">Tableau de bord</h1>
+                    <p className="dashboard-subtitle">Bonjour {user.prenom} {user.nom} · Vue d'ensemble de vos congés</p>
+                </div>
+                <div className="dashboard-header-actions">
+                    <button className="btn-refresh" onClick={refreshAllData}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        Actualiser
+                    </button>
+                </div>
+            </div>
+
             <AlertBanner balance={balance} />
             
-            {notifications.length > 0 && (
-                <div className="admin-section" style={{ background: '#eff6ff' }}>
-                    <h3>Notifications ({unreadCount} non lues)</h3>
-                    {notifications.slice(0, 5).map(notif => (
-                        <div key={notif.id} className="request-item" style={{ background: notif.est_lu ? '#ffffff' : '#fef3c7' }}>
-                            <div className="request-info">
-                                <strong>{notif.titre}</strong>
-                                <small>{notif.message}</small>
-                                <small style={{ display: 'block', color: '#64748b' }}>{formatDateTime(notif.cree_le)}</small>
-                            </div>
-                            {!notif.est_lu && <button className="btn btn-sm btn-secondary" onClick={() => markAsRead(notif.id)}>Marquer lu</button>}
-                        </div>
-                    ))}
+            {/* Cartes KPI modernes */}
+            <div className="kpi-grid">
+                <div className="kpi-card-modern">
+                    <div className="kpi-card-icon green">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 8v4l3 3M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                            <path d="M12 6v2l4 2"/>
+                        </svg>
+                    </div>
+                    <div className="kpi-card-info">
+                        <div className="kpi-card-value">{balance.cp_restant || 0} jours</div>
+                        <div className="kpi-card-label">Congés Payés restants</div>
+                        <div className="kpi-card-sub">Total: {balance.cp_total || 25} jours</div>
+                    </div>
                 </div>
-            )}
-            
-            <div className="cards-grid">
-                <div className="card">
-                    <h3>Congés Payés</h3>
-                    <div className="value">{balance.cp_restant || 0} jours</div>
-                    <div className="small">Total: {balance.cp_total || 25} jours • Pris: {balance.cp_pris || 0} jours</div>
+
+                <div className="kpi-card-modern">
+                    <div className="kpi-card-icon orange">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                    </div>
+                    <div className="kpi-card-info">
+                        <div className="kpi-card-value">{requests.filter(r => r.status === 'pending_manager' || r.status === 'pending_admin').length}</div>
+                        <div className="kpi-card-label">Demandes en attente</div>
+                        <div className="kpi-card-sub">en cours de validation</div>
+                    </div>
                 </div>
-                <div className="card">
-                    <h3>Congé sans solde</h3>
-                    <div className="value">Illimité</div>
-                    <div className="small">Non rémunéré • Max 5j consécutifs</div>
+
+                <div className="kpi-card-modern">
+                    <div className="kpi-card-icon blue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                    </div>
+                    <div className="kpi-card-info">
+                        <div className="kpi-card-value">{requests.filter(r => r.status === 'approved').length}</div>
+                        <div className="kpi-card-label">Demandes approuvées</div>
+                        <div className="kpi-card-sub">validées</div>
+                    </div>
                 </div>
             </div>
             
-            <div className="actions-bar">
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>
-                    Demander un congé
-                </button>
+            {/* Actions rapides */}
+            <div className="quick-actions">
+                <h3>Actions rapides</h3>
+                <div className="quick-actions-grid">
+                    <button className="quick-action-btn primary" onClick={() => navigate('/dashboard/employee/new-request')}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        <span>Nouvelle demande</span>
+                    </button>
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/employee/requests')}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M4 4v16h16V4H4z"/>
+                            <line x1="8" y1="9" x2="16" y2="9"/>
+                            <line x1="8" y1="13" x2="16" y2="13"/>
+                            <line x1="8" y1="17" x2="12" y2="17"/>
+                        </svg>
+                        <span>Mes demandes</span>
+                    </button>
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/employee/calendar')}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <span>Calendrier</span>
+                    </button>
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/employee/balance')}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <span>Mon solde</span>
+                    </button>
+                </div>
             </div>
             
-            <div className="table-container">
-                <h3 style={{ padding: '16px 16px 0 16px' }}>Mes demandes récentes</h3>
-                <table className="table">
-                    <thead><tr><th>Dates</th><th>Type</th><th>Durée</th><th>Statut</th><th>Justificatif</th><th>Actions</th></tr></thead>
-                    <tbody>
-                        {requests.slice(0, 5).map((req) => (
-                            <tr key={req.id}>
-                                <td>{req.displayDates}</td>
-                                <td>{req.type}</td>
-                                <td>{req.displayDuration}</td>
-                                <td>{getStatusLabel(req.status, req.motif_refus)}</td>
-                                <td>{justificatifs[req.id]?.length > 0 ? (<span className="status status-approved">Fichier(s)</span>) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (<FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />))}</td>
-                                <td>{req.status === 'pending_manager' && (<div className="btn-group" style={{ gap: '5px' }}>
-                                    {req.request_type !== 'permission' && <button className="btn btn-sm btn-primary" onClick={() => handleModifyRequest(req)} style={{ background: '#f59e0b' }}>Modifier</button>}
-                                    <button className="btn btn-sm btn-danger" onClick={() => handleDeleteRequest(req)}>Supprimer</button>
-                                </div>)}
-                                {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
-                                {(req.status === 'approved' || req.status === 'rejected') && <span className="info-text">{req.status === 'approved' ? 'Finalisé' : 'Finalisé'}</span>}</td>
+            {/* Dernières demandes */}
+            <div className="recent-section">
+                <div className="section-header">
+                    <h3>Dernières demandes</h3>
+                    <button className="btn-view-all" onClick={() => navigate('/dashboard/employee/requests')}>
+                        Voir toutes →
+                    </button>
+                </div>
+                <div className="table-wrapper">
+                    <table className="modern-table">
+                        <thead>
+                            <tr>
+                                <th>Dates</th>
+                                <th>Type</th>
+                                <th>Durée</th>
+                                <th>Statut</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {requests.slice(0, 3).map((req) => (
+                                <tr key={req.id}>
+                                    <td className="date-cell">{req.displayDates}</td>
+                                    <td>{req.type}</td>
+                                    <td>{req.displayDuration}</td>
+                                    <td>{getStatusLabel(req.status, req.motif_refus)}</td>
+                                </tr>
+                            ))}
+                            {requests.length === 0 && (
+                                <tr>
+                                    <td colSpan="4" className="empty-state">Aucune demande</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
+            
             {renderEditModal()}
         </>
     );
 
+    // PAGE MES DEMANDES
     const MyRequestsPage = () => (
         <>
-            <h2>Historique complet de mes demandes</h2>
-            <LeaveFilters filterStatus={filterStatus} setFilterStatus={setFilterStatus} filterType={filterType} setFilterType={setFilterType} searchTerm={searchTerm} setSearchTerm={setSearchTerm} totalCount={requests.length} filteredCount={filteredRequests.length} onReset={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }} />
-            <div className="table-container">
-                <table className="table">
-                    <thead><tr><th>Dates</th><th>Type</th><th>Durée</th><th>Motif</th><th>Statut</th><th>Motif refus</th><th>Justificatif</th><th>Actions</th></tr></thead>
+            <div className="page-header">
+                <h2>Mes demandes de congé</h2>
+                <p className="page-subtitle">Historique complet de toutes vos demandes</p>
+            </div>
+            
+            <LeaveFilters 
+                filterStatus={filterStatus} 
+                setFilterStatus={setFilterStatus} 
+                filterType={filterType} 
+                setFilterType={setFilterType} 
+                searchTerm={searchTerm} 
+                setSearchTerm={setSearchTerm} 
+                totalCount={requests.length} 
+                filteredCount={filteredRequests.length} 
+                onReset={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }} 
+            />
+            
+            <div className="table-wrapper-modern">
+                <table className="modern-table full-width">
+                    <thead>
+                        <tr>
+                            <th>Dates</th>
+                            <th>Type</th>
+                            <th>Durée</th>
+                            <th>Motif</th>
+                            <th>Statut</th>
+                            <th>Justificatif</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         {filteredRequests.map((req) => (
                             <tr key={req.id}>
-                                <td>{req.displayDates}</td>
+                                <td className="date-cell">{req.displayDates}</td>
                                 <td>{req.type}</td>
                                 <td>{req.displayDuration}</td>
                                 <td>{req.motif || '-'}</td>
                                 <td>{getStatusLabel(req.status, req.motif_refus)}</td>
-                                <td>{req.motif_refus || '-'}</td>
-                                <td>{justificatifs[req.id]?.length > 0 ? (<span className="status status-approved">Fichier(s)</span>) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (<FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />))}</td>
-                                <td>{req.status === 'pending_manager' && (<div className="btn-group" style={{ gap: '5px' }}>
-                                    {req.request_type !== 'permission' && <button className="btn btn-sm btn-primary" onClick={() => handleModifyRequest(req)} style={{ background: '#f59e0b' }}>Modifier</button>}
-                                    <button className="btn btn-sm btn-danger" onClick={() => handleDeleteRequest(req)}>Supprimer</button>
-                                </div>)}
-                                {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
-                                {(req.status === 'approved' || req.status === 'rejected') && <span className="info-text">Non modifiable</span>}</td>
+                                <td>
+                                    {justificatifs[req.id]?.length > 0 ? (
+                                        <span className="badge-success">Fichier(s)</span>
+                                    ) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (
+                                        <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
+                                    ))}
+                                </td>
+                                <td>
+                                    {req.status === 'pending_manager' && (
+                                        <div className="action-buttons">
+                                            {req.request_type !== 'permission' && (
+                                                <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                        <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
+                                                        <path d="M4 20h16"/>
+                                                    </svg>
+                                                </button>
+                                            )}
+                                            <button className="action-btn delete" onClick={() => handleDeleteRequest(req)} title="Supprimer">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    )}
+                                    {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
+                                    {(req.status === 'approved' || req.status === 'rejected') && <span className="info-text">Non modifiable</span>}
+                                </td>
                             </tr>
                         ))}
-                        {filteredRequests.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>Aucune demande</td></tr>}
+                        {filteredRequests.length === 0 && (
+                            <tr>
+                                <td colSpan="7" className="empty-state">Aucune demande</td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
-            <div className="actions-bar mt-20">
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>Nouvelle demande</button>
-                <button className="btn btn-secondary" onClick={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }}>Afficher tout</button>
+            
+            <div className="actions-bar-bottom">
+                <button className="btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Nouvelle demande
+                </button>
+                <button className="btn-secondary" onClick={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Réinitialiser les filtres
+                </button>
             </div>
             {renderEditModal()}
         </>
@@ -455,18 +556,6 @@ function EmployeeDashboard({ onLogout }) {
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
                 <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><LeaveRequest onSuccess={handleRequestSuccess} /></main></div>
-                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
-            </>
-        );
-    }
-
-    if (currentPath.includes('/permission')) {
-        return (
-            <>
-                <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content">
-                    <div className="info-box" style={{ background: '#fef3c7' }}>La fonctionnalité de permission a été désactivée.<br/>Utilisez la demande de congé standard.</div>
-                </main></div>
                 <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );

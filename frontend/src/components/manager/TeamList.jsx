@@ -24,7 +24,6 @@ function TeamList({ teamMembers, onRefresh }) {
         try {
             setLoading(true);
             const response = await axios.get('http://localhost:5000/api/users/available-employees', getAuthHeaders());
-            console.log('Employés disponibles:', response.data);
             setAvailableEmployees(response.data);
         } catch (error) {
             console.error('Erreur fetchAvailableEmployees:', error);
@@ -85,21 +84,34 @@ function TeamList({ teamMembers, onRefresh }) {
 
     return (
         <div>
-            <div className="actions-bar" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2>👥 Mon équipe ({teamMembers.length} membres)</h2>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>➕ Ajouter un membre</button>
+            <div className="dashboard-header">
+                <div className="dashboard-header-content">
+                    <h1 className="dashboard-title">👥 Mon équipe ({teamMembers.length} membres)</h1>
+                    <p className="dashboard-subtitle">Gérez les membres de votre équipe</p>
+                </div>
+                <div className="dashboard-header-actions">
+                    <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        Ajouter un membre
+                    </button>
+                </div>
             </div>
             
             {teamMembers.length === 0 ? (
-                <div className="info-box" style={{ textAlign: 'center', padding: '30px' }}>
+                <div className="empty-state-card">
                     <p>📭 Aucun membre dans votre équipe pour le moment.</p>
-                    <button className="btn btn-primary mt-20" onClick={() => setShowAddModal(true)}>
-                        ➕ Ajouter votre premier membre
+                    <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        Ajouter votre premier membre
                     </button>
                 </div>
             ) : (
-                <div className="table-container">
-                    <table className="table">
+                <div className="table-wrapper-modern">
+                    <table className="modern-table full-width">
                         <thead>
                             <tr>
                                 <th>Nom</th>
@@ -112,16 +124,19 @@ function TeamList({ teamMembers, onRefresh }) {
                         <tbody>
                             {teamMembers.map(member => (
                                 <tr key={member.id}>
-                                    <td>{member.nom}</td>
-                                    <td>{member.prenom}</td>
+                                    <td><span className="employee-name-cell">{member.nom}</span></td>
+                                    <td><span className="employee-name-cell">{member.prenom}</span></td>
                                     <td>{member.email}</td>
                                     <td>{member.service || '-'}</td>
                                     <td>
                                         <button 
-                                            className="btn btn-sm btn-danger" 
+                                            className="action-btn delete" 
                                             onClick={() => handleRemoveMember(member.id, `${member.prenom} ${member.nom}`)}
+                                            title="Retirer de l'équipe"
                                         >
-                                            🗑️ Retirer
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
+                                            </svg>
                                         </button>
                                     </td>
                                 </tr>
@@ -135,28 +150,25 @@ function TeamList({ teamMembers, onRefresh }) {
             {showAddModal && (
                 <div className="modal-overlay">
                     <div className="modal" style={{ maxWidth: '500px' }}>
-                        <h3>➕ Ajouter un membre à mon équipe</h3>
+                        <div className="modal-header">
+                            <h3>➕ Ajouter un membre à mon équipe</h3>
+                            <button className="modal-close" onClick={() => setShowAddModal(false)}>✖</button>
+                        </div>
                         
                         {loading && availableEmployees.length === 0 ? (
                             <div className="text-center">Chargement des employés...</div>
                         ) : availableEmployees.length === 0 ? (
-                            <div className="info-box" style={{ background: '#fff3cd', borderLeftColor: '#ffc107' }}>
-                                <p>📢 Aucun employé disponible actuellement.</p>
-                                <p style={{ fontSize: '12px', marginTop: '10px' }}>
-                                    💡 Les employés sont disponibles s'ils :<br/>
-                                    - Ont le rôle "employé"<br/>
-                                    - N'ont pas encore de manager assigné<br/>
-                                    - Ne sont pas déjà dans une équipe
-                                </p>
-                                <p style={{ fontSize: '12px', marginTop: '10px' }}>
-                                    Si vous avez créé des employés via l'admin, assurez-vous qu'ils n'ont pas déjà un manager.
-                                </p>
-                                <button 
-                                    className="btn btn-secondary mt-20" 
-                                    onClick={() => setShowAddModal(false)}
-                                >
-                                    Fermer
-                                </button>
+                            <div className="info-card-tip" style={{ background: '#fff3cd' }}>
+                                <div className="tip-icon">📢</div>
+                                <div className="tip-content">
+                                    <p>Aucun employé disponible actuellement.</p>
+                                    <p style={{ fontSize: '12px', marginTop: '10px' }}>
+                                        💡 Les employés sont disponibles s'ils :<br/>
+                                        - Ont le rôle "employé"<br/>
+                                        - N'ont pas encore de manager assigné<br/>
+                                        - Ne sont pas déjà dans une équipe
+                                    </p>
+                                </div>
                             </div>
                         ) : (
                             <>
@@ -175,16 +187,16 @@ function TeamList({ teamMembers, onRefresh }) {
                                         ))}
                                     </select>
                                 </div>
-                                <div className="btn-group" style={{ marginTop: '20px' }}>
+                                <div className="modal-footer">
                                     <button 
-                                        className="btn btn-primary" 
+                                        className="btn-primary" 
                                         onClick={handleAddMember} 
                                         disabled={!selectedEmployeeId || loading}
                                     >
                                         {loading ? 'Ajout en cours...' : '✅ Ajouter à l\'équipe'}
                                     </button>
                                     <button 
-                                        className="btn btn-secondary" 
+                                        className="btn-secondary" 
                                         onClick={() => {
                                             setShowAddModal(false);
                                             setSelectedEmployeeId('');

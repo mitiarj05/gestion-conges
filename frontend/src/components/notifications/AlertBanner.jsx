@@ -1,3 +1,4 @@
+// frontend/src/components/notifications/AlertBanner.jsx
 import React, { useState, useEffect } from 'react';
 
 function AlertBanner({ balance }) {
@@ -5,16 +6,13 @@ function AlertBanner({ balance }) {
     const [dismissed, setDismissed] = useState(false);
 
     const hasLowBalanceAlert = (balance, threshold = 5) => {
-        return balance.cp_restant < threshold || balance.rtt_restant < threshold;
+        return balance.cp_restant < threshold;
     };
 
     const getBalanceAlertMessage = (balance) => {
         const alerts = [];
         if (balance.cp_restant < 5) {
             alerts.push(`⚠️ Congés Payés : il vous reste ${balance.cp_restant} jours`);
-        }
-        if (balance.rtt_restant < 5) {
-            alerts.push(`⚠️ RTT : il vous reste ${balance.rtt_restant} jours`);
         }
         return alerts;
     };

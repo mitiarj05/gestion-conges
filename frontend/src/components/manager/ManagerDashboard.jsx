@@ -9,7 +9,6 @@ import TeamList from './TeamList';
 import PendingValidations from './PendingValidations';
 import TeamStatistics from './TeamStatistics';
 import TeamCalendar from './TeamCalendar';
-import ManagerStats from './ManagerStats';
 import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
 
@@ -107,57 +106,124 @@ function ManagerDashboard({ onLogout }) {
 
     const DashboardHome = () => (
         <>
-            <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
-            <p style={{ color: '#64748b', marginBottom: '24px' }}>👔 Tableau de bord Manager</p>
-            
-            <ManagerStats />
-            
-            <div className="actions-bar" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', marginBottom: '15px' }}>
-                <h3>📋 Demandes de l'équipe</h3>
-                <div className="btn-group">
-                    <button className={`btn btn-sm ${periodeFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handlePeriodeChange('all')}>Toutes</button>
-                    <button className={`btn btn-sm ${periodeFilter === 'month' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handlePeriodeChange('month')}>Ce mois</button>
-                    <button className={`btn btn-sm ${periodeFilter === 'quarter' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handlePeriodeChange('quarter')}>Ce trimestre</button>
-                    <button className={`btn btn-sm ${periodeFilter === 'year' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handlePeriodeChange('year')}>Cette année</button>
+            <div className="dashboard-header">
+                <div className="dashboard-header-content">
+                    <h1 className="dashboard-title">Tableau de bord Manager</h1>
+                    <p className="dashboard-subtitle">Bonjour {user.prenom} {user.nom} · Gérez les demandes de votre équipe</p>
+                </div>
+                <div className="dashboard-header-actions">
+                    <button className="btn-refresh" onClick={refreshData}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        Actualiser
+                    </button>
                 </div>
             </div>
             
-            {pendingRequests.length > 0 ? (
-                <>
-                    <h3>📋 Demandes en attente de validation (1ère étape)</h3>
+            <div className="kpi-grid">
+                <div className="kpi-card-modern">
+                    <div className="kpi-card-icon blue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                    </div>
+                    <div className="kpi-card-info">
+                        <div className="kpi-card-value">{teamMembers.length}</div>
+                        <div className="kpi-card-label">Mon équipe</div>
+                        <div className="kpi-card-sub">membres</div>
+                    </div>
+                </div>
+
+                <div className="kpi-card-modern">
+                    <div className="kpi-card-icon orange">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                    </div>
+                    <div className="kpi-card-info">
+                        <div className="kpi-card-value">{pendingRequests.length}</div>
+                        <div className="kpi-card-label">Demandes en attente</div>
+                        <div className="kpi-card-sub">à valider</div>
+                    </div>
+                </div>
+
+                <div className="kpi-card-modern">
+                    <div className="kpi-card-icon green">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 8v4l3 3M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                        </svg>
+                    </div>
+                    <div className="kpi-card-info">
+                        <div className="kpi-card-value">{balance.cp_restant || 25} jours</div>
+                        <div className="kpi-card-label">Mon solde CP</div>
+                        <div className="kpi-card-sub">restants</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div className="filter-bar">
+                <div className="filter-bar-label">Période :</div>
+                <div className="filter-buttons">
+                    <button className={`filter-btn ${periodeFilter === 'all' ? 'active' : ''}`} onClick={() => handlePeriodeChange('all')}>Toutes</button>
+                    <button className={`filter-btn ${periodeFilter === 'month' ? 'active' : ''}`} onClick={() => handlePeriodeChange('month')}>Ce mois</button>
+                    <button className={`filter-btn ${periodeFilter === 'quarter' ? 'active' : ''}`} onClick={() => handlePeriodeChange('quarter')}>Ce trimestre</button>
+                    <button className={`filter-btn ${periodeFilter === 'year' ? 'active' : ''}`} onClick={() => handlePeriodeChange('year')}>Cette année</button>
+                </div>
+            </div>
+            
+            <div className="pending-section">
+                <div className="section-header">
+                    <h3>Demandes à valider</h3>
+                    {pendingRequests.length > 0 && <span className="pending-count">{pendingRequests.length}</span>}
+                </div>
+                {pendingRequests.length > 0 ? (
                     <PendingValidations requests={pendingRequests} onRefresh={refreshData} />
-                </>
-            ) : (
-                <div className="info-box" style={{ background: '#d1fae5', borderLeftColor: '#10b981' }}>
-                    ✅ Aucune demande en attente. Toutes les demandes ont été traitées.
-                </div>
-            )}
-            
-            <div className="cards-grid mt-20">
-                <div className="card">
-                    <h3>🏖️ Congés Payés</h3>
-                    <div className="value">{balance.cp_restant || 25} jours</div>
-                    <div className="small">Mon solde restant</div>
-                </div>
+                ) : (
+                    <div className="empty-state-card">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.5">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                        <p>Aucune demande en attente</p>
+                        <span>Toutes les demandes ont été traitées</span>
+                    </div>
+                )}
             </div>
             
-            <div className="btn-group mt-20">
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team')}>👥 Gérer mon équipe</button>
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/validations')}>✅ Valider les demandes</button>
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/manager/team-calendar')}>📅 Calendrier équipe</button>
+            <div className="quick-actions">
+                <h3>Actions rapides</h3>
+                <div className="quick-actions-grid">
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/team')}>
+                        <span className="quick-action-icon">👥</span>
+                        <span>Gérer mon équipe</span>
+                    </button>
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/validations')}>
+                        <span className="quick-action-icon">✅</span>
+                        <span>Toutes les validations</span>
+                    </button>
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/team-calendar')}>
+                        <span className="quick-action-icon">📅</span>
+                        <span>Calendrier équipe</span>
+                    </button>
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/statistics')}>
+                        <span className="quick-action-icon">📊</span>
+                        <span>Statistiques</span>
+                    </button>
+                </div>
             </div>
             
             {teamMembers.length === 0 && (
-                <div className="info-box" style={{ marginTop: '20px', background: '#eff6ff' }}>
-                    <strong>💡 Conseil :</strong> Commencez par ajouter des membres à votre équipe dans l'onglet "Mon équipe".
+                <div className="info-card-tip">
+                    <div className="tip-icon">💡</div>
+                    <div className="tip-content">
+                        <strong>Conseil :</strong> Ajoutez des membres à votre équipe dans l'onglet "Mon équipe" pour commencer à gérer leurs demandes.
+                    </div>
                 </div>
             )}
-            
-            <div className="info-box" style={{ marginTop: '20px', background: '#fef3c7' }}>
-                <strong>ℹ️ Processus de validation :</strong><br/>
-                1️⃣ Vous validez la demande (1ère étape)<br/>
-                2️⃣ L'administrateur valide définitivement (2ème étape)
-            </div>
         </>
     );
 
@@ -167,7 +233,7 @@ function ManagerDashboard({ onLogout }) {
         return (
             <>
                 <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" /><main className="main-content"><TeamCalendar /></main></div>
+                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><TeamCalendar /></main></div>
                 <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
@@ -177,7 +243,7 @@ function ManagerDashboard({ onLogout }) {
         return (
             <>
                 <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" /><main className="main-content"><TeamList teamMembers={teamMembers} onRefresh={refreshData} /></main></div>
+                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><TeamList teamMembers={teamMembers} onRefresh={refreshData} /></main></div>
                 <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
@@ -187,7 +253,7 @@ function ManagerDashboard({ onLogout }) {
         return (
             <>
                 <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" /><main className="main-content"><PendingValidations requests={pendingRequests} onRefresh={refreshData} /></main></div>
+                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><PendingValidations requests={pendingRequests} onRefresh={refreshData} /></main></div>
                 <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
@@ -197,7 +263,7 @@ function ManagerDashboard({ onLogout }) {
         return (
             <>
                 <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" /><main className="main-content"><TeamStatistics teamMembers={teamMembers} /></main></div>
+                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><TeamStatistics teamMembers={teamMembers} /></main></div>
                 <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
@@ -206,7 +272,7 @@ function ManagerDashboard({ onLogout }) {
     return (
         <>
             <Navbar user={user} role="manager" onLogout={onLogout} />
-            <div className="app-container"><Sidebar role="manager" /><main className="main-content"><DashboardHome /></main></div>
+            <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><DashboardHome /></main></div>
             <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );

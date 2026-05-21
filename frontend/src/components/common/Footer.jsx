@@ -7,7 +7,7 @@ function Footer() {
     return (
         <footer className="app-footer">
             <p>&copy; {currentYear} Gestion des Congés - Application pour entreprise privée</p>
-            <p>Tous droits reserves</p>
+            <p>Tous droits réservés</p>
         </footer>
     );
 }

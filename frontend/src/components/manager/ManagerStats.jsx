@@ -1,6 +1,21 @@
 // frontend/src/components/manager/ManagerStats.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { 
+    BarChart, 
+    Bar, 
+    XAxis, 
+    YAxis, 
+    CartesianGrid, 
+    Tooltip, 
+    Legend, 
+    ResponsiveContainer, 
+    PieChart, 
+    Pie, 
+    Cell,
+    LineChart,
+    Line
+} from 'recharts';
 
 function ManagerStats() {
     const [stats, setStats] = useState({
@@ -12,6 +27,7 @@ function ManagerStats() {
         demandesParEmploye: []
     });
     const [loading, setLoading] = useState(true);
+    const [activeChart, setActiveChart] = useState('bar');
 
     const getAuthHeaders = () => ({
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -38,11 +54,19 @@ function ManagerStats() {
     };
 
     const moisNoms = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+    const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
+
+    // Préparer les données pour le graphique circulaire des statuts
+    const statusData = [
+        { name: 'Approuvées', value: stats.approuvees, color: '#10b981' },
+        { name: 'En attente', value: stats.enAttente, color: '#f59e0b' },
+        { name: 'Refusées', value: stats.refusees, color: '#ef4444' }
+    ].filter(s => s.value > 0);
 
     if (loading) {
         return (
-            <div className="text-center" style={{ padding: '20px' }}>
-                <div className="loading-spinner" style={{ width: '20px', height: '20px', margin: '0 auto 10px' }}></div>
+            <div className="text-center" style={{ padding: '30px' }}>
+                <div className="loading-spinner" style={{ width: '30px', height: '30px', margin: '0 auto 15px' }}></div>
                 <div>Chargement des statistiques...</div>
             </div>
         );
@@ -59,109 +83,245 @@ function ManagerStats() {
 
     const tauxApprobation = stats.totalDemandes > 0 ? Math.round((stats.approuvees / stats.totalDemandes) * 100) : 0;
     const tauxRefus = stats.totalDemandes > 0 ? Math.round((stats.refusees / stats.totalDemandes) * 100) : 0;
+    const tauxEnAttente = stats.totalDemandes > 0 ? Math.round((stats.enAttente / stats.totalDemandes) * 100) : 0;
+
+    // Données pour le graphique à barres des demandes par mois
+    const monthlyChartData = stats.demandesParMois.map(item => ({
+        mois: `${moisNoms[item.mois - 1]} ${item.annee}`,
+        total: item.total
+    })).reverse();
 
     return (
-        <div>
-            <h3>📊 Statistiques de votre équipe</h3>
+        <div className="manager-stats-container">
+            <h3>Statistiques de votre équipe</h3>
             
-            {/* Cartes statistiques */}
-            <div className="cards-grid">
-                <div className="stat-card blue">
-                    <div className="number">{stats.totalDemandes}</div>
-                    <div className="label">Total demandes</div>
+            {/* Cartes statistiques avec barres de progression circulaires */}
+            <div className="stats-cards-grid manager-stats-cards">
+                <div className="stat-card-progress">
+                    <div className="stat-card-progress-header">
+                        <span className="stat-card-progress-title">Total demandes</span>
+                        <span className="stat-card-progress-value">{stats.totalDemandes}</span>
+                    </div>
+                    <div className="progress-circle-container">
+                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#667eea" strokeWidth="8" 
+                                strokeDasharray={`${2 * Math.PI * 54}`} 
+                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.totalDemandes / Math.max(stats.totalDemandes, 100))}`}
+                                transform="rotate(-90 60 60)"
+                                strokeLinecap="round"
+                            />
+                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#667eea">{stats.totalDemandes}</text>
+                        </svg>
+                    </div>
+                    <div className="stat-card-progress-footer">demandes totales</div>
                 </div>
-                <div className="stat-card green">
-                    <div className="number">{stats.approuvees}</div>
-                    <div className="label">Approuvées</div>
+
+                <div className="stat-card-progress">
+                    <div className="stat-card-progress-header">
+                        <span className="stat-card-progress-title">Approuvées</span>
+                        <span className="stat-card-progress-value">{stats.approuvees}</span>
+                    </div>
+                    <div className="progress-circle-container">
+                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#10b981" strokeWidth="8" 
+                                strokeDasharray={`${2 * Math.PI * 54}`} 
+                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.approuvees / Math.max(stats.totalDemandes, 1))}`}
+                                transform="rotate(-90 60 60)"
+                                strokeLinecap="round"
+                            />
+                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#10b981">{tauxApprobation}%</text>
+                        </svg>
+                    </div>
+                    <div className="stat-card-progress-footer">taux d'approbation</div>
                 </div>
-                <div className="stat-card orange">
-                    <div className="number">{stats.enAttente}</div>
-                    <div className="label">En attente</div>
+
+                <div className="stat-card-progress">
+                    <div className="stat-card-progress-header">
+                        <span className="stat-card-progress-title">En attente</span>
+                        <span className="stat-card-progress-value">{stats.enAttente}</span>
+                    </div>
+                    <div className="progress-circle-container">
+                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#f59e0b" strokeWidth="8" 
+                                strokeDasharray={`${2 * Math.PI * 54}`} 
+                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.enAttente / Math.max(stats.totalDemandes, 1))}`}
+                                transform="rotate(-90 60 60)"
+                                strokeLinecap="round"
+                            />
+                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#f59e0b">{tauxEnAttente}%</text>
+                        </svg>
+                    </div>
+                    <div className="stat-card-progress-footer">taux d'attente</div>
                 </div>
-                <div className="stat-card red">
-                    <div className="number">{stats.refusees}</div>
-                    <div className="label">Refusées</div>
+
+                <div className="stat-card-progress">
+                    <div className="stat-card-progress-header">
+                        <span className="stat-card-progress-title">Refusées</span>
+                        <span className="stat-card-progress-value">{stats.refusees}</span>
+                    </div>
+                    <div className="progress-circle-container">
+                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#ef4444" strokeWidth="8" 
+                                strokeDasharray={`${2 * Math.PI * 54}`} 
+                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.refusees / Math.max(stats.totalDemandes, 1))}`}
+                                transform="rotate(-90 60 60)"
+                                strokeLinecap="round"
+                            />
+                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#ef4444">{tauxRefus}%</text>
+                        </svg>
+                    </div>
+                    <div className="stat-card-progress-footer">taux de refus</div>
                 </div>
             </div>
 
-            {/* Graphique des demandes par mois */}
-            {stats.demandesParMois.length > 0 && (
-                <div className="admin-section" style={{ marginTop: '20px' }}>
-                    <h4>📈 Évolution des demandes par mois</h4>
-                    <div className="monthly-stats">
-                        {stats.demandesParMois.map((item, index) => {
-                            const maxValue = Math.max(...stats.demandesParMois.map(i => i.total), 1);
-                            const width = (item.total / maxValue) * 100;
-                            return (
-                                <div key={index} className="monthly-bar-item">
-                                    <div className="monthly-label">{moisNoms[item.mois - 1]} {item.annee}</div>
-                                    <div className="monthly-bar-container">
-                                        <div className="monthly-bar-fill" style={{ width: `${width}%` }}>
-                                            <span className="monthly-value">{item.total} demande(s)</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
+            {/* Deuxième ligne - indicateurs clés */}
+            <div className="stats-cards-grid secondary manager-kpi-cards">
+                <div className="kpi-card">
+                    <div className="kpi-icon">📈</div>
+                    <div className="kpi-content">
+                        <div className="kpi-value">{tauxApprobation}%</div>
+                        <div className="kpi-label">Taux d'approbation</div>
+                        <div className="kpi-trend positive">{stats.approuvees} / {stats.totalDemandes} approuvées</div>
                     </div>
+                </div>
+                <div className="kpi-card">
+                    <div className="kpi-icon">⏳</div>
+                    <div className="kpi-content">
+                        <div className="kpi-value">{stats.enAttente}</div>
+                        <div className="kpi-label">Demandes en attente</div>
+                        <div className="kpi-trend neutral">à traiter</div>
+                    </div>
+                </div>
+                <div className="kpi-card">
+                    <div className="kpi-icon">👥</div>
+                    <div className="kpi-content">
+                        <div className="kpi-value">{stats.demandesParEmploye.length}</div>
+                        <div className="kpi-label">Employés actifs</div>
+                        <div className="kpi-trend neutral">ont fait des demandes</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Graphique des demandes par mois avec bascule */}
+            {stats.demandesParMois.length > 0 && (
+                <div className="manager-chart-card">
+                    <div className="chart-header">
+                        <h4>Évolution des demandes par mois</h4>
+                        <div className="chart-toggle">
+                            <button 
+                                className={`toggle-btn ${activeChart === 'bar' ? 'active' : ''}`}
+                                onClick={() => setActiveChart('bar')}
+                            >
+                                📊 Barres
+                            </button>
+                            <button 
+                                className={`toggle-btn ${activeChart === 'line' ? 'active' : ''}`}
+                                onClick={() => setActiveChart('line')}
+                            >
+                                📈 Ligne
+                            </button>
+                        </div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={300}>
+                        {activeChart === 'bar' ? (
+                            <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
+                                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                                <Tooltip 
+                                    formatter={(value) => [`${value} demande(s)`, 'Nombre']}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                />
+                                <Legend />
+                                <Bar dataKey="total" fill="#667eea" name="Demandes" radius={[8, 8, 0, 0]} barSize={40} />
+                            </BarChart>
+                        ) : (
+                            <LineChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
+                                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                                <Tooltip 
+                                    formatter={(value) => [`${value} demande(s)`, 'Nombre']}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                />
+                                <Legend />
+                                <Line type="monotone" dataKey="total" stroke="#667eea" name="Demandes" strokeWidth={3} dot={{ r: 6, fill: '#667eea' }} />
+                            </LineChart>
+                        )}
+                    </ResponsiveContainer>
                 </div>
             )}
 
-            {/* Taux d'approbation et refus */}
-            <div className="admin-section" style={{ marginTop: '20px' }}>
-                <h4>📊 Taux d'approbation global</h4>
-                <div className="stats-summary">
-                    <div className="summary-item">
-                        <span className="summary-label">Taux d'approbation</span>
-                        <div className="progress-bar">
-                            <div 
-                                className="progress-fill cp-fill" 
-                                style={{ width: `${tauxApprobation}%` }}
+            {/* Graphique circulaire des statuts */}
+            {statusData.length > 0 && (
+                <div className="manager-chart-card">
+                    <h4>Répartition des demandes par statut</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                            <Pie
+                                data={statusData}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={true}
+                                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                outerRadius={100}
+                                fill="#8884d8"
+                                dataKey="value"
+                                nameKey="name"
                             >
-                                {tauxApprobation}%
-                            </div>
-                        </div>
-                    </div>
-                    <div className="summary-item">
-                        <span className="summary-label">Taux de refus</span>
-                        <div className="progress-bar">
-                            <div 
-                                className="progress-fill rejected-fill" 
-                                style={{ width: `${tauxRefus}%`, background: '#dc3545' }}
-                            >
-                                {tauxRefus}%
-                            </div>
-                        </div>
-                    </div>
+                                {statusData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                            </Pie>
+                            <Tooltip formatter={(value) => [`${value} demande(s)`, 'Nombre']} />
+                            <Legend />
+                        </PieChart>
+                    </ResponsiveContainer>
                 </div>
-            </div>
+            )}
 
-            {/* Top demandes par employé */}
+            {/* Tableau des demandes par employé */}
             {stats.demandesParEmploye.length > 0 && (
-                <div className="table-container" style={{ marginTop: '20px' }}>
-                    <h4 style={{ padding: '15px' }}>👥 Demandes par employé</h4>
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th>Employé</th>
-                                <th>Total demandes</th>
-                                <th>Approuvées</th>
-                                <th>En attente</th>
-                                <th>Refusées</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {stats.demandesParEmploye.map((emp, idx) => (
-                                <tr key={idx}>
-                                    <td>{emp.prenom} {emp.nom}</td>
-                                    <td>{emp.total}</td>
-                                    <td><span className="status-approved">{emp.approuvees}</span></td>
-                                    <td><span className="status-pending-manager">{emp.enAttente}</span></td>
-                                    <td><span className="status-rejected">{emp.refusees}</span></td>
+                <div className="manager-table-container">
+                    <h4>👥 Demandes par employé</h4>
+                    <div className="table-responsive">
+                        <table className="manager-stats-table">
+                            <thead>
+                                <tr>
+                                    <th>Employé</th>
+                                    <th>Total</th>
+                                    <th>Approuvées</th>
+                                    <th>En attente</th>
+                                    <th>Refusées</th>
+                                    <th>Taux succès</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {stats.demandesParEmploye.map((emp, idx) => {
+                                    const taux = emp.total > 0 ? Math.round((emp.approuvees / emp.total) * 100) : 0;
+                                    return (
+                                        <tr key={idx}>
+                                            <td><strong>{emp.prenom} {emp.nom}</strong></td>
+                                            <td>{emp.total}</td>
+                                            <td><span className="status-badge approved">{emp.approuvees}</span></td>
+                                            <td><span className="status-badge pending">{emp.enAttente}</span></td>
+                                            <td><span className="status-badge rejected">{emp.refusees}</span></td>
+                                            <td>
+                                                <div className="mini-progress">
+                                                    <div className="mini-progress-bar" style={{ width: `${taux}%` }}></div>
+                                                    <span className="mini-progress-text">{taux}%</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
         </div>

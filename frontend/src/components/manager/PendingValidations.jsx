@@ -67,41 +67,63 @@ function PendingValidations({ requests, onRefresh }) {
 
     if (requests.length === 0) {
         return (
-            <div className="info-box" style={{ background: '#d4edda', borderLeftColor: '#28a745' }}>
-                ✅ Aucune demande en attente de validation. Toutes les demandes ont été traitées.
+            <div className="empty-state-card">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.5">
+                    <path d="M20 6L9 17l-5-5"/>
+                </svg>
+                <p>Aucune demande en attente</p>
+                <span>Toutes les demandes ont été traitées</span>
             </div>
         );
     }
 
     return (
-        <div>
+        <div className="requests-list-modern">
             {requests.map(req => {
                 const info = getDisplayInfo(req);
                 return (
-                    <div key={`${req.request_type}-${req.id}`} className="request-item">
-                        <div className="request-info">
-                            <strong>👤 {req.prenom} {req.nom}</strong>
-                            <small>📅 {info.dates} • {info.type} • {info.duration}</small>
-                            <small style={{ display: 'block' }}>📝 Motif : {req.motif || 'Non spécifié'}</small>
-                            <small style={{ display: 'block', color: '#666' }}>
-                                ⏳ En attente de votre validation (1ère étape)
-                                {req.request_type === 'permission' && ' - Permission horaire'}
-                            </small>
+                    <div key={`${req.request_type}-${req.id}`} className="request-card">
+                        <div className="request-card-info">
+                            <div className="request-employee">
+                                <div className="employee-avatar">
+                                    {req.prenom?.charAt(0)}{req.nom?.charAt(0)}
+                                </div>
+                                <div>
+                                    <div className="employee-name">{req.prenom} {req.nom}</div>
+                                    <div className="request-details">
+                                        {info.dates} • {info.type} • {info.duration}
+                                    </div>
+                                    {req.motif && (
+                                        <div className="request-motive">
+                                            📝 Motif : {req.motif}
+                                        </div>
+                                    )}
+                                    <div className="request-status-info">
+                                        En attente de votre validation (1ère étape)
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="request-actions">
+                        <div className="request-card-actions">
                             <button 
                                 onClick={() => handleApprove(req.id, req.request_type)} 
-                                className="btn btn-success btn-sm"
+                                className="btn-approve"
                                 disabled={processingId === req.id}
                             >
-                                {processingId === req.id ? '⏳...' : `✅ Approuver (1ère étape)`}
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M20 6L9 17l-5-5"/>
+                                </svg>
+                                {processingId === req.id ? '...' : 'Approuver'}
                             </button>
                             <button 
                                 onClick={() => handleReject(req.id, req.request_type)} 
-                                className="btn btn-danger btn-sm"
+                                className="btn-reject"
                                 disabled={processingId === req.id}
                             >
-                                ❌ Refuser
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M18 6L6 18M6 6l12 12"/>
+                                </svg>
+                                Refuser
                             </button>
                         </div>
                     </div>

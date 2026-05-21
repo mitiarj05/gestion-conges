@@ -37,26 +37,66 @@ function CodeManagement() {
         }
     };
 
-    if (loading) return <div>Chargement...</div>;
+    if (loading) return <div className="loading-container"><div className="loading-spinner"></div><div>Chargement...</div></div>;
 
     return (
         <div>
-            <h2>🔐 Gestion des codes d'inscription</h2>
-            <div className="actions-bar">
-                <button className="btn btn-primary" onClick={() => handleGenerateCode('employe')}>➕ Générer code Employé</button>
-                <button className="btn btn-primary" onClick={() => handleGenerateCode('manager')}>➕ Générer code Manager</button>
+            <div className="dashboard-header">
+                <div className="dashboard-header-content">
+                    <h1 className="dashboard-title">🔐 Gestion des codes d'inscription</h1>
+                    <p className="dashboard-subtitle">Générez et gérez les codes d'accès pour les nouveaux utilisateurs</p>
+                </div>
             </div>
-            <div className="code-list">
-                {codes.map(code => (
-                    <code key={code.id}>
-                        {code.code} → Rôle {code.role_name} ({code.utilise_fois}/{code.max_utilisations || '∞'} utilisations)
-                        <button className="btn btn-sm btn-danger" style={{ marginLeft: '10px' }} onClick={() => handleDeleteCode(code.id, code.code)}>🗑️</button>
-                    </code>
-                ))}
+
+            <div className="payroll-actions">
+                <button className="btn-primary" onClick={() => handleGenerateCode('employe')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Générer code Employé
+                </button>
+                <button className="btn-primary" onClick={() => handleGenerateCode('manager')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Générer code Manager
+                </button>
             </div>
-            <div className="info-box">
-                <strong>💡 Code Admin par défaut :</strong><br/>
-                <code>ADMIN26</code> + <code>SUPER_SECRET_KEY_123</code> → Crée le premier compte ADMIN (une seule fois)
+
+            <div className="table-wrapper-modern">
+                <table className="modern-table full-width">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Rôle</th>
+                            <th>Utilisations</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {codes.map(code => (
+                            <tr key={code.id}>
+                                <td><code className="code-value">{code.code}</code></td>
+                                <td><span className="role-badge-manager">{code.role_name}</span></td>
+                                <td>{code.utilise_fois}/{code.max_utilisations || '∞'}</td>
+                                <td>
+                                    <button className="action-btn delete" onClick={() => handleDeleteCode(code.id, code.code)} title="Supprimer le code">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            <div className="info-card-tip">
+                <div className="tip-icon">💡</div>
+                <div className="tip-content">
+                    <strong>Code Admin par défaut :</strong> <code>ADMIN26</code> + <code>SUPER_SECRET_KEY_123</code> → Crée le premier compte ADMIN (une seule fois)
+                </div>
             </div>
         </div>
     );
