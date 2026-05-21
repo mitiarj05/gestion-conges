@@ -52,6 +52,145 @@ router.get('/stats', async (req, res) => {
     }
 });
 
+// ============ STATISTIQUES PAR MOIS (TOUS LES MOIS) ============
+router.get('/stats-by-month', async (req, res) => {
+    try {
+        const year = req.query.year || new Date().getFullYear();
+        
+        const result = await pool.query(`
+            SELECT 
+                mois_num,
+                mois_nom,
+                COALESCE(total, 0) as total
+            FROM (
+                VALUES 
+                    (1, 'Janvier'), (2, 'Février'), (3, 'Mars'),
+                    (4, 'Avril'), (5, 'Mai'), (6, 'Juin'),
+                    (7, 'Juillet'), (8, 'Août'), (9, 'Septembre'),
+                    (10, 'Octobre'), (11, 'Novembre'), (12, 'Décembre')
+            ) AS months(mois_num, mois_nom)
+            LEFT JOIN (
+                SELECT 
+                    EXTRACT(MONTH FROM date_debut) as mois,
+                    COUNT(*) as total
+                FROM demandes_conges
+                WHERE EXTRACT(YEAR FROM date_debut) = $1
+                GROUP BY EXTRACT(MONTH FROM date_debut)
+            ) AS stats ON months.mois_num = stats.mois
+            ORDER BY mois_num ASC
+        `, [year]);
+        
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erreur stats-by-month:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
+// ============ STATISTIQUES PAR TYPE ============
+router.get('/stats-by-type', async (req, res) => {
+    try {
+        // Requête qui retourne TOUS les types même ceux sans données
+        const result = await pool.query(`
+            SELECT 
+                type_id,
+                type_nom,
+                COALESCE(total, 0) as total
+            FROM (
+                VALUES 
+                    (1, 'Congés Payés'),
+                    (2, 'Congé sans solde')
+            ) AS types(type_id, type_nom)
+            LEFT JOIN (
+                SELECT 
+                    type_conge_id,
+                    COUNT(*) as total
+                FROM demandes_conges
+                GROUP BY type_conge_id
+            ) AS stats ON types.type_id = stats.type_conge_id
+            ORDER BY type_id ASC
+        `);
+        
+        // Formater la réponse pour le graphique
+        const formattedResult = result.rows.map(row => ({
+            type: row.type_nom,
+            total: parseInt(row.total) || 0
+        }));
+        
+        console.log('Stats par type:', formattedResult);
+        res.json(formattedResult);
+    } catch (error) {
+        console.error('Erreur stats-by-type:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
+// ============ ANNÉES DISPONIBLES ============
+router.get('/available-years', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT DISTINCT EXTRACT(YEAR FROM date_debut) as annee
+            FROM demandes_conges
+            UNION
+            SELECT EXTRACT(YEAR FROM CURRENT_DATE) as annee
+            ORDER BY annee DESC
+        `);
+        
+        const years = result.rows.map(row => parseInt(row.annee));
+        if (years.length === 0) {
+            years.push(new Date().getFullYear());
+        }
+        
+        res.json(years);
+    } catch (error) {
+        console.error('Erreur available-years:', error);
+        res.json([new Date().getFullYear()]);
+    }
+});
+
+// ============ DEMANDES FILTRÉES PAR PÉRIODE ============
+router.get('/leave-requests-filtered', async (req, res) => {
+    const { periode } = req.query;
+    
+    let dateCondition = "";
+    
+    switch(periode) {
+        case 'month':
+            dateCondition = `AND dc.date_debut >= DATE_TRUNC('month', CURRENT_DATE)`;
+            break;
+        case 'quarter':
+            dateCondition = `AND dc.date_debut >= DATE_TRUNC('quarter', CURRENT_DATE)`;
+            break;
+        case 'year':
+            dateCondition = `AND dc.date_debut >= DATE_TRUNC('year', CURRENT_DATE)`;
+            break;
+        default:
+            dateCondition = "";
+    }
+    
+    try {
+        const result = await pool.query(`
+            SELECT dc.id,
+                    TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
+                    TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
+                    dc.nombre_jours, dc.statut, dc.cree_le,
+                    u.nom, u.prenom,
+                    CASE 
+                        WHEN dc.type_conge_id = 1 THEN 'Congés Payés'
+                        ELSE 'Congé sans solde'
+                    END as type_name
+             FROM demandes_conges dc
+             JOIN users u ON dc.utilisateur_id = u.id
+             WHERE 1=1 ${dateCondition}
+             ORDER BY dc.cree_le DESC
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Erreur leave-requests-filtered:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
 // ============ GESTION DES UTILISATEURS ============
 
 router.get('/users', async (req, res) => {
@@ -96,13 +235,8 @@ router.get('/employees-only', async (req, res) => {
 });
 
 // ============ EMPLOYÉS POUR LA PAIE ============
-
-// backend/routes/adminRoutes.js
-// REMPLACEZ COMPLÈTEMENT la route /employees-for-payroll par celle-ci :
-
 router.get('/employees-for-payroll', async (req, res) => {
     try {
-        // Requête CORRIGÉE avec les rôles et salaires
         const result = await pool.query(`
             SELECT 
                 u.id, 
@@ -120,22 +254,14 @@ router.get('/employees-for-payroll', async (req, res) => {
             ORDER BY u.nom ASC
         `);
         
-        // Filtrer pour ne garder que les employés (ceux qui ont le rôle employe OU manager)
         const employes = result.rows.filter(user => 
             user.roles.includes('employe') || user.roles.includes('manager')
         );
         
-        console.log('✅ Employés pour paie trouvés:', employes.length);
-        console.log('📋 Détail avec rôles:', employes.map(e => ({
-            nom: `${e.prenom} ${e.nom}`,
-            roles: e.roles,
-            salaire: e.salaire_base
-        })));
-        
         res.json(employes);
     } catch (error) {
-        console.error('❌ Erreur employees-for-payroll:', error);
-        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+        console.error('Erreur employees-for-payroll:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
@@ -218,7 +344,6 @@ router.post('/promote-to-manager', async (req, res) => {
             [userId, managerRole.rows[0].id]
         );
         
-        // Augmenter le salaire pour le nouveau manager (optionnel)
         await pool.query(
             `UPDATE users SET salaire_base = 1000000 WHERE id = $1 AND salaire_base < 1000000`,
             [userId]
@@ -324,8 +449,8 @@ router.get('/export-demandes', async (req, res) => {
                 u.prenom, 
                 COALESCE(u.service, '-') as service,
                 CASE 
-                    WHEN dc.type_conge_id = 1 THEN '🏖️ Congés Payés'
-                    ELSE '📝 Congé sans solde'
+                    WHEN dc.type_conge_id = 1 THEN 'Congés Payés'
+                    ELSE 'Congé sans solde'
                 END as type_conge,
                 TO_CHAR(dc.date_debut, 'DD/MM/YYYY') as date_debut,
                 TO_CHAR(dc.date_fin, 'DD/MM/YYYY') as date_fin,
@@ -348,7 +473,6 @@ router.get('/export-demandes', async (req, res) => {
         `);
         
         const ws = XLSX.utils.json_to_sheet(result.rows);
-        
         ws['!cols'] = [
             { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 },
             { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 18 },
@@ -357,7 +481,6 @@ router.get('/export-demandes', async (req, res) => {
         
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Demandes_Conges');
-        
         const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
         
         res.setHeader('Content-Disposition', 'attachment; filename=demandes_conges_' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.xlsx');
@@ -381,8 +504,8 @@ router.get('/pending-approvals', async (req, res) => {
                     dc.nombre_jours, dc.motif, dc.statut,
                     u.nom, u.prenom, u.email, u.service,
                     CASE 
-                        WHEN dc.type_conge_id = 1 THEN '🏖️ Congés Payés'
-                        ELSE '📝 Congé sans solde'
+                        WHEN dc.type_conge_id = 1 THEN 'Congés Payés'
+                        ELSE 'Congé sans solde'
                     END as type_name,
                     m.nom as manager_nom, m.prenom as manager_prenom,
                     'conges' as request_type,
@@ -404,6 +527,7 @@ router.get('/pending-approvals', async (req, res) => {
 router.put('/final-approve/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
+    const io = req.app.get('io');
     
     try {
         const requestResult = await pool.query(
@@ -444,6 +568,12 @@ router.put('/final-approve/:id', async (req, res) => {
             [demande.utilisateur_id, `Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été définitivement approuvée.`]
         );
         
+        io.to(`user_${demande.utilisateur_id}`).emit('new_notification', {
+            titre: 'Congé définitivement approuvé',
+            message: `Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été approuvée.`,
+            lien: '/dashboard/employee/requests'
+        });
+        
         if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
@@ -451,6 +581,12 @@ router.put('/final-approve/:id', async (req, res) => {
                  $2, '/dashboard/manager/validations', NOW())`,
                 [demande.manager_id, `La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement approuvée.`]
             );
+            
+            io.to(`user_${demande.manager_id}`).emit('new_notification', {
+                titre: 'Demande approuvée',
+                message: `La demande de ${demande.prenom} ${demande.nom} a été approuvée.`,
+                lien: '/dashboard/manager/validations'
+            });
         }
         
         try {
@@ -481,6 +617,7 @@ router.put('/final-reject/:id', async (req, res) => {
     const adminId = req.user.id;
     const { motif } = req.body;
     const motifFinal = motif || 'Non spécifié';
+    const io = req.app.get('io');
     
     try {
         const requestResult = await pool.query(
@@ -511,6 +648,12 @@ router.put('/final-reject/:id', async (req, res) => {
             [demande.utilisateur_id, `Votre demande de congé a été refusée par l'administrateur. Motif : ${motifFinal}`]
         );
         
+        io.to(`user_${demande.utilisateur_id}`).emit('new_notification', {
+            titre: 'Demande refusée',
+            message: `Votre demande de congé a été refusée. Motif : ${motifFinal}`,
+            lien: '/dashboard/employee/requests'
+        });
+        
         if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
@@ -518,6 +661,12 @@ router.put('/final-reject/:id', async (req, res) => {
                  $2, '/dashboard/manager/validations', NOW())`,
                 [demande.manager_id, `La demande de congé de ${demande.prenom} ${demande.nom} a été refusée définitivement.`]
             );
+            
+            io.to(`user_${demande.manager_id}`).emit('new_notification', {
+                titre: 'Demande refusée',
+                message: `La demande de ${demande.prenom} ${demande.nom} a été refusée.`,
+                lien: '/dashboard/manager/validations'
+            });
         }
         
         try {
@@ -552,8 +701,8 @@ router.get('/leave-requests', async (req, res) => {
                     dc.nombre_jours, dc.statut, dc.cree_le,
                     u.nom, u.prenom,
                     CASE 
-                        WHEN dc.type_conge_id = 1 THEN '🏖️ Congés Payés'
-                        ELSE '📝 Congé sans solde'
+                        WHEN dc.type_conge_id = 1 THEN 'Congés Payés'
+                        ELSE 'Congé sans solde'
                     END as type_name
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id

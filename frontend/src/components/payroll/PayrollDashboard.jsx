@@ -1,6 +1,8 @@
 // frontend/src/components/payroll/PayrollDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 function PayrollDashboard() {
     const [bulletins, setBulletins] = useState([]);
@@ -12,9 +14,10 @@ function PayrollDashboard() {
     const [selectedBulletin, setSelectedBulletin] = useState(null);
     const [message, setMessage] = useState('');
     
-    // Filtres
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('all');
+    const [filterService, setFilterService] = useState('all');
+    const [services, setServices] = useState([]);
     
     const [formData, setFormData] = useState({
         utilisateur_id: '',
@@ -35,11 +38,9 @@ function PayrollDashboard() {
         fetchAllData();
     }, []);
 
-    // Appliquer les filtres quand les employés, searchTerm ou filterRole changent
     useEffect(() => {
         let filtered = [...employees];
         
-        // Filtre par recherche (nom, prénom, email)
         if (searchTerm && searchTerm.trim() !== '') {
             const term = searchTerm.toLowerCase().trim();
             filtered = filtered.filter(emp => 
@@ -49,7 +50,6 @@ function PayrollDashboard() {
             );
         }
         
-        // Filtre par rôle
         if (filterRole !== 'all') {
             filtered = filtered.filter(emp => {
                 const roles = emp.roles || [];
@@ -62,32 +62,31 @@ function PayrollDashboard() {
             });
         }
         
+        if (filterService !== 'all' && filterService) {
+            filtered = filtered.filter(emp => emp.service === filterService);
+        }
+        
         setFilteredEmployees(filtered);
-    }, [employees, searchTerm, filterRole]);
+    }, [employees, searchTerm, filterRole, filterService]);
 
     const fetchAllData = async () => {
         setLoading(true);
         try {
-            console.log('🔄 Chargement des données...');
-            
             const [bulletinsRes, employeesRes, statsRes] = await Promise.all([
                 axios.get('http://localhost:5000/api/payroll/tous-bulletins', getAuthHeaders()),
                 axios.get('http://localhost:5000/api/admin/employees-for-payroll', getAuthHeaders()),
                 axios.get('http://localhost:5000/api/payroll/stats', getAuthHeaders())
             ]);
             
-            console.log('📋 Employés reçus:', employeesRes.data);
-            console.log('👥 Nombre d\'employés:', employeesRes.data.length);
-            
             setBulletins(bulletinsRes.data);
             setEmployees(employeesRes.data);
             setFilteredEmployees(employeesRes.data);
             setStats(statsRes.data);
+            
+            const uniqueServices = [...new Set(employeesRes.data.map(emp => emp.service).filter(s => s))];
+            setServices(uniqueServices);
         } catch (error) {
-            console.error('❌ Erreur chargement:', error);
-            if (error.response?.status === 401) {
-                console.error('Non authentifié');
-            }
+            console.error('Erreur chargement:', error);
         } finally {
             setLoading(false);
         }
@@ -105,6 +104,13 @@ function PayrollDashboard() {
         setMessage('');
         setSearchTerm('');
         setFilterRole('all');
+        setFilterService('all');
+    };
+
+    const resetFilters = () => {
+        setSearchTerm('');
+        setFilterRole('all');
+        setFilterService('all');
     };
 
     const handleEmployeChange = (e) => {
@@ -124,7 +130,7 @@ function PayrollDashboard() {
         setMessage('');
 
         if (!formData.utilisateur_id) {
-            setMessage('❌ Veuillez sélectionner un employé');
+            setMessage('Veuillez sélectionner un employé');
             return;
         }
 
@@ -140,7 +146,7 @@ function PayrollDashboard() {
                 },
                 getAuthHeaders()
             );
-            setMessage('✅ ' + response.data.message);
+            setMessage(response.data.message);
             setTimeout(() => {
                 setShowModal(false);
                 resetForm();
@@ -148,7 +154,7 @@ function PayrollDashboard() {
             }, 1500);
         } catch (error) {
             console.error('Erreur génération:', error);
-            setMessage('❌ ' + (error.response?.data?.message || 'Erreur'));
+            setMessage('Erreur: ' + (error.response?.data?.message || 'Erreur'));
         }
     };
 
@@ -167,7 +173,7 @@ function PayrollDashboard() {
                 getAuthHeaders()
             );
             
-            let detailMessage = '📋 Détail des bulletins générés :\n\n';
+            let detailMessage = 'Détail des bulletins générés :\n\n';
             if (response.data.details && response.data.details.length > 0) {
                 response.data.details.forEach(detail => {
                     detailMessage += `• ${detail}\n`;
@@ -176,7 +182,7 @@ function PayrollDashboard() {
             alert(response.data.message + '\n\n' + detailMessage);
             fetchAllData();
         } catch (error) {
-            alert('❌ ' + (error.response?.data?.message || 'Erreur'));
+            alert('Erreur: ' + (error.response?.data?.message || 'Erreur'));
         }
     };
 
@@ -188,10 +194,10 @@ function PayrollDashboard() {
                 {},
                 getAuthHeaders()
             );
-            alert('✅ Bulletin marqué comme payé');
+            alert('Bulletin marqué comme payé');
             fetchAllData();
         } catch (error) {
-            alert('❌ Erreur');
+            alert('Erreur');
         }
     };
 
@@ -203,10 +209,10 @@ function PayrollDashboard() {
                 `http://localhost:5000/api/payroll/bulletin/${id}`,
                 getAuthHeaders()
             );
-            alert('✅ Bulletin supprimé');
+            alert('Bulletin supprimé');
             fetchAllData();
         } catch (error) {
-            alert('❌ Erreur lors de la suppression');
+            alert('Erreur lors de la suppression');
         }
     };
 
@@ -235,7 +241,7 @@ function PayrollDashboard() {
                 },
                 getAuthHeaders()
             );
-            setMessage('✅ ' + response.data.message);
+            setMessage(response.data.message);
             setTimeout(() => {
                 setShowModal(false);
                 setSelectedBulletin(null);
@@ -243,14 +249,68 @@ function PayrollDashboard() {
                 fetchAllData();
             }, 1500);
         } catch (error) {
-            setMessage('❌ ' + (error.response?.data?.message || 'Erreur'));
+            setMessage('Erreur: ' + (error.response?.data?.message || 'Erreur'));
         }
+    };
+
+    const generatePDF = (bulletin) => {
+        const doc = new jsPDF();
+        
+        doc.setFillColor(15, 52, 96);
+        doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(20);
+        doc.text('BULLETIN DE PAIE', 105, 20, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text('Gestion des Congés', 105, 32, { align: 'center' });
+        
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(10);
+        doc.text(`Employé : ${bulletin.prenom} ${bulletin.nom}`, 20, 55);
+        doc.text(`Période : ${moisNoms[bulletin.mois - 1]} ${bulletin.annee}`, 20, 62);
+        doc.text(`Date d'édition : ${new Date().toLocaleDateString('fr-FR')}`, 20, 69);
+        
+        doc.setDrawColor(200, 200, 200);
+        doc.line(20, 75, 190, 75);
+        
+        const formatNumber = (value) => {
+            const num = parseFloat(value);
+            return isNaN(num) ? '0' : num.toFixed(0);
+        };
+        
+        autoTable(doc, {
+            startY: 85,
+            head: [['Désignation', 'Montant (Ar)']],
+            body: [
+                ['Salaire de base', `${formatNumber(bulletin.salaire_base)} Ar`],
+                ['Prime', bulletin.prime_transport > 0 ? `${formatNumber(bulletin.prime_transport)} Ar` : '0 Ar'],
+                ['Salaire brut', `${formatNumber(parseFloat(bulletin.salaire_base) + parseFloat(bulletin.prime_transport || 0))} Ar`],
+                ['Absences non payées', bulletin.jours_absence_non_paye > 0 ? `${bulletin.jours_absence_non_paye} jour(s) (-${formatNumber(bulletin.retenue_absence)} Ar)` : 'Aucune absence'],
+                ['', ''],
+                ['NET À PAYER', `${formatNumber(bulletin.net_a_payer)} Ar`]
+            ],
+            theme: 'striped',
+            headStyles: { fillColor: [15, 52, 96], textColor: [255, 255, 255] },
+            styles: { fontSize: 10, cellPadding: 5 },
+            columnStyles: {
+                0: { cellWidth: 100 },
+                1: { cellWidth: 60, halign: 'right' }
+            }
+        });
+        
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(8);
+        doc.setTextColor(128, 128, 128);
+        doc.text('Document généré automatiquement par l\'application Gestion des Congés', 105, finalY + 10, { align: 'center' });
+        doc.text(`Statut : ${bulletin.statut === 'paye' ? 'Payé' : 'Validé'}`, 105, finalY + 18, { align: 'center' });
+        
+        doc.save(`bulletin_paie_${moisNoms[bulletin.mois - 1]}_${bulletin.annee}_${bulletin.nom}.pdf`);
     };
 
     const getStatusBadge = (statut) => {
         switch (statut) {
-            case 'paye': return <span className="status status-approved">✅ Payé</span>;
-            case 'valide': return <span className="status status-pending-manager">📋 Validé</span>;
+            case 'paye': return <span className="status status-approved">Payé</span>;
+            case 'valide': return <span className="status status-pending-manager">Validé</span>;
             default: return <span className="status">{statut}</span>;
         }
     };
@@ -258,11 +318,6 @@ function PayrollDashboard() {
     const formatNumber = (value) => {
         const num = parseFloat(value);
         return isNaN(num) ? '0' : num.toFixed(0);
-    };
-
-    const resetFilters = () => {
-        setSearchTerm('');
-        setFilterRole('all');
     };
 
     const getRoleDisplay = (roles) => {
@@ -283,9 +338,8 @@ function PayrollDashboard() {
 
     return (
         <div>
-            <h2>💰 Gestion de la Paie</h2>
+            <h2>Gestion de la Paie</h2>
 
-            {/* Stats */}
             {stats && (
                 <div className="cards-grid" style={{ marginBottom: '25px' }}>
                     <div className="stat-card blue">
@@ -307,19 +361,17 @@ function PayrollDashboard() {
                 </div>
             )}
 
-            {/* Actions */}
             <div className="actions-bar">
                 <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
-                    📄 Générer un bulletin
+                    Générer un bulletin
                 </button>
                 <button className="btn btn-secondary" onClick={handleGenererTous}>
-                    📋 Générer pour tous ({moisNoms[formData.mois - 1]} {formData.annee})
+                    Générer pour tous ({moisNoms[formData.mois - 1]} {formData.annee})
                 </button>
             </div>
 
-            {/* Liste des bulletins */}
             <div className="table-container">
-                <h3 style={{ padding: '15px 15px 0 15px' }}>📋 Bulletins de paie</h3>
+                <h3 style={{ padding: '15px 15px 0 15px' }}>Bulletins de paie</h3>
                 <table className="table">
                     <thead>
                         <tr>
@@ -338,7 +390,7 @@ function PayrollDashboard() {
                         {bulletins.length === 0 ? (
                             <tr>
                                 <td colSpan="9" style={{ textAlign: 'center', padding: '30px' }}>
-                                    📭 Aucun bulletin de paie
+                                    Aucun bulletin de paie
                                         </td>
                             </tr>
                         ) : (
@@ -363,13 +415,13 @@ function PayrollDashboard() {
                                                             onClick={() => handleModifier(b)}
                                                             style={{ background: '#ff9800', color: 'white' }}
                                                         >
-                                                            ✏️
+                                                            Modifier
                                                         </button>
                                                         <button 
                                                             className="btn btn-sm btn-success"
                                                             onClick={() => handleMarquerPaye(b.id)}
                                                         >
-                                                            ✅
+                                                            Payé
                                                         </button>
                                                     </>
                                                 )}
@@ -377,7 +429,14 @@ function PayrollDashboard() {
                                                     className="btn btn-sm btn-danger"
                                                     onClick={() => handleSupprimer(b.id)}
                                                 >
-                                                    🗑️
+                                                    Supprimer
+                                                </button>
+                                                <button 
+                                                    className="btn btn-sm btn-primary"
+                                                    onClick={() => generatePDF(b)}
+                                                    style={{ background: '#dc3545' }}
+                                                >
+                                                    PDF
                                                 </button>
                                             </div>
                                         </td>
@@ -389,16 +448,15 @@ function PayrollDashboard() {
                 </table>
             </div>
 
-            {/* Modal Génération/Modification avec filtres */}
             {showModal && (
                 <div className="modal-overlay" onClick={(e) => {
                     if (e.target === e.currentTarget) { setShowModal(false); resetForm(); }
                 }}>
                     <div className="modal" style={{ maxWidth: '650px' }}>
-                        <h3>{selectedBulletin ? '✏️ Modifier le bulletin' : '📄 Générer un bulletin de paie'}</h3>
+                        <h3>{selectedBulletin ? 'Modifier le bulletin' : 'Générer un bulletin de paie'}</h3>
 
                         {message && (
-                            <div className={message.includes('✅') ? 'success-message' : 'error-message'}>
+                            <div className={message.includes('succès') ? 'success-message' : 'error-message'}>
                                 {message}
                             </div>
                         )}
@@ -406,11 +464,10 @@ function PayrollDashboard() {
                         <form onSubmit={selectedBulletin ? handleSaveModification : handleGenererBulletin}>
                             {!selectedBulletin && (
                                 <>
-                                    {/* Barre de filtres */}
                                     <div className="filters-bar" style={{ marginBottom: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
                                         <div className="form-row">
                                             <div className="form-group" style={{ flex: 2 }}>
-                                                <label>🔍 Rechercher</label>
+                                                <label>Rechercher</label>
                                                 <input
                                                     type="text"
                                                     className="form-input"
@@ -420,17 +477,32 @@ function PayrollDashboard() {
                                                 />
                                             </div>
                                             <div className="form-group">
-                                                <label>📋 Rôle</label>
+                                                <label>Rôle</label>
                                                 <select
                                                     className="form-input"
                                                     value={filterRole}
                                                     onChange={(e) => setFilterRole(e.target.value)}
                                                 >
                                                     <option value="all">Tous les rôles</option>
-                                                    <option value="employe">👤 Employés</option>
-                                                    <option value="manager">👔 Managers</option>
+                                                    <option value="employe">Employés</option>
+                                                    <option value="manager">Managers</option>
                                                 </select>
                                             </div>
+                                            {services.length > 0 && (
+                                                <div className="form-group">
+                                                    <label>Service</label>
+                                                    <select
+                                                        className="form-input"
+                                                        value={filterService}
+                                                        onChange={(e) => setFilterService(e.target.value)}
+                                                    >
+                                                        <option value="all">Tous les services</option>
+                                                        {services.map(s => (
+                                                            <option key={s} value={s}>{s}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
                                             <div className="form-group" style={{ justifyContent: 'flex-end' }}>
                                                 <label>&nbsp;</label>
                                                 <button 
@@ -439,12 +511,12 @@ function PayrollDashboard() {
                                                     onClick={resetFilters}
                                                     style={{ marginTop: '5px' }}
                                                 >
-                                                    🗑️ Réinitialiser
+                                                    Réinitialiser
                                                 </button>
                                             </div>
                                         </div>
                                         <div className="info-text" style={{ fontSize: '12px', marginTop: '10px' }}>
-                                            📊 {filteredEmployees.length} employé(s) trouvé(s) sur {employees.length}
+                                            {filteredEmployees.length} employé(s) trouvé(s) sur {employees.length}
                                         </div>
                                     </div>
 
@@ -472,12 +544,12 @@ function PayrollDashboard() {
                                         </select>
                                         {filteredEmployees.length === 0 && employees.length > 0 && (
                                             <small className="info-text" style={{ color: '#ff9800', display: 'block', marginTop: '5px' }}>
-                                                ⚠️ Aucun employé ne correspond aux critères de recherche. Modifiez vos filtres.
+                                                Aucun employé ne correspond aux critères de recherche. Modifiez vos filtres.
                                             </small>
                                         )}
                                         {employees.length === 0 && (
                                             <small className="info-text" style={{ color: '#dc3545', display: 'block', marginTop: '5px' }}>
-                                                ⚠️ Aucun employé trouvé. Veuillez créer un employé depuis "Gestion des utilisateurs".
+                                                Aucun employé trouvé. Veuillez créer un employé depuis "Gestion des utilisateurs".
                                             </small>
                                         )}
                                     </div>
@@ -521,7 +593,7 @@ function PayrollDashboard() {
                                     step="10000"
                                     required
                                 />
-                                <small className="info-text">💡 Salaire mensuel de base en Ariary</small>
+                                <small className="info-text">Salaire mensuel de base en Ariary</small>
                             </div>
 
                             <div className="form-group">
@@ -534,11 +606,11 @@ function PayrollDashboard() {
                                     min="0"
                                     step="10000"
                                 />
-                                <small className="info-text">💡 Prime exceptionnelle en Ariary (transport, performance, etc.)</small>
+                                <small className="info-text">Prime exceptionnelle en Ariary (transport, performance, etc.)</small>
                             </div>
 
                             <div className="info-box" style={{ background: '#e8f4fd', marginTop: '15px' }}>
-                                <strong>📊 Aperçu :</strong><br/>
+                                <strong>Aperçu :</strong><br/>
                                 Salaire brut : {formatNumber(parseFloat(formData.salaire_base || 0) + parseFloat(formData.prime || 0))} Ar<br/>
                                 Prime : {formatNumber(formData.prime || 0)} Ar<br/>
                                 <strong>Net estimé : {formatNumber((parseFloat(formData.salaire_base) || 0) + (parseFloat(formData.prime) || 0))} Ar</strong>
@@ -547,7 +619,7 @@ function PayrollDashboard() {
 
                             <div className="btn-group" style={{ marginTop: '20px' }}>
                                 <button type="submit" className="btn btn-primary">
-                                    {selectedBulletin ? '💾 Enregistrer' : '📄 Générer le bulletin'}
+                                    {selectedBulletin ? 'Enregistrer' : 'Générer le bulletin'}
                                 </button>
                                 <button 
                                     type="button" 

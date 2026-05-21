@@ -69,8 +69,8 @@ function LeaveRequest({ onSuccess }) {
             
             if (response.status === 201) {
                 const message = formData.type_id === 1 
-                    ? '✅ Demande de congés payés envoyée !'
-                    : '⚠️ Demande de congé sans solde envoyée (non rémunéré)';
+                    ? 'Demande de congés payés envoyée !'
+                    : 'Demande de congé sans solde envoyée (non rémunéré)';
                 alert(message + '\n\nEn attente de validation par votre manager.\n\nVous pouvez modifier ou annuler votre demande tant qu\'elle n\'a pas été validée.');
                 if (onSuccess) onSuccess();
                 else navigate('/dashboard/employee/requests');
@@ -95,34 +95,34 @@ function LeaveRequest({ onSuccess }) {
 
     return (
         <div>
-            <h2>📅 Demander un congé</h2>
+            <h2>Demander un congé</h2>
             
             <div className="info-box" style={{ background: '#e8f4fd', marginBottom: '20px' }}>
-                <strong>📋 Règles selon le type de congé :</strong><br/>
+                <strong>Regles selon le type de congé :</strong><br/>
                 {formData.type_id === 1 && (
                     <>
-                        • 🏖️ <strong>Congés Payés</strong> : 25 jours/an, max 20 jours consécutifs<br/>
-                        • ⏰ Préavis minimum : 2 jours<br/>
-                        • 💰 Rémunéré : <strong style={{ color: '#28a745' }}>✅ Oui</strong>
+                        • <strong>Congés Payés</strong> : 25 jours/an, max 20 jours consécutifs<br/>
+                        • Préavis minimum : 2 jours<br/>
+                        • Rémunéré : <strong style={{ color: '#28a745' }}>Oui</strong>
                     </>
                 )}
                 {formData.type_id === 2 && (
                     <>
-                        • 📝 <strong>Congé sans solde</strong> : Pas de limite annuelle, max 5 jours consécutifs<br/>
-                        • ⏰ Préavis minimum : 1 jour<br/>
-                        • 💰 Rémunéré : <strong style={{ color: '#dc3545' }}>❌ Non</strong>
+                        • <strong>Congé sans solde</strong> : Pas de limite annuelle, max 5 jours consécutifs<br/>
+                        • Préavis minimum : 1 jour<br/>
+                        • Rémunéré : <strong style={{ color: '#dc3545' }}>Non</strong>
                     </>
                 )}
                 <br/>
-                • ⚠️ Délai minimum entre deux demandes : 7 jours<br/>
-                • 📅 Dates à partir d'aujourd'hui uniquement
+                • Delai minimum entre deux demandes : 7 jours<br/>
+                • Dates à partir d'aujourd'hui uniquement
             </div>
             
             {error && <div className="error-message">{error}</div>}
             
             {errorsList.length > 0 && (
                 <div className="error-message" style={{ background: '#f8d7da', borderLeftColor: '#dc3545' }}>
-                    <strong>❌ {errorsList.length} règle(s) non respectée(s) :</strong>
+                    <strong>{errorsList.length} règle(s) non respectée(s) :</strong>
                     <ul style={{ marginTop: '10px', marginLeft: '20px' }}>
                         {errorsList.map((err, idx) => (
                             <li key={idx}>{err}</li>
@@ -143,8 +143,8 @@ function LeaveRequest({ onSuccess }) {
                             setError('');
                         }}
                     >
-                        <option value="1">🏖️ Congés Payés (25j/an - Rémunéré)</option>
-                        <option value="2">📝 Congé sans solde (Non rémunéré - 5j max)</option>
+                        <option value="1">Congés Payés (25j/an - Rémunéré)</option>
+                        <option value="2">Congé sans solde (Non rémunéré - 5j max)</option>
                     </select>
                 </div>
                 
@@ -166,7 +166,7 @@ function LeaveRequest({ onSuccess }) {
                             min={todayDate}
                             required 
                         />
-                        <small className="info-text">📅 Date à partir d'aujourd'hui uniquement</small>
+                        <small className="info-text">Date à partir d'aujourd'hui uniquement</small>
                     </div>
                     <div className="form-group">
                         <label>Date de fin</label>
@@ -182,7 +182,7 @@ function LeaveRequest({ onSuccess }) {
                             min={formData.start_date || todayDate}
                             required 
                         />
-                        <small className="info-text">📅 Doit être après ou égale à la date de début</small>
+                        <small className="info-text">Doit être après ou égale à la date de début</small>
                     </div>
                 </div>
                 
@@ -199,14 +199,14 @@ function LeaveRequest({ onSuccess }) {
                 
                 {formData.type_id === 2 && (
                     <div className="info-box" style={{ background: '#fff3cd', borderLeftColor: '#ffc107', marginBottom: '15px' }}>
-                        ⚠️ <strong>Attention :</strong> Le congé sans solde n'est <strong>PAS RÉMUNÉRÉ</strong>. 
+                        Attention : Le congé sans solde n'est <strong>PAS RÉMUNÉRÉ</strong>. 
                         Votre salaire sera diminué proportionnellement aux jours d'absence.
                     </div>
                 )}
                 
                 <div className="btn-group">
                     <button type="submit" className="btn btn-primary" disabled={loading}>
-                        {loading ? 'Envoi en cours...' : '📤 Envoyer la demande'}
+                        {loading ? 'Envoi en cours...' : 'Envoyer la demande'}
                     </button>
                     <button type="button" className="btn btn-secondary" onClick={() => navigate('/dashboard/employee')}>
                         Annuler
@@ -215,10 +215,10 @@ function LeaveRequest({ onSuccess }) {
             </form>
             
             <div className="info-box" style={{ marginTop: '20px', background: '#e8f4fd' }}>
-                <strong>ℹ️ Processus de validation en 2 étapes :</strong><br/>
-                1️⃣ Votre manager valide la demande (1ère étape)<br/>
-                2️⃣ L'administrateur valide définitivement (2ème étape)<br/>
-                <strong>📝 Vous pouvez modifier ou annuler votre demande tant qu'elle est en attente de validation par le manager.</strong>
+                <strong>Processus de validation en 2 étapes :</strong><br/>
+                1ère étape : Votre manager valide la demande<br/>
+                2ème étape : L'administrateur valide définitivement<br/>
+                <strong>Vous pouvez modifier ou annuler votre demande tant qu'elle est en attente de validation par le manager.</strong>
             </div>
         </div>
     );

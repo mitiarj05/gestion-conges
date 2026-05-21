@@ -23,10 +23,15 @@ function ManagerStats() {
 
     const fetchManagerStats = async () => {
         try {
+            console.log('📊 Chargement des stats manager...');
             const response = await axios.get('http://localhost:5000/api/leaves/manager-dashboard-stats', getAuthHeaders());
+            console.log('📊 Stats manager reçues:', response.data);
             setStats(response.data);
         } catch (error) {
-            console.error('Erreur chargement stats manager:', error);
+            console.error('❌ Erreur chargement stats manager:', error);
+            if (error.response) {
+                console.error('Réponse erreur:', error.response.data);
+            }
         } finally {
             setLoading(false);
         }
@@ -35,7 +40,12 @@ function ManagerStats() {
     const moisNoms = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
     if (loading) {
-        return <div className="text-center">Chargement des statistiques...</div>;
+        return (
+            <div className="text-center" style={{ padding: '20px' }}>
+                <div className="loading-spinner" style={{ width: '20px', height: '20px', margin: '0 auto 10px' }}></div>
+                <div>Chargement des statistiques...</div>
+            </div>
+        );
     }
 
     if (stats.totalDemandes === 0) {
@@ -46,6 +56,9 @@ function ManagerStats() {
             </div>
         );
     }
+
+    const tauxApprobation = stats.totalDemandes > 0 ? Math.round((stats.approuvees / stats.totalDemandes) * 100) : 0;
+    const tauxRefus = stats.totalDemandes > 0 ? Math.round((stats.refusees / stats.totalDemandes) * 100) : 0;
 
     return (
         <div>
@@ -94,7 +107,7 @@ function ManagerStats() {
                 </div>
             )}
 
-            {/* Taux d'approbation */}
+            {/* Taux d'approbation et refus */}
             <div className="admin-section" style={{ marginTop: '20px' }}>
                 <h4>📊 Taux d'approbation global</h4>
                 <div className="stats-summary">
@@ -103,9 +116,9 @@ function ManagerStats() {
                         <div className="progress-bar">
                             <div 
                                 className="progress-fill cp-fill" 
-                                style={{ width: `${stats.totalDemandes > 0 ? (stats.approuvees / stats.totalDemandes) * 100 : 0}%` }}
+                                style={{ width: `${tauxApprobation}%` }}
                             >
-                                {stats.totalDemandes > 0 ? Math.round((stats.approuvees / stats.totalDemandes) * 100) : 0}%
+                                {tauxApprobation}%
                             </div>
                         </div>
                     </div>
@@ -114,9 +127,9 @@ function ManagerStats() {
                         <div className="progress-bar">
                             <div 
                                 className="progress-fill rejected-fill" 
-                                style={{ width: `${stats.totalDemandes > 0 ? (stats.refusees / stats.totalDemandes) * 100 : 0}%`, background: '#dc3545' }}
+                                style={{ width: `${tauxRefus}%`, background: '#dc3545' }}
                             >
-                                {stats.totalDemandes > 0 ? Math.round((stats.refusees / stats.totalDemandes) * 100) : 0}%
+                                {tauxRefus}%
                             </div>
                         </div>
                     </div>

@@ -13,7 +13,7 @@ function ThemeToggle() {
         >
             {theme === 'light' ? '🌙' : '☀️'}
             <span className="theme-toggle-text">
-                {theme === 'light' ? 'Mode sombre' : 'Mode clair'}
+                {theme === 'light' ? 'Sombre' : 'Clair'}
             </span>
         </button>
     );

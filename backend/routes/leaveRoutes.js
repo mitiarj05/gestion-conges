@@ -365,6 +365,53 @@ router.get('/team-pending', authMiddleware, async (req, res) => {
     }
 });
 
+router.get('/team-pending-filtered', authMiddleware, async (req, res) => {
+    const { periode } = req.query;
+    const managerId = req.user.id;
+    
+    let dateCondition = "";
+    
+    switch(periode) {
+        case 'month':
+            dateCondition = `AND dc.date_debut >= DATE_TRUNC('month', CURRENT_DATE)`;
+            break;
+        case 'quarter':
+            dateCondition = `AND dc.date_debut >= DATE_TRUNC('quarter', CURRENT_DATE)`;
+            break;
+        case 'year':
+            dateCondition = `AND dc.date_debut >= DATE_TRUNC('year', CURRENT_DATE)`;
+            break;
+        default:
+            dateCondition = "";
+    }
+    
+    try {
+        const congesResult = await pool.query(`
+            SELECT 
+                dc.id,
+                TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
+                TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
+                dc.nombre_jours, dc.motif, dc.statut,
+                u.nom, u.prenom, u.email, u.service, 
+                CASE 
+                    WHEN dc.type_conge_id = 1 THEN '🏖️ Congés Payés'
+                    ELSE '📝 Congé sans solde'
+                END as type_name,
+                'conges' as request_type,
+                dc.cree_le
+             FROM demandes_conges dc
+             JOIN users u ON dc.utilisateur_id = u.id
+             WHERE u.manager_id = $1 ${dateCondition}
+             ORDER BY dc.cree_le DESC
+        `, [managerId]);
+        
+        res.json(congesResult.rows);
+    } catch (error) {
+        console.error('Erreur team pending filtered:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
 router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
     const managerId = req.user.id;
@@ -658,6 +705,118 @@ router.post('/permission-request', authMiddleware, async (req, res) => {
 
 router.delete('/cancel-permission/:id', authMiddleware, async (req, res) => {
     res.status(400).json({ message: 'Fonctionnalité désactivée' });
+});
+
+// ============ STATISTIQUES ÉQUIPE POUR MANAGER ============
+router.get('/team-stats', authMiddleware, async (req, res) => {
+    try {
+        const managerId = req.user.id;
+        
+        // Récupérer les membres de l'équipe
+        const teamResult = await pool.query(
+            `SELECT id FROM users WHERE manager_id = $1`,
+            [managerId]
+        );
+        
+        const teamIds = teamResult.rows.map(m => m.id);
+        
+        if (teamIds.length === 0) {
+            return res.json({
+                totalRequests: 0,
+                approvedRequests: 0,
+                pendingRequests: 0,
+                rejectedRequests: 0,
+                totalDaysTaken: 0,
+                requestsByEmployee: [],
+                requestsByType: { CP: 0, SANS_SOLDE: 0 },
+                monthlyData: []
+            });
+        }
+        
+        // Statistiques globales
+        const globalStats = await pool.query(`
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN statut = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN statut IN ('pending_manager', 'pending_admin') THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN statut = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                SUM(CASE WHEN statut = 'approved' THEN nombre_jours ELSE 0 END) as total_days
+            FROM demandes_conges
+            WHERE utilisateur_id = ANY($1::int[])
+        `, [teamIds]);
+        
+        // Demandes par employé
+        const parEmploye = await pool.query(`
+            SELECT 
+                u.id, u.nom, u.prenom,
+                COUNT(dc.*) as total,
+                SUM(CASE WHEN dc.statut = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN dc.statut IN ('pending_manager', 'pending_admin') THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN dc.statut = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                COALESCE(SUM(CASE WHEN dc.statut = 'approved' THEN dc.nombre_jours ELSE 0 END), 0) as total_days
+            FROM users u
+            LEFT JOIN demandes_conges dc ON u.id = dc.utilisateur_id
+            WHERE u.manager_id = $1
+            GROUP BY u.id
+            ORDER BY total DESC
+        `, [managerId]);
+        
+        // Demandes par type (CP = type_conge_id 1, Sans solde = type_conge_id 2)
+        const parType = await pool.query(`
+            SELECT 
+                dc.type_conge_id,
+                COUNT(*) as total
+            FROM demandes_conges dc
+            WHERE dc.utilisateur_id = ANY($1::int[])
+            GROUP BY dc.type_conge_id
+        `, [teamIds]);
+        
+        let requestsByType = { CP: 0, SANS_SOLDE: 0 };
+        parType.rows.forEach(row => {
+            if (row.type_conge_id === 1) {
+                requestsByType.CP = parseInt(row.total);
+            } else if (row.type_conge_id === 2) {
+                requestsByType.SANS_SOLDE = parseInt(row.total);
+            }
+        });
+        
+        // Demandes par mois
+        const parMois = await pool.query(`
+            SELECT 
+                EXTRACT(YEAR FROM date_debut) as annee,
+                EXTRACT(MONTH FROM date_debut) as mois,
+                COUNT(*) as total
+            FROM demandes_conges
+            WHERE utilisateur_id = ANY($1::int[])
+            AND date_debut >= NOW() - INTERVAL '12 months'
+            GROUP BY annee, mois
+            ORDER BY annee DESC, mois DESC
+        `, [teamIds]);
+        
+        res.json({
+            totalRequests: parseInt(globalStats.rows[0].total) || 0,
+            approvedRequests: parseInt(globalStats.rows[0].approved) || 0,
+            pendingRequests: parseInt(globalStats.rows[0].pending) || 0,
+            rejectedRequests: parseInt(globalStats.rows[0].rejected) || 0,
+            totalDaysTaken: parseInt(globalStats.rows[0].total_days) || 0,
+            requestsByEmployee: parEmploye.rows.map(row => ({
+                id: row.id,
+                nom: row.nom,
+                prenom: row.prenom,
+                total: parseInt(row.total) || 0,
+                approved: parseInt(row.approved) || 0,
+                pending: parseInt(row.pending) || 0,
+                rejected: parseInt(row.rejected) || 0,
+                totalDays: parseInt(row.total_days) || 0
+            })),
+            requestsByType: requestsByType,
+            monthlyData: parMois.rows
+        });
+        
+    } catch (error) {
+        console.error('Erreur team stats:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
 });
 
 // ============ NOTIFICATIONS ============

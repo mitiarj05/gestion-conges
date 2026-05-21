@@ -7,7 +7,6 @@ import Sidebar from '../common/Sidebar';
 import Footer from '../common/Footer';
 import LeaveBalance from './LeaveBalance';
 import LeaveRequest from './LeaveRequest';
-// import PermissionRequest from './PermissionRequest';  ← SUPPRIMÉ
 import EditLeaveRequest from './EditLeaveRequest';
 import CalendarView from './CalendarView';
 import ManagerProfile from './ManagerProfile';
@@ -44,7 +43,6 @@ function EmployeeDashboard({ onLogout }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filteredRequests, setFilteredRequests] = useState([]);
 
-    // ============ FETCH SOLDE (MODIFIÉ POUR 2 TYPES) ============
     const fetchBalance = useCallback(async () => {
         try {
             const token = localStorage.getItem('token');
@@ -71,7 +69,6 @@ function EmployeeDashboard({ onLogout }) {
         }
     }, [navigate]);
 
-    // ============ FETCH MES DEMANDES ============
     const fetchRequests = useCallback(async () => {
         try {
             const token = localStorage.getItem('token');
@@ -82,21 +79,19 @@ function EmployeeDashboard({ onLogout }) {
             
             const formattedRequests = response.data.map(req => {
                 let normalizedStatus = req.status || req.statut;
-                
                 if (!normalizedStatus || normalizedStatus === 'En attente' || normalizedStatus === 'en_attente') {
                     normalizedStatus = 'pending_manager';
                 }
-                
                 const validStatuses = ['pending_manager', 'pending_admin', 'approved', 'rejected'];
                 if (!validStatuses.includes(normalizedStatus)) {
                     normalizedStatus = 'pending_manager';
                 }
                 
                 let displayType = req.type;
-                if (req.type_id === 1 || req.type === 'Congés Payés' || req.type === '🏖️ Congés Payés') {
-                    displayType = '🏖️ Congés Payés';
+                if (req.type_id === 1 || req.type === 'Congés Payés' || req.type === 'Congés Payés') {
+                    displayType = 'Congés Payés';
                 } else {
-                    displayType = '📝 Congé sans solde';
+                    displayType = 'Congé sans solde';
                 }
                 
                 return {
@@ -135,7 +130,6 @@ function EmployeeDashboard({ onLogout }) {
         }
     }, []);
 
-    // ============ FETCH NOTIFICATIONS ============
     const fetchNotifications = useCallback(async () => {
         try {
             const token = localStorage.getItem('token');
@@ -148,7 +142,6 @@ function EmployeeDashboard({ onLogout }) {
         } catch (error) { console.error('Erreur notifications:', error); }
     }, []);
 
-    // ============ FETCH ALL DATA ============
     const fetchAllData = useCallback(async () => {
         await Promise.all([fetchBalance(), fetchRequests()]);
         setLoading(false);
@@ -159,7 +152,6 @@ function EmployeeDashboard({ onLogout }) {
         fetchNotifications();
     }, [fetchAllData, fetchNotifications]);
 
-    // ============ INIT ============
     useEffect(() => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
@@ -169,26 +161,32 @@ function EmployeeDashboard({ onLogout }) {
         return () => clearInterval(interval);
     }, [fetchAllData, fetchNotifications]);
 
-    // ============ FILTRES ============
     useEffect(() => {
-        let filtered = [...requests];
-        if (filterStatus !== 'all') filtered = filtered.filter(r => r.status === filterStatus);
-        if (filterType !== 'all') {
-            if (filterType === 'permission') filtered = filtered.filter(r => r.request_type === 'permission');
-            else filtered = filtered.filter(r => r.type_id === parseInt(filterType));
-        }
-        if (searchTerm) {
-            filtered = filtered.filter(r => {
-                const searchLower = searchTerm.toLowerCase();
-                return (r.start_date || '').toLowerCase().includes(searchLower) || 
-                       (r.motif || '').toLowerCase().includes(searchLower) ||
-                       (r.type || '').toLowerCase().includes(searchLower);
-            });
-        }
-        setFilteredRequests(filtered);
-    }, [requests, filterStatus, filterType, searchTerm]);
+    let filtered = [...requests];
+    
+    // Filtre par statut
+    if (filterStatus !== 'all') {
+        filtered = filtered.filter(r => r.status === filterStatus);
+    }
+    
+    // Filtre par type (uniquement CP=1 ou Sans solde=2)
+    if (filterType !== 'all') {
+        filtered = filtered.filter(r => r.type_id === parseInt(filterType));
+    }
+    
+    // Recherche par texte
+    if (searchTerm && searchTerm.trim() !== '') {
+        const term = searchTerm.toLowerCase().trim();
+        filtered = filtered.filter(r => {
+            return (r.start_date && r.start_date.toLowerCase().includes(term)) || 
+                   (r.motif && r.motif.toLowerCase().includes(term)) ||
+                   (r.type && r.type.toLowerCase().includes(term));
+        });
+    }
+    
+    setFilteredRequests(filtered);
+}, [requests, filterStatus, filterType, searchTerm]);
 
-    // ============ NOTIFICATIONS ============
     const markAsRead = async (id) => {
         try {
             const token = localStorage.getItem('token');
@@ -200,7 +198,6 @@ function EmployeeDashboard({ onLogout }) {
         } catch (error) { console.error('Erreur:', error); }
     };
 
-    // ============ MODIFIER DEMANDE ============
     const handleModifyRequest = (request) => {
         if (request.status !== 'pending_manager') { 
             toastError('Cette demande ne peut plus être modifiée'); 
@@ -223,10 +220,9 @@ function EmployeeDashboard({ onLogout }) {
         setShowEditModal(true);
     };
 
-    // ============ SUPPRIMER DEMANDE ============
     const handleDeleteRequest = async (request) => {
         const typeLabel = request.request_type === 'permission' ? 'permission' : 'congé';
-        if (window.confirm(`⚠️ Supprimer définitivement cette demande de ${typeLabel} ?\n\nCette action est irréversible.`)) {
+        if (window.confirm(`Supprimer définitivement cette demande de ${typeLabel} ?`)) {
             try {
                 const token = localStorage.getItem('token');
                 if (request.request_type === 'permission') {
@@ -238,7 +234,7 @@ function EmployeeDashboard({ onLogout }) {
                         headers: { Authorization: `Bearer ${token}` } 
                     });
                 }
-                success(`✅ Demande de ${typeLabel} supprimée avec succès !`);
+                success(`Demande de ${typeLabel} supprimée !`);
                 refreshAllData();
             } catch (error) { 
                 toastError(error.response?.data?.message || 'Erreur lors de la suppression'); 
@@ -246,14 +242,13 @@ function EmployeeDashboard({ onLogout }) {
         }
     };
 
-    // ============ SAUVEGARDER MODIFICATION ============
     const handleSaveEdit = async (editedData) => {
         try {
             const token = localStorage.getItem('token');
             const response = await axios.put(`http://localhost:5000/api/leaves/update-request/${editingRequest.id}`, editedData, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            success(response.data.message || '✅ Demande modifiée avec succès !');
+            success(response.data.message || 'Demande modifiée !');
             setEditingRequest(null);
             setShowEditModal(false);
             refreshAllData();
@@ -267,43 +262,44 @@ function EmployeeDashboard({ onLogout }) {
 
     const handleCloseEdit = () => { setEditingRequest(null); setShowEditModal(false); };
 
-    // ============ AFFICHAGE STATUT ============
     const getStatusLabel = (status, motif_refus) => {
         let normalizedStatus = status;
         if (!status || status === 'En attente' || status === 'en_attente') normalizedStatus = 'pending_manager';
         
         switch(normalizedStatus) {
             case 'pending_manager': 
-                return <span className="status status-pending-manager">⏳ En attente manager - Modifiable</span>;
+                return <span className="status status-pending-manager">En attente manager - Modifiable</span>;
             case 'pending_admin': 
-                return <span className="status status-pending-admin">🕐 En attente admin - Non modifiable</span>;
+                return <span className="status status-pending-admin">En attente admin</span>;
             case 'approved': 
-                return <span className="status status-approved">✅ Approuvé</span>;
+                return <span className="status status-approved">Approuvé</span>;
             case 'rejected': 
-                return (<div><span className="status status-rejected">❌ Refusé</span>
-                        {motif_refus && <small style={{ display: 'block', color: '#dc3545' }}>Motif : {motif_refus}</small>}
+                return (<div><span className="status status-rejected">Refusé</span>
+                        {motif_refus && <small style={{ display: 'block', color: '#dc2626' }}>Motif : {motif_refus}</small>}
                         </div>);
             default: 
-                return <span className="status status-pending-manager">⏳ En attente</span>;
+                return <span className="status status-pending-manager">En attente</span>;
         }
     };
 
     const handleRequestSuccess = () => { 
         refreshAllData(); 
-        success('✅ Demande envoyée avec succès !'); 
+        success('Demande envoyée !'); 
         navigate('/dashboard/employee/requests'); 
     };
     
     const handleJustificatifUpload = () => { 
         fetchRequests(); 
-        success('📎 Justificatif ajouté avec succès !'); 
+        success('Justificatif ajouté !'); 
     };
 
     if (loading) {
-        return (<div className="loading-container">
-            <div className="loading-spinner"></div>
-            <div>Chargement...</div>
-        </div>);
+        return (
+            <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <div>Chargement...</div>
+            </div>
+        );
     }
 
     const renderEditModal = () => {
@@ -317,23 +313,23 @@ function EmployeeDashboard({ onLogout }) {
         );
     };
 
-    // ============ DASHBOARD ACCUEIL ============
     const DashboardHome = () => (
         <>
-            <h1>👋 Bonjour {user.prenom} {user.nom}</h1>
+            <h1>Bonjour {user.prenom} {user.nom}</h1>
+            <p style={{ color: '#64748b', marginBottom: '24px' }}>Tableau de bord Employé</p>
             <AlertBanner balance={balance} />
             
             {notifications.length > 0 && (
-                <div className="admin-section" style={{ background: '#e8f4fd' }}>
-                    <h3>🔔 Notifications ({unreadCount} non lues)</h3>
+                <div className="admin-section" style={{ background: '#eff6ff' }}>
+                    <h3>Notifications ({unreadCount} non lues)</h3>
                     {notifications.slice(0, 5).map(notif => (
-                        <div key={notif.id} className="request-item" style={{ background: notif.est_lu ? '#f9f9f9' : '#fff3cd' }}>
+                        <div key={notif.id} className="request-item" style={{ background: notif.est_lu ? '#ffffff' : '#fef3c7' }}>
                             <div className="request-info">
                                 <strong>{notif.titre}</strong>
                                 <small>{notif.message}</small>
-                                <small style={{ display: 'block', color: '#888' }}>{formatDateTime(notif.cree_le)}</small>
+                                <small style={{ display: 'block', color: '#64748b' }}>{formatDateTime(notif.cree_le)}</small>
                             </div>
-                            {!notif.est_lu && <button className="btn btn-sm btn-secondary" onClick={() => markAsRead(notif.id)}>✓ Marquer lu</button>}
+                            {!notif.est_lu && <button className="btn btn-sm btn-secondary" onClick={() => markAsRead(notif.id)}>Marquer lu</button>}
                         </div>
                     ))}
                 </div>
@@ -341,12 +337,12 @@ function EmployeeDashboard({ onLogout }) {
             
             <div className="cards-grid">
                 <div className="card">
-                    <h3>🏖️ Congés Payés</h3>
+                    <h3>Congés Payés</h3>
                     <div className="value">{balance.cp_restant || 0} jours</div>
                     <div className="small">Total: {balance.cp_total || 25} jours • Pris: {balance.cp_pris || 0} jours</div>
                 </div>
                 <div className="card">
-                    <h3>📝 Congé sans solde</h3>
+                    <h3>Congé sans solde</h3>
                     <div className="value">Illimité</div>
                     <div className="small">Non rémunéré • Max 5j consécutifs</div>
                 </div>
@@ -354,23 +350,14 @@ function EmployeeDashboard({ onLogout }) {
             
             <div className="actions-bar">
                 <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>
-                    📅 Demander un congé
+                    Demander un congé
                 </button>
             </div>
             
             <div className="table-container">
-                <h3 style={{ padding: '15px 15px 0 15px' }}>📋 Mes demandes récentes</h3>
+                <h3 style={{ padding: '16px 16px 0 16px' }}>Mes demandes récentes</h3>
                 <table className="table">
-                    <thead>
-                        <tr>
-                            <th>Dates</th>
-                            <th>Type</th>
-                            <th>Durée</th>
-                            <th>Statut</th>
-                            <th>Justificatif</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Dates</th><th>Type</th><th>Durée</th><th>Statut</th><th>Justificatif</th><th>Actions</th></tr></thead>
                     <tbody>
                         {requests.slice(0, 5).map((req) => (
                             <tr key={req.id}>
@@ -378,75 +365,29 @@ function EmployeeDashboard({ onLogout }) {
                                 <td>{req.type}</td>
                                 <td>{req.displayDuration}</td>
                                 <td>{getStatusLabel(req.status, req.motif_refus)}</td>
-                                <td>
-                                    {justificatifs[req.id]?.length > 0 ? 
-                                        (<span className="status status-approved">📎 {justificatifs[req.id].length} fichier(s)</span>) : 
-                                        (req.status === 'pending_manager' && req.request_type !== 'permission' && 
-                                         (<FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />))}
-                                </td>
-                                <td>
-                                    {req.status === 'pending_manager' && (
-                                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                                            {req.request_type !== 'permission' && 
-                                                <button className="btn btn-sm btn-primary" onClick={() => handleModifyRequest(req)} 
-                                                    style={{ background: '#ff9800', color: 'white', cursor: 'pointer' }} type="button">
-                                                    ✏️ Modifier
-                                                </button>
-                                            }
-                                            <button className="btn btn-sm btn-warning" onClick={() => handleDeleteRequest(req)} 
-                                                style={{ background: '#6c757d', color: 'white', cursor: 'pointer' }} type="button">
-                                                🗑️ Supprimer
-                                            </button>
-                                        </div>
-                                    )}
-                                    {req.status === 'pending_admin' && 
-                                        <span className="info-text" style={{ fontSize: '11px', color: '#ff9800' }}>⏳ Déjà validé par manager</span>
-                                    }
-                                    {(req.status === 'approved' || req.status === 'rejected') && 
-                                        <span className="info-text" style={{ fontSize: '11px', color: '#888' }}>
-                                            {req.status === 'approved' ? '✅ Finalisé' : '❌ Finalisé'}
-                                        </span>
-                                    }
-                                </td>
+                                <td>{justificatifs[req.id]?.length > 0 ? (<span className="status status-approved">Fichier(s)</span>) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (<FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />))}</td>
+                                <td>{req.status === 'pending_manager' && (<div className="btn-group" style={{ gap: '5px' }}>
+                                    {req.request_type !== 'permission' && <button className="btn btn-sm btn-primary" onClick={() => handleModifyRequest(req)} style={{ background: '#f59e0b' }}>Modifier</button>}
+                                    <button className="btn btn-sm btn-danger" onClick={() => handleDeleteRequest(req)}>Supprimer</button>
+                                </div>)}
+                                {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
+                                {(req.status === 'approved' || req.status === 'rejected') && <span className="info-text">{req.status === 'approved' ? 'Finalisé' : 'Finalisé'}</span>}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
-            
             {renderEditModal()}
         </>
     );
 
-    // ============ PAGE MES DEMANDES ============
     const MyRequestsPage = () => (
         <>
-            <h2>📋 Historique complet de mes demandes</h2>
-            <LeaveFilters 
-                filterStatus={filterStatus} 
-                setFilterStatus={setFilterStatus} 
-                filterType={filterType} 
-                setFilterType={setFilterType} 
-                searchTerm={searchTerm} 
-                setSearchTerm={setSearchTerm} 
-                totalCount={requests.length} 
-                filteredCount={filteredRequests.length} 
-                onReset={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }} 
-            />
+            <h2>Historique complet de mes demandes</h2>
+            <LeaveFilters filterStatus={filterStatus} setFilterStatus={setFilterStatus} filterType={filterType} setFilterType={setFilterType} searchTerm={searchTerm} setSearchTerm={setSearchTerm} totalCount={requests.length} filteredCount={filteredRequests.length} onReset={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }} />
             <div className="table-container">
                 <table className="table">
-                    <thead>
-                        <tr>
-                            <th>Dates</th>
-                            <th>Type</th>
-                            <th>Durée</th>
-                            <th>Motif</th>
-                            <th>Statut</th>
-                            <th>Motif du refus</th>
-                            <th>Justificatif</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Dates</th><th>Type</th><th>Durée</th><th>Motif</th><th>Statut</th><th>Motif refus</th><th>Justificatif</th><th>Actions</th></tr></thead>
                     <tbody>
                         {filteredRequests.map((req) => (
                             <tr key={req.id}>
@@ -456,206 +397,116 @@ function EmployeeDashboard({ onLogout }) {
                                 <td>{req.motif || '-'}</td>
                                 <td>{getStatusLabel(req.status, req.motif_refus)}</td>
                                 <td>{req.motif_refus || '-'}</td>
-                                <td>
-                                    {justificatifs[req.id]?.length > 0 ? 
-                                        (<span className="status status-approved">📎 {justificatifs[req.id].length} fichier(s)</span>) : 
-                                        (req.status === 'pending_manager' && req.request_type !== 'permission' && 
-                                         (<FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />))}
-                                </td>
-                                <td>
-                                    {req.status === 'pending_manager' && (
-                                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                                            {req.request_type !== 'permission' && 
-                                                <button className="btn btn-sm btn-primary" onClick={() => handleModifyRequest(req)} 
-                                                    style={{ background: '#ff9800', color: 'white', cursor: 'pointer' }} type="button">
-                                                    ✏️ Modifier
-                                                </button>
-                                            }
-                                            <button className="btn btn-sm btn-danger" onClick={() => handleDeleteRequest(req)} 
-                                                style={{ cursor: 'pointer' }} type="button">
-                                                🗑️ Supprimer
-                                            </button>
-                                        </div>
-                                    )}
-                                    {req.status === 'pending_admin' && 
-                                        <span className="info-text" style={{ fontSize: '11px', color: '#ff9800' }}>⏳ Déjà validé par manager</span>
-                                    }
-                                    {(req.status === 'approved' || req.status === 'rejected') && 
-                                        <span className="info-text" style={{ fontSize: '11px', color: '#888' }}>Non modifiable</span>
-                                    }
-                                </td>
+                                <td>{justificatifs[req.id]?.length > 0 ? (<span className="status status-approved">Fichier(s)</span>) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (<FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />))}</td>
+                                <td>{req.status === 'pending_manager' && (<div className="btn-group" style={{ gap: '5px' }}>
+                                    {req.request_type !== 'permission' && <button className="btn btn-sm btn-primary" onClick={() => handleModifyRequest(req)} style={{ background: '#f59e0b' }}>Modifier</button>}
+                                    <button className="btn btn-sm btn-danger" onClick={() => handleDeleteRequest(req)}>Supprimer</button>
+                                </div>)}
+                                {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
+                                {(req.status === 'approved' || req.status === 'rejected') && <span className="info-text">Non modifiable</span>}</td>
                             </tr>
                         ))}
-                        {filteredRequests.length === 0 && 
-                            <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px' }}>📭 Aucune demande ne correspond à vos critères</td></tr>
-                        }
+                        {filteredRequests.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>Aucune demande</td></tr>}
                     </tbody>
                 </table>
             </div>
             <div className="actions-bar mt-20">
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>➕ Nouvelle demande</button>
-                <button className="btn btn-secondary" onClick={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }}>🔄 Afficher tout</button>
+                <button className="btn btn-primary" onClick={() => navigate('/dashboard/employee/new-request')}>Nouvelle demande</button>
+                <button className="btn btn-secondary" onClick={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }}>Afficher tout</button>
             </div>
             {renderEditModal()}
         </>
     );
 
-    // ============ ROUTING ============
     const currentPath = location.pathname;
 
-    // Route Paie
     if (currentPath.includes('/payroll')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <EmployeePayroll />
-                    </main>
-                </div>
-                <Footer />
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><EmployeePayroll /></main></div>
+                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Route Solde
     if (currentPath.includes('/balance')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <LeaveBalance balance={balance} />
-                    </main>
-                </div>
-                <Footer />
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><LeaveBalance balance={balance} /></main></div>
+                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Route Mes demandes
     if (currentPath.includes('/requests')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <MyRequestsPage />
-                    </main>
-                </div>
-                <Footer />
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><MyRequestsPage /></main></div>
+                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Route Nouvelle demande
     if (currentPath.includes('/new-request')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <LeaveRequest onSuccess={handleRequestSuccess} />
-                    </main>
-                </div>
-                <Footer />
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><LeaveRequest onSuccess={handleRequestSuccess} /></main></div>
+                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Route Permission (désactivée)
     if (currentPath.includes('/permission')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <div className="info-box" style={{ background: '#fff3cd' }}>
-                            ⚠️ La fonctionnalité de permission a été désactivée.<br/>
-                            Utilisez la demande de congé standard pour vos absences.
-                        </div>
-                    </main>
-                </div>
-                <Footer />
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content">
+                    <div className="info-box" style={{ background: '#fef3c7' }}>La fonctionnalité de permission a été désactivée.<br/>Utilisez la demande de congé standard.</div>
+                </main></div>
+                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Route Calendrier
     if (currentPath.includes('/calendar')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <CalendarView requests={requests} onRequestUpdate={refreshAllData} />
-                    </main>
-                </div>
-                <Footer />
-                {renderEditModal()}
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><CalendarView requests={requests} onRequestUpdate={refreshAllData} /></main></div>
+                <Footer />{renderEditModal()}<ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Route Statistiques
     if (currentPath.includes('/statistics')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <StatisticsChart requests={requests} balance={balance} />
-                    </main>
-                </div>
-                <Footer />
-                {renderEditModal()}
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><StatisticsChart requests={requests} balance={balance} /></main></div>
+                <Footer />{renderEditModal()}<ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Route Manager Profile
     if (currentPath.includes('/manager-profile')) {
         return (
             <>
                 <Navbar user={user} role="employee" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="employee" />
-                    <main className="main-content">
-                        <ManagerProfile />
-                    </main>
-                </div>
-                <Footer />
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
+                <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><ManagerProfile /></main></div>
+                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
             </>
         );
     }
 
-    // Dashboard par défaut
     return (
         <>
             <Navbar user={user} role="employee" onLogout={onLogout} />
-            <div className="app-container">
-                <Sidebar role="employee" />
-                <main className="main-content">
-                    <DashboardHome />
-                </main>
-            </div>
-            <Footer />
-            <ToastNotification toasts={toasts} removeToast={removeToast} />
+            <div className="app-container"><Sidebar role="employee" onLogout={onLogout} /><main className="main-content"><DashboardHome /></main></div>
+            <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );
 }

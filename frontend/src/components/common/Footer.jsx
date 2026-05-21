@@ -1,9 +1,13 @@
+// frontend/src/components/common/Footer.jsx
 import React from 'react';
 
 function Footer() {
+    const currentYear = new Date().getFullYear();
+    
     return (
-        <footer style={{ textAlign: 'center', padding: '15px', background: '#1a1a2e', color: '#888', fontSize: '12px', marginTop: 'auto' }}>
-            <p>© 2024 Gestion des Congés - Application pour entreprise privée</p>
+        <footer className="app-footer">
+            <p>&copy; {currentYear} Gestion des Congés - Application pour entreprise privée</p>
+            <p>Tous droits reserves</p>
         </footer>
     );
 }
