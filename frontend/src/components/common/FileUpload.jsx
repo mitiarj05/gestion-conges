@@ -1,6 +1,6 @@
 // frontend/src/components/common/FileUpload.jsx
 import React, { useState } from 'react';
-import { uploadJustificatif } from '../../services/fileService';
+import axios from 'axios';
 
 function FileUpload({ demandeId, onUploadComplete }) {
     const [selectedFile, setSelectedFile] = useState(null);
@@ -34,7 +34,18 @@ function FileUpload({ demandeId, onUploadComplete }) {
 
         setUploading(true);
         try {
-            await uploadJustificatif(demandeId, selectedFile);
+            const token = localStorage.getItem('token');
+            const formData = new FormData();
+            formData.append('justificatif', selectedFile);
+            formData.append('demandeId', demandeId);
+            
+            const response = await axios.post('http://localhost:5000/api/leaves/upload-justificatif', formData, {
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+            
             alert('Justificatif uploadé avec succès !');
             setSelectedFile(null);
             if (onUploadComplete) onUploadComplete();

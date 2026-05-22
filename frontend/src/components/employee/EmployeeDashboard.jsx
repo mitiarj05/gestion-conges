@@ -80,7 +80,10 @@ function EmployeeDashboard({ onLogout }) {
                 if (!normalizedStatus || normalizedStatus === 'En attente' || normalizedStatus === 'en_attente') {
                     normalizedStatus = 'pending_manager';
                 }
-                const validStatuses = ['pending_manager', 'pending_admin', 'approved', 'rejected'];
+                if (normalizedStatus === 'cancelled') {
+                    normalizedStatus = 'cancelled';
+                }
+                const validStatuses = ['pending_manager', 'pending_admin', 'approved', 'rejected', 'cancelled'];
                 if (!validStatuses.includes(normalizedStatus)) {
                     normalizedStatus = 'pending_manager';
                 }
@@ -207,6 +210,49 @@ function EmployeeDashboard({ onLogout }) {
         }
     };
 
+    // NOUVELLE FONCTION: Annuler un congé déjà approuvé
+    const handleCancelApprovedRequest = async (request) => {
+        // Vérifier si la date de début est dans plus de 2 jours
+        const startDate = new Date(request.start_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((startDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays < 2) {
+            toastError(`Impossible d'annuler : votre congé commence dans moins de 48h (${diffDays} jour(s) restants). Veuillez contacter votre manager.`);
+            return;
+        }
+        
+        // Demander le motif d'annulation
+        const motif = prompt('Motif de l\'annulation (obligatoire) :\n\nVeuillez expliquer la raison de l\'annulation de votre congé.');
+        
+        if (!motif || motif.trim() === '') {
+            toastError('Veuillez fournir un motif pour annuler votre congé.');
+            return;
+        }
+        
+        if (window.confirm(`Confirmer l'annulation de votre congé ?\n\n📅 Dates : ${request.start_date} → ${request.end_date}\n📊 Durée : ${request.displayDuration}\n📝 Motif : ${motif}\n\n⚠️ Attention : Cette action est irréversible. Les jours seront recrédités sur votre solde.`)) {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await axios.put(`http://localhost:5000/api/leaves/cancel-approved-request/${request.id}`, 
+                    { motif_annulation: motif.trim() },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+                
+                if (response.data.success) {
+                    success(response.data.message);
+                    if (response.data.recreditedDays > 0) {
+                        success(`${response.data.recreditedDays} jours ont été recrédités sur votre solde de CP.`);
+                    }
+                    refreshAllData();
+                }
+            } catch (error) {
+                const errorMsg = error.response?.data?.message || 'Erreur lors de l\'annulation';
+                toastError(errorMsg);
+            }
+        }
+    };
+
     const handleSaveEdit = async (editedData) => {
         try {
             const token = localStorage.getItem('token');
@@ -242,6 +288,8 @@ function EmployeeDashboard({ onLogout }) {
                 return (<><span className="status-badge status-badge-rejected">Refusé</span>
                         {motif_refus && <div className="rejection-reason">Motif : {motif_refus}</div>}
                         </>);
+            case 'cancelled':
+                return <span className="status-badge status-badge-cancelled">Annulé</span>;
             default: 
                 return <span className="status-badge status-badge-pending">En attente</span>;
         }
@@ -298,7 +346,6 @@ function EmployeeDashboard({ onLogout }) {
 
             <AlertBanner balance={balance} />
             
-            {/* Cartes KPI modernes */}
             <div className="kpi-grid">
                 <div className="kpi-card-modern">
                     <div className="kpi-card-icon green">
@@ -342,7 +389,6 @@ function EmployeeDashboard({ onLogout }) {
                 </div>
             </div>
             
-            {/* Actions rapides */}
             <div className="quick-actions">
                 <h3>Actions rapides</h3>
                 <div className="quick-actions-grid">
@@ -380,7 +426,6 @@ function EmployeeDashboard({ onLogout }) {
                 </div>
             </div>
             
-            {/* Dernières demandes */}
             <div className="recent-section">
                 <div className="section-header">
                     <h3>Dernières demandes</h3>
@@ -455,43 +500,64 @@ function EmployeeDashboard({ onLogout }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredRequests.map((req) => (
-                            <tr key={req.id}>
-                                <td className="date-cell">{req.displayDates}</td>
-                                <td>{req.type}</td>
-                                <td>{req.displayDuration}</td>
-                                <td>{req.motif || '-'}</td>
-                                <td>{getStatusLabel(req.status, req.motif_refus)}</td>
-                                <td>
-                                    {justificatifs[req.id]?.length > 0 ? (
-                                        <span className="badge-success">Fichier(s)</span>
-                                    ) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (
-                                        <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
-                                    ))}
-                                </td>
-                                <td>
-                                    {req.status === 'pending_manager' && (
-                                        <div className="action-buttons">
-                                            {req.request_type !== 'permission' && (
-                                                <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
+                        {filteredRequests.map((req) => {
+                            // Vérifier si le congé approuvé peut être annulé (date dans +2 jours)
+                            const isApproved = req.status === 'approved';
+                            const startDate = new Date(req.start_date);
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const canCancelApproved = isApproved && startDate > today;
+                            
+                            return (
+                                <tr key={req.id}>
+                                    <td className="date-cell">{req.displayDates}</td>
+                                    <td>{req.type}</td>
+                                    <td>{req.displayDuration}</td>
+                                    <td>{req.motif || '-'}</td>
+                                    <td>{getStatusLabel(req.status, req.motif_refus)}</td>
+                                    <td>
+                                        {justificatifs[req.id]?.length > 0 ? (
+                                            <span className="badge-success">Fichier(s)</span>
+                                        ) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (
+                                            <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
+                                        ))}
+                                    </td>
+                                    <td>
+                                        {req.status === 'pending_manager' && (
+                                            <div className="action-buttons">
+                                                {req.request_type !== 'permission' && (
+                                                    <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
+                                                            <path d="M4 20h16"/>
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                                <button className="action-btn delete" onClick={() => handleDeleteRequest(req)} title="Supprimer">
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                        <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
-                                                        <path d="M4 20h16"/>
+                                                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
                                                     </svg>
                                                 </button>
-                                            )}
-                                            <button className="action-btn delete" onClick={() => handleDeleteRequest(req)} title="Supprimer">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    )}
-                                    {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
-                                    {(req.status === 'approved' || req.status === 'rejected') && <span className="info-text">Non modifiable</span>}
-                                </td>
-                            </tr>
-                        ))}
+                                            </div>
+                                        )}
+                                        {req.status === 'approved' && canCancelApproved && (
+                                            <div className="action-buttons">
+                                                <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler le congé">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                        <path d="M18 6L6 18M6 6l12 12"/>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        )}
+                                        {req.status === 'approved' && !canCancelApproved && (
+                                            <span className="info-text">Non annulable (délai dépassé)</span>
+                                        )}
+                                        {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
+                                        {(req.status === 'rejected' || req.status === 'cancelled') && <span className="info-text">Non modifiable</span>}
+                                     </td>
+                                 </tr>
+                            );
+                        })}
                         {filteredRequests.length === 0 && (
                             <tr>
                                 <td colSpan="7" className="empty-state">Aucune demande</td>

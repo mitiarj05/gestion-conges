@@ -19,8 +19,10 @@ export const ThemeProvider = ({ children }) => {
     });
 
     useEffect(() => {
-        // Appliquer le thème au body
+        // Appliquer le thème à l'élément racine
+        document.documentElement.setAttribute('data-theme', theme);
         document.body.setAttribute('data-theme', theme);
+        
         // Sauvegarder dans localStorage
         localStorage.setItem('theme', theme);
     }, [theme]);

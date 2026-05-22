@@ -3,13 +3,31 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+
+// Configuration multer pour les fichiers en mémoire
+const storage = multer.memoryStorage();
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Format de fichier non supporté'), false);
+        }
+    }
+});
+
 const { 
     sendNewRequestToManagerEmail,
     sendManagerApprovalEmail,
     sendManagerRejectionEmail 
 } = require('../utils/emailService');
 
-// ============ FONCTION DE VALIDATION SIMPLIFIÉE (2 TYPES) ============
+// ============ FONCTION DE VALIDATION SIMPLIFIÉE ============
 
 const validateLeaveRequest = async (userId, type_id, start_date, end_date, isModification = false, excludeRequestId = null) => {
     const errors = [];
@@ -19,21 +37,16 @@ const validateLeaveRequest = async (userId, type_id, start_date, end_date, isMod
     const start = new Date(start_date);
     const end = new Date(end_date);
     
-    // Règle 1: Pas de date passée
     if (start < today) {
         errors.push("La date de début ne peut pas être dans le passé");
     }
     
-    // Règle 2: Dates cohérentes
     if (start > end) {
         errors.push("La date de début doit être antérieure à la date de fin");
     }
     
-    // Calcul des jours
     const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
     
-    // Règle 3: Max jours consécutifs selon type
-    // type_id 1 = CP (max 20j), type_id 2 = Sans solde (max 5j)
     const maxConsecutif = (type_id === 2) ? 5 : 20;
     
     if (days > maxConsecutif) {
@@ -41,7 +54,6 @@ const validateLeaveRequest = async (userId, type_id, start_date, end_date, isMod
         errors.push(`${typeNom} : maximum ${maxConsecutif} jours consécutifs (vous demandez ${days} jours)`);
     }
     
-    // Règle 4: Préavis
     const preavisMin = (type_id === 2) ? 1 : 2;
     const preavisDate = new Date();
     preavisDate.setDate(preavisDate.getDate() + preavisMin);
@@ -50,7 +62,6 @@ const validateLeaveRequest = async (userId, type_id, start_date, end_date, isMod
         errors.push(`Vous devez faire votre demande au moins ${preavisMin} jours à l'avance`);
     }
     
-    // Règle 5: Vérification du solde (UNIQUEMENT pour Congés Payés - type_id = 1)
     if (type_id === 1) {
         const currentYear = new Date().getFullYear();
         const soldeResult = await pool.query(
@@ -69,7 +80,6 @@ const validateLeaveRequest = async (userId, type_id, start_date, end_date, isMod
         }
     }
     
-    // Règle 6: Pas de chevauchement avec d'autres demandes
     let overlappingQuery;
     let overlappingParams;
     
@@ -108,7 +118,6 @@ router.get('/balance', authMiddleware, async (req, res) => {
         const userId = req.user.id;
         const currentYear = new Date().getFullYear();
         
-        // Solde CP (type_id = 1)
         const cpResult = await pool.query(
             `SELECT total_jours, pris_jours, restant_jours 
              FROM solde_conges 
@@ -157,6 +166,7 @@ router.get('/my-requests', authMiddleware, async (req, res) => {
                 dc.motif,
                 dc.motif_refus,
                 dc.cree_le,
+                dc.justificatif_nom as justificatif_nom,
                 'conges' as request_type
              FROM demandes_conges dc
              WHERE dc.utilisateur_id = $1
@@ -194,7 +204,6 @@ router.post('/request', authMiddleware, async (req, res) => {
             [userId, type_id, start_date, end_date, days, motif]
         );
         
-        // Notification au manager
         const managerResult = await pool.query(`SELECT manager_id FROM users WHERE id = $1`, [userId]);
         const managerId = managerResult.rows[0]?.manager_id;
         
@@ -210,7 +219,6 @@ router.post('/request', authMiddleware, async (req, res) => {
                 [managerId, `${employe.prenom} ${employe.nom} a fait une demande de ${typeNom} du ${start_date} au ${end_date} (${days} jours)`]
             );
             
-            // Email au manager
             try {
                 const managerEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [managerId]);
                 if (managerEmailResult.rows.length > 0) {
@@ -292,7 +300,7 @@ router.put('/update-request/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ ANNULER UNE DEMANDE ============
+// ============ ANNULER UNE DEMANDE (EN ATTENTE) ============
 
 router.delete('/cancel-request/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
@@ -332,6 +340,257 @@ router.delete('/cancel-request/:id', authMiddleware, async (req, res) => {
     }
 });
 
+// ============ ANNULER UNE DEMANDE DÉJÀ APPROUVÉE ============
+
+router.put('/cancel-approved-request/:id', authMiddleware, async (req, res) => {
+    const requestId = req.params.id;
+    const userId = req.user.id;
+    const { motif_annulation } = req.body;
+    
+    try {
+        const requestCheck = await pool.query(
+            `SELECT dc.*, u.manager_id, u.nom, u.prenom, u.email
+             FROM demandes_conges dc
+             JOIN users u ON dc.utilisateur_id = u.id
+             WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'approved'`,
+            [requestId, userId]
+        );
+        
+        if (requestCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'Demande non trouvée ou non approuvée' });
+        }
+        
+        const demande = requestCheck.rows[0];
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const startDate = new Date(demande.date_debut);
+        
+        if (today >= startDate) {
+            return res.status(400).json({ 
+                message: 'Impossible d\'annuler un congé déjà commencé ou passé',
+                error: 'ALREADY_STARTED'
+            });
+        }
+        
+        const minCancelDate = new Date(startDate);
+        minCancelDate.setDate(minCancelDate.getDate() - 2);
+        minCancelDate.setHours(0, 0, 0, 0);
+        
+        if (today > minCancelDate) {
+            const remainingHours = Math.ceil((startDate - today) / (1000 * 60 * 60));
+            return res.status(400).json({ 
+                message: `Annulation impossible : votre congé commence dans moins de 48h (${remainingHours} heures restantes)`,
+                error: 'DEADLINE_PASSED',
+                remainingHours
+            });
+        }
+        
+        if (!motif_annulation || motif_annulation.trim() === '') {
+            return res.status(400).json({ 
+                message: 'Veuillez fournir un motif d\'annulation',
+                error: 'MOTIF_REQUIRED'
+            });
+        }
+        
+        await pool.query(
+            `UPDATE demandes_conges 
+             SET statut = 'cancelled', motif_refus = $1, date_annulation = NOW(), annulation_motif = $1
+             WHERE id = $2`,
+            [motif_annulation, requestId]
+        );
+        
+        if (demande.type_conge_id === 1) {
+            const currentYear = new Date().getFullYear();
+            await pool.query(
+                `UPDATE solde_conges 
+                 SET pris_jours = pris_jours - $1, restant_jours = restant_jours + $1
+                 WHERE utilisateur_id = $2 AND annee = $3 AND type_conge_id = 1`,
+                [demande.nombre_jours, userId, currentYear]
+            );
+        }
+        
+        if (demande.manager_id) {
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'annulation_conge', 'Congé annulé par employé', 
+                         $2, '/dashboard/manager/team-calendar', NOW())`,
+                [demande.manager_id, `${demande.prenom} ${demande.nom} a annulé son congé. Motif : ${motif_annulation}`]
+            );
+        }
+        
+        const adminResult = await pool.query(
+            `SELECT u.id FROM users u
+             JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
+             JOIN roles r ON ur.role_id = r.id
+             WHERE r.nom = 'admin' LIMIT 1`
+        );
+        
+        if (adminResult.rows.length > 0) {
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'annulation_conge', 'Congé approuvé annulé', 
+                         $2, '/dashboard/admin/calendar', NOW())`,
+                [adminResult.rows[0].id, `${demande.prenom} ${demande.nom} a annulé son congé. Motif : ${motif_annulation}`]
+            );
+        }
+        
+        await pool.query(
+            `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+             VALUES ($1, 'annulation_confirme', 'Congé annulé avec succès', 
+                     $2, '/dashboard/employee/requests', NOW())`,
+            [userId, `Votre congé du ${demande.date_debut} au ${demande.date_fin} a été annulé.`]
+        );
+        
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`user_${userId}`).emit('new_notification', {
+                titre: 'Congé annulé',
+                message: `Votre congé a été annulé.`,
+                lien: '/dashboard/employee/requests'
+            });
+        }
+        
+        res.json({ 
+            message: `Demande de congé annulée avec succès. ${demande.type_conge_id === 1 ? 'Les jours ont été recrédités.' : ''}`,
+            success: true,
+            recreditedDays: demande.type_conge_id === 1 ? demande.nombre_jours : 0
+        });
+        
+    } catch (error) {
+        console.error('Erreur cancel approved request:', error);
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+    }
+});
+
+// ============ UPLOAD JUSTIFICATIF ============
+
+router.post('/upload-justificatif', authMiddleware, upload.single('justificatif'), async (req, res) => {
+    const { demandeId } = req.body;
+    const userId = req.user.id;
+    const file = req.file;
+    
+    if (!demandeId) {
+        return res.status(400).json({ message: 'ID de demande requis' });
+    }
+    
+    if (!file) {
+        return res.status(400).json({ message: 'Aucun fichier fourni' });
+    }
+    
+    try {
+        const requestCheck = await pool.query(
+            `SELECT id, statut FROM demandes_conges WHERE id = $1 AND utilisateur_id = $2`,
+            [demandeId, userId]
+        );
+        
+        if (requestCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'Accès non autorisé' });
+        }
+        
+        const demande = requestCheck.rows[0];
+        
+        if (demande.statut !== 'pending_manager' && demande.statut !== 'pending_admin') {
+            return res.status(400).json({ message: 'Seules les demandes en attente peuvent avoir des justificatifs' });
+        }
+        
+        await pool.query(
+            `UPDATE demandes_conges 
+             SET justificatif_nom = $1, justificatif_type = $2, justificatif_data = $3, justificatif_upload_le = NOW()
+             WHERE id = $4`,
+            [file.originalname, file.mimetype, file.buffer, demandeId]
+        );
+        
+        res.status(200).json({ message: 'Justificatif ajouté avec succès' });
+    } catch (error) {
+        console.error('Erreur upload justificatif:', error);
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+    }
+});
+
+// ============ RÉCUPÉRER JUSTIFICATIF ============
+
+router.get('/justificatifs/:demandeId', authMiddleware, async (req, res) => {
+    const { demandeId } = req.params;
+    const userId = req.user.id;
+    
+    try {
+        const requestCheck = await pool.query(
+            `SELECT utilisateur_id, justificatif_nom, justificatif_type, justificatif_data, justificatif_upload_le
+             FROM demandes_conges 
+             WHERE id = $1`,
+            [demandeId]
+        );
+        
+        if (requestCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'Demande non trouvée' });
+        }
+        
+        const demande = requestCheck.rows[0];
+        
+        if (demande.utilisateur_id !== userId) {
+            const userRoles = req.user.roles || [];
+            if (!userRoles.includes('admin') && !userRoles.includes('manager')) {
+                return res.status(403).json({ message: 'Accès non autorisé' });
+            }
+        }
+        
+        if (!demande.justificatif_nom) {
+            return res.json([]);
+        }
+        
+        res.json([{
+            id: demandeId,
+            nom_fichier: demande.justificatif_nom,
+            type_fichier: demande.justificatif_type,
+            upload_le: demande.justificatif_upload_le
+        }]);
+    } catch (error) {
+        console.error('Erreur get justificatifs:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
+// ============ TÉLÉCHARGER JUSTIFICATIF ============
+
+router.get('/download-justificatif/:demandeId', authMiddleware, async (req, res) => {
+    const { demandeId } = req.params;
+    const userId = req.user.id;
+    
+    try {
+        const requestCheck = await pool.query(
+            `SELECT utilisateur_id, justificatif_nom, justificatif_type, justificatif_data
+             FROM demandes_conges 
+             WHERE id = $1`,
+            [demandeId]
+        );
+        
+        if (requestCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'Demande non trouvée' });
+        }
+        
+        const demande = requestCheck.rows[0];
+        
+        if (demande.utilisateur_id !== userId) {
+            const userRoles = req.user.roles || [];
+            if (!userRoles.includes('admin') && !userRoles.includes('manager')) {
+                return res.status(403).json({ message: 'Accès non autorisé' });
+            }
+        }
+        
+        if (!demande.justificatif_data) {
+            return res.status(404).json({ message: 'Aucun justificatif trouvé' });
+        }
+        
+        res.setHeader('Content-Type', demande.justificatif_type);
+        res.setHeader('Content-Disposition', `attachment; filename="${demande.justificatif_nom}"`);
+        res.send(demande.justificatif_data);
+    } catch (error) {
+        console.error('Erreur download justificatif:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
 // ============ VALIDATION MANAGER ============
 
 router.get('/team-pending', authMiddleware, async (req, res) => {
@@ -364,6 +623,8 @@ router.get('/team-pending', authMiddleware, async (req, res) => {
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
+
+// ============ AUTRES ROUTES (à conserver telles quelles) ============
 
 router.get('/team-pending-filtered', authMiddleware, async (req, res) => {
     const { periode } = req.query;
@@ -465,7 +726,6 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
             );
         }
         
-        // Email à l'employé
         try {
             const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
             if (employeEmailResult.rows.length > 0) {
@@ -527,7 +787,6 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
             [demande.utilisateur_id, `Votre demande de congé a été refusée par votre manager. Motif : ${motifFinal}`]
         );
         
-        // Email à l'employé
         try {
             const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
             if (employeEmailResult.rows.length > 0) {
@@ -551,7 +810,7 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ CALENDRIER ÉQUIPE ============
+// ============ CALENDRIER ============
 
 router.get('/team-absences', authMiddleware, async (req, res) => {
     try {
@@ -581,8 +840,6 @@ router.get('/team-absences', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ CALENDRIER GLOBAL (ADMIN) ============
-
 router.get('/all-absences', authMiddleware, async (req, res) => {
     try {
         const congesResult = await pool.query(
@@ -610,7 +867,7 @@ router.get('/all-absences', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ STATISTIQUES MANAGER DASHBOARD ============
+// ============ STATISTIQUES ============
 
 router.get('/manager-dashboard-stats', authMiddleware, async (req, res) => {
     try {
@@ -693,26 +950,10 @@ router.get('/manager-dashboard-stats', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ PERMISSION BALANCE (gardé pour compatibilité) ============
-
-router.get('/permission-balance', authMiddleware, async (req, res) => {
-    res.json({ used: 0, max: 4, remaining: 4 });
-});
-
-router.post('/permission-request', authMiddleware, async (req, res) => {
-    res.status(400).json({ message: 'Fonctionnalité désactivée - Utilisez la demande de congé standard' });
-});
-
-router.delete('/cancel-permission/:id', authMiddleware, async (req, res) => {
-    res.status(400).json({ message: 'Fonctionnalité désactivée' });
-});
-
-// ============ STATISTIQUES ÉQUIPE POUR MANAGER ============
 router.get('/team-stats', authMiddleware, async (req, res) => {
     try {
         const managerId = req.user.id;
         
-        // Récupérer les membres de l'équipe
         const teamResult = await pool.query(
             `SELECT id FROM users WHERE manager_id = $1`,
             [managerId]
@@ -733,7 +974,6 @@ router.get('/team-stats', authMiddleware, async (req, res) => {
             });
         }
         
-        // Statistiques globales
         const globalStats = await pool.query(`
             SELECT 
                 COUNT(*) as total,
@@ -745,7 +985,6 @@ router.get('/team-stats', authMiddleware, async (req, res) => {
             WHERE utilisateur_id = ANY($1::int[])
         `, [teamIds]);
         
-        // Demandes par employé
         const parEmploye = await pool.query(`
             SELECT 
                 u.id, u.nom, u.prenom,
@@ -761,7 +1000,6 @@ router.get('/team-stats', authMiddleware, async (req, res) => {
             ORDER BY total DESC
         `, [managerId]);
         
-        // Demandes par type (CP = type_conge_id 1, Sans solde = type_conge_id 2)
         const parType = await pool.query(`
             SELECT 
                 dc.type_conge_id,
@@ -780,7 +1018,6 @@ router.get('/team-stats', authMiddleware, async (req, res) => {
             }
         });
         
-        // Demandes par mois - VERSION CORRIGÉE AVEC TOUS LES MOIS
         const currentYear = new Date().getFullYear();
         const monthlyResult = await pool.query(`
             WITH months AS (
@@ -841,7 +1078,6 @@ router.get('/notifications', authMiddleware, async (req, res) => {
         
         let notifications = [];
         
-        // 1. Notifications personnelles de l'utilisateur
         const personalNotifs = await pool.query(
             `SELECT * FROM notifications 
              WHERE utilisateur_id = $1 
@@ -851,7 +1087,6 @@ router.get('/notifications', authMiddleware, async (req, res) => {
         );
         notifications.push(...personalNotifs.rows);
         
-        // 2. Si manager, ajouter les notifications concernant son équipe
         if (isManager) {
             const teamNotifs = await pool.query(`
                 SELECT 
@@ -865,7 +1100,6 @@ router.get('/notifications', authMiddleware, async (req, res) => {
             `, [userId]);
             notifications.push(...teamNotifs.rows);
             
-            // Demandes en attente de validation manager
             const pendingManagerNotifs = await pool.query(`
                 SELECT 
                     'demande_attente' as type,
@@ -882,7 +1116,6 @@ router.get('/notifications', authMiddleware, async (req, res) => {
             notifications.push(...pendingManagerNotifs.rows);
         }
         
-        // 3. Si admin, ajouter les notifications système
         if (isAdmin) {
             const adminNotifs = await pool.query(`
                 SELECT 
@@ -900,7 +1133,6 @@ router.get('/notifications', authMiddleware, async (req, res) => {
             notifications.push(...adminNotifs.rows);
         }
         
-        // Supprimer les doublons par id
         const uniqueNotifs = [];
         const seenIds = new Set();
         for (const notif of notifications) {
@@ -912,7 +1144,6 @@ router.get('/notifications', authMiddleware, async (req, res) => {
             }
         }
         
-        // Trier par date décroissante
         uniqueNotifs.sort((a, b) => new Date(b.cree_le) - new Date(a.cree_le));
         
         res.json(uniqueNotifs.slice(0, 30));

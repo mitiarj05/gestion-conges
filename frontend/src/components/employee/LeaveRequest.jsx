@@ -94,7 +94,7 @@ function LeaveRequest({ onSuccess }) {
     };
 
     return (
-        <div>
+        <div className="leave-request-container">
             <div className="dashboard-header">
                 <div className="dashboard-header-content">
                     <h1 className="dashboard-title">Demander un congé</h1>
@@ -102,20 +102,20 @@ function LeaveRequest({ onSuccess }) {
                 </div>
             </div>
             
-            <div className="info-box" style={{ background: '#e8f4fd', marginBottom: '20px' }}>
+            <div className="info-box rules-box">
                 <strong>Règles selon le type de congé :</strong><br/>
                 {formData.type_id === 1 && (
                     <>
                         • <strong>Congés Payés</strong> : 25 jours/an, max 20 jours consécutifs<br/>
                         • Préavis minimum : 2 jours<br/>
-                        • Rémunéré : <strong style={{ color: '#28a745' }}>Oui</strong>
+                        • Rémunéré : <strong className="text-success">Oui</strong>
                     </>
                 )}
                 {formData.type_id === 2 && (
                     <>
                         • <strong>Congé sans solde</strong> : Pas de limite annuelle, max 5 jours consécutifs<br/>
                         • Préavis minimum : 1 jour<br/>
-                        • Rémunéré : <strong style={{ color: '#dc3545' }}>Non</strong>
+                        • Rémunéré : <strong className="text-danger">Non</strong>
                     </>
                 )}
                 <br/>
@@ -126,7 +126,7 @@ function LeaveRequest({ onSuccess }) {
             {error && <div className="error-message">{error}</div>}
             
             {errorsList.length > 0 && (
-                <div className="error-message" style={{ background: '#f8d7da', borderLeftColor: '#dc3545' }}>
+                <div className="error-message">
                     <strong>{errorsList.length} règle(s) non respectée(s) :</strong>
                     <ul style={{ marginTop: '10px', marginLeft: '20px' }}>
                         {errorsList.map((err, idx) => (
@@ -136,7 +136,7 @@ function LeaveRequest({ onSuccess }) {
                 </div>
             )}
             
-            <form onSubmit={handleSubmit} className="admin-section" style={{ maxWidth: '600px' }}>
+            <form onSubmit={handleSubmit} className="admin-section leave-request-form">
                 <div className="form-group">
                     <label>Type de congé</label>
                     <select 
@@ -203,13 +203,13 @@ function LeaveRequest({ onSuccess }) {
                 </div>
                 
                 {formData.type_id === 2 && (
-                    <div className="info-box" style={{ background: '#fff3cd', borderLeftColor: '#ffc107', marginBottom: '15px' }}>
+                    <div className="info-box warning-box">
                         Attention : Le congé sans solde n'est <strong>PAS RÉMUNÉRÉ</strong>. 
                         Votre salaire sera diminué proportionnellement aux jours d'absence.
                     </div>
                 )}
                 
-                <div className="payroll-actions" style={{ marginTop: '20px' }}>
+                <div className="form-actions">
                     <button type="submit" className="btn-primary" disabled={loading}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>

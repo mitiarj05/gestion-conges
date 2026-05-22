@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict xgGayAIIIyssGbL0jp6epmsg5e1NvGgffpDntjz7ARQYz99gxYK7YyFjNOaoNEu
+\restrict JC6Fh7huqGuLB7OXmRHsOmZB2wkd3Ie5oD7TWvhLGGLbIOhwRDjuwVWQxL3heXG
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
 
--- Started on 2026-05-19 16:57:52
+-- Started on 2026-05-22 11:18:55
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -66,7 +66,7 @@ CREATE SEQUENCE public.demandes_conges_id_seq
 ALTER SEQUENCE public.demandes_conges_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5015 (class 0 OID 0)
+-- TOC entry 5016 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: demandes_conges_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -110,7 +110,7 @@ CREATE SEQUENCE public.notifications_id_seq
 ALTER SEQUENCE public.notifications_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5016 (class 0 OID 0)
+-- TOC entry 5017 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: notifications_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -161,7 +161,7 @@ CREATE SEQUENCE public.paie_employes_id_seq
 ALTER SEQUENCE public.paie_employes_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5017 (class 0 OID 0)
+-- TOC entry 5018 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: paie_employes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -199,7 +199,7 @@ CREATE SEQUENCE public.roles_id_seq
 ALTER SEQUENCE public.roles_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5018 (class 0 OID 0)
+-- TOC entry 5019 (class 0 OID 0)
 -- Dependencies: 217
 -- Name: roles_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -242,7 +242,7 @@ CREATE SEQUENCE public.solde_conges_id_seq
 ALTER SEQUENCE public.solde_conges_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5019 (class 0 OID 0)
+-- TOC entry 5020 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: solde_conges_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -282,7 +282,7 @@ CREATE SEQUENCE public.types_conges_id_seq
 ALTER SEQUENCE public.types_conges_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5020 (class 0 OID 0)
+-- TOC entry 5021 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: types_conges_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -305,7 +305,8 @@ CREATE TABLE public.users (
     service character varying(100),
     manager_id integer,
     statut character varying(20) DEFAULT 'actif'::character varying,
-    cree_le timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+    cree_le timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    salaire_base numeric(10,2) DEFAULT 500000
 );
 
 
@@ -328,7 +329,7 @@ CREATE SEQUENCE public.users_id_seq
 ALTER SEQUENCE public.users_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5021 (class 0 OID 0)
+-- TOC entry 5022 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -367,7 +368,7 @@ CREATE SEQUENCE public.utilisateurs_roles_id_seq
 ALTER SEQUENCE public.utilisateurs_roles_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5022 (class 0 OID 0)
+-- TOC entry 5023 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: utilisateurs_roles_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -376,7 +377,7 @@ ALTER SEQUENCE public.utilisateurs_roles_id_seq OWNED BY public.utilisateurs_rol
 
 
 --
--- TOC entry 4783 (class 2604 OID 25191)
+-- TOC entry 4784 (class 2604 OID 25191)
 -- Name: demandes_conges id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -384,7 +385,7 @@ ALTER TABLE ONLY public.demandes_conges ALTER COLUMN id SET DEFAULT nextval('pub
 
 
 --
--- TOC entry 4790 (class 2604 OID 25240)
+-- TOC entry 4791 (class 2604 OID 25240)
 -- Name: notifications id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -392,7 +393,7 @@ ALTER TABLE ONLY public.notifications ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
--- TOC entry 4793 (class 2604 OID 25256)
+-- TOC entry 4794 (class 2604 OID 25256)
 -- Name: paie_employes id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -408,7 +409,7 @@ ALTER TABLE ONLY public.roles ALTER COLUMN id SET DEFAULT nextval('public.roles_
 
 
 --
--- TOC entry 4786 (class 2604 OID 25218)
+-- TOC entry 4787 (class 2604 OID 25218)
 -- Name: solde_conges id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -416,7 +417,7 @@ ALTER TABLE ONLY public.solde_conges ALTER COLUMN id SET DEFAULT nextval('public
 
 
 --
--- TOC entry 4782 (class 2604 OID 25182)
+-- TOC entry 4783 (class 2604 OID 25182)
 -- Name: types_conges id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -432,7 +433,7 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 
 
 --
--- TOC entry 4781 (class 2604 OID 25163)
+-- TOC entry 4782 (class 2604 OID 25163)
 -- Name: utilisateurs_roles id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -440,44 +441,59 @@ ALTER TABLE ONLY public.utilisateurs_roles ALTER COLUMN id SET DEFAULT nextval('
 
 
 --
--- TOC entry 5003 (class 0 OID 25188)
+-- TOC entry 5004 (class 0 OID 25188)
 -- Dependencies: 226
 -- Data for Name: demandes_conges; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.demandes_conges (id, utilisateur_id, type_conge_id, date_debut, date_fin, nombre_jours, motif, statut, approbateur_id, date_approbation, motif_refus, cree_le) FROM stdin;
-1	2	1	2026-05-22	2026-05-24	3.00	TEST	approved	1	2026-05-19 16:43:08.153674	\N	2026-05-19 16:40:37.58333
+2	2	1	2026-05-23	2026-05-25	3.00	TEST	approved	1	2026-05-20 13:18:00.354434	\N	2026-05-20 13:16:33.125163
+3	2	2	2026-05-27	2026-05-29	3.00		approved	1	2026-05-20 13:19:57.126962	\N	2026-05-20 13:19:17.756188
 \.
 
 
 --
--- TOC entry 5007 (class 0 OID 25237)
+-- TOC entry 5008 (class 0 OID 25237)
 -- Dependencies: 230
 -- Data for Name: notifications; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.notifications (id, utilisateur_id, type, titre, message, est_lu, lien, cree_le) FROM stdin;
 1	2	team_added	Nouveau manager	Vous avez été ajouté à l équipe de Tafita Winno.	t	/dashboard/employee	2026-05-19 16:39:04.74459
-2	3	demande_recue	Nouvelle demande de congé	SYROX UP a fait une demande de congé du 2026-05-22 au 2026-05-24 (3 jours)	f	/dashboard/manager/validations	2026-05-19 16:40:37.589928
-3	2	pre_approuve	Demande pré-approuvée	Votre demande de congé a été validée par votre manager.	f	/dashboard/employee/requests	2026-05-19 16:42:30.58128
-4	1	validation_requise	Demande à valider	Une demande de congé de SYROX UP attend votre validation.	f	/dashboard/admin	2026-05-19 16:42:30.586207
-5	2	approuve_final	Congé définitivement approuvé	Votre demande de congé du Fri May 22 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) au Sun May 24 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) a été définitivement approuvée.	f	/dashboard/employee/requests	2026-05-19 16:43:08.162175
-6	3	approuve_final_manager	Demande de congé approuvée	La demande de congé de SYROX UP a été définitivement approuvée.	f	/dashboard/manager/validations	2026-05-19 16:43:08.164043
+5	2	approuve_final	Congé définitivement approuvé	Votre demande de congé du Fri May 22 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) au Sun May 24 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) a été définitivement approuvée.	t	/dashboard/employee/requests	2026-05-19 16:43:08.162175
+3	2	pre_approuve	Demande pré-approuvée	Votre demande de congé a été validée par votre manager.	t	/dashboard/employee/requests	2026-05-19 16:42:30.58128
+7	2	team_added	Nouveau manager	Vous avez été ajouté à l équipe de Tafita Winno.	t	/dashboard/employee	2026-05-19 19:28:59.986672
+19	2	bulletin_paie	Bulletin de paie disponible	Votre bulletin de paie pour Mai 2026 est disponible. Net : 431818 Ar	t	/dashboard/employee/payroll	2026-05-20 13:20:13.173396
+17	2	approuve_final	Congé définitivement approuvé	Votre demande de congé du Wed May 27 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) au Fri May 29 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) a été définitivement approuvée.	t	/dashboard/employee/requests	2026-05-20 13:19:57.129654
+15	2	pre_approuve	Demande pré-approuvée	Votre demande de congé a été validée par votre manager.	t	/dashboard/employee/requests	2026-05-20 13:19:32.713921
+13	2	bulletin_paie	Bulletin de paie disponible	Votre bulletin de paie pour Mai 2026 est disponible. Net : 500000 Ar	t	/dashboard/employee/payroll	2026-05-20 13:18:24.169078
+11	2	approuve_final	Congé définitivement approuvé	Votre demande de congé du Sat May 23 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) au Mon May 25 2026 00:00:00 GMT+0300 (heure normale d’Afrique de l’Est) a été définitivement approuvée.	t	/dashboard/employee/requests	2026-05-20 13:18:00.374214
+9	2	pre_approuve	Demande pré-approuvée	Votre demande de congé a été validée par votre manager.	t	/dashboard/employee/requests	2026-05-20 13:16:51.30879
+16	1	validation_requise	Demande à valider	Une demande de congé de SYROX UP attend votre validation.	t	/dashboard/admin	2026-05-20 13:19:32.722491
+10	1	validation_requise	Demande à valider	Une demande de congé de SYROX UP attend votre validation.	t	/dashboard/admin	2026-05-20 13:16:51.311772
+4	1	validation_requise	Demande à valider	Une demande de congé de SYROX UP attend votre validation.	t	/dashboard/admin	2026-05-19 16:42:30.586207
+18	5	approuve_final_manager	Demande de congé approuvée	La demande de congé de SYROX UP a été définitivement approuvée.	t	/dashboard/manager/validations	2026-05-20 13:19:57.135588
+14	5	demande_recue	Nouvelle demande de congé	SYROX UP a fait une demande de Congé sans solde du 2026-05-27 au 2026-05-29 (3 jours)	t	/dashboard/manager/validations	2026-05-20 13:19:17.767751
+12	5	approuve_final_manager	Demande de congé approuvée	La demande de congé de SYROX UP a été définitivement approuvée.	t	/dashboard/manager/validations	2026-05-20 13:18:00.378972
+8	5	demande_recue	Nouvelle demande de congé	SYROX UP a fait une demande de Congés Payés du 2026-05-23 au 2026-05-25 (3 jours)	t	/dashboard/manager/validations	2026-05-20 13:16:33.135066
+20	5	demande_recue	Nouvelle demande de congé	SYROX UP a fait une demande de Congé sans solde du 2026-05-31 au 2026-06-01 (2 jours)	f	/dashboard/manager/validations	2026-05-22 10:56:07.297528
+21	5	demande_annulee	Demande de congé annulée	SYROX UP a annulé sa demande de congé.	f	/dashboard/manager/validations	2026-05-22 11:13:40.70502
 \.
 
 
 --
--- TOC entry 5009 (class 0 OID 25253)
+-- TOC entry 5010 (class 0 OID 25253)
 -- Dependencies: 232
 -- Data for Name: paie_employes; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.paie_employes (id, utilisateur_id, mois, annee, salaire_base, salaire_brut, prime_transport, prime_performance, autre_prime, jours_absence_non_paye, retenue_absence, net_a_payer, statut, date_paiement, cree_le) FROM stdin;
+5	2	5	2026	500000.00	500000.00	0.00	0.00	0.00	3	68181.82	431818.18	paye	2026-05-20	2026-05-20 13:20:13.170998
 \.
 
 
 --
--- TOC entry 4995 (class 0 OID 25133)
+-- TOC entry 4996 (class 0 OID 25133)
 -- Dependencies: 218
 -- Data for Name: roles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -490,91 +506,88 @@ COPY public.roles (id, nom) FROM stdin;
 
 
 --
--- TOC entry 5005 (class 0 OID 25215)
+-- TOC entry 5006 (class 0 OID 25215)
 -- Dependencies: 228
 -- Data for Name: solde_conges; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.solde_conges (id, utilisateur_id, annee, type_conge_id, total_jours, pris_jours, restant_jours) FROM stdin;
 1	1	2026	1	25.00	0.00	25.00
-2	1	2026	2	12.00	0.00	12.00
-4	2	2026	2	12.00	0.00	12.00
-5	3	2026	1	25.00	0.00	25.00
-6	3	2026	2	12.00	0.00	12.00
-3	2	2026	1	25.00	3.00	22.00
+7	5	2026	1	25.00	0.00	25.00
+8	6	2026	1	25.00	0.00	25.00
+3	2	2026	1	25.00	6.00	19.00
 \.
 
 
 --
--- TOC entry 5001 (class 0 OID 25179)
+-- TOC entry 5002 (class 0 OID 25179)
 -- Dependencies: 224
 -- Data for Name: types_conges; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.types_conges (id, code, nom, jours_par_defaut) FROM stdin;
 1	CP	Congés Payés	25.00
-2	RTT	RTT	12.00
-3	SANS_SOLDE	Congé sans solde	\N
+2	SANS_SOLDE	Congé sans solde	\N
 \.
 
 
 --
--- TOC entry 4997 (class 0 OID 25142)
+-- TOC entry 4998 (class 0 OID 25142)
 -- Dependencies: 220
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.users (id, email, password_hash, nom, prenom, telephone, service, manager_id, statut, cree_le) FROM stdin;
-1	mitiarj05@gmail.com	$2a$10$dF.oI76fhxLpCrMm3fIcpuDAFUD6wrS9SmU9CKyKzQx6hxxivD/va	Mitia	RJ	0328725411	\N	\N	actif	2026-05-19 16:02:15.893709
-3	titaxwinno@gmail.com	$2a$10$iMSuh2Yjix2M4M/SVTf/hux0d1wcBc9Ztg.EUmcDlxuDIi7vCp/tK	Winno	Tafita	0328725411	\N	\N	actif	2026-05-19 16:37:51.691352
-2	soundevenement08@gmail.com	$2a$10$P3Nu1FUmlHn6SJqGMui0Iuc0wwoLw6obJzR6lI2/Hoqf2a62nZtze	UP	SYROX	0389815487	\N	3	actif	2026-05-19 16:37:06.669911
+COPY public.users (id, email, password_hash, nom, prenom, telephone, service, manager_id, statut, cree_le, salaire_base) FROM stdin;
+1	mitiarj05@gmail.com	$2a$10$dF.oI76fhxLpCrMm3fIcpuDAFUD6wrS9SmU9CKyKzQx6hxxivD/va	Mitia	RJ	0328725411	\N	\N	actif	2026-05-19 16:02:15.893709	0.00
+2	soundevenement08@gmail.com	$2a$10$P3Nu1FUmlHn6SJqGMui0Iuc0wwoLw6obJzR6lI2/Hoqf2a62nZtze	UP	SYROX	0389815487	\N	5	actif	2026-05-19 16:37:06.669911	500000.00
+5	titaxwinno@gmail.com	$2a$10$d0t/cx/YJuFD2unQMMwp1.REU5mJkhcIM3IogjunC/Y/1/.n04tKi	Winno	Tafita	\N	\N	\N	actif	2026-05-19 19:27:37.006135	1000000.00
+6	test@gmail.com	$2a$10$7QHB1oxHsfiMTAyPj5zvTOiSIeLLbXnQi.c.lVCyzL.G1V2lYk1Ri	test	test	\N	\N	\N	actif	2026-05-19 19:36:00.578242	400000.00
 \.
 
 
 --
--- TOC entry 4999 (class 0 OID 25160)
+-- TOC entry 5000 (class 0 OID 25160)
 -- Dependencies: 222
 -- Data for Name: utilisateurs_roles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.utilisateurs_roles (id, utilisateur_id, role_id) FROM stdin;
-2	1	3
-3	1	1
-4	2	1
-5	3	1
-6	3	2
+10	1	3
+11	2	1
+12	5	2
+13	6	1
 \.
 
 
 --
--- TOC entry 5023 (class 0 OID 0)
+-- TOC entry 5024 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: demandes_conges_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.demandes_conges_id_seq', 1, true);
-
-
---
--- TOC entry 5024 (class 0 OID 0)
--- Dependencies: 229
--- Name: notifications_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
---
-
-SELECT pg_catalog.setval('public.notifications_id_seq', 6, true);
+SELECT pg_catalog.setval('public.demandes_conges_id_seq', 4, true);
 
 
 --
 -- TOC entry 5025 (class 0 OID 0)
--- Dependencies: 231
--- Name: paie_employes_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+-- Dependencies: 229
+-- Name: notifications_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.paie_employes_id_seq', 1, false);
+SELECT pg_catalog.setval('public.notifications_id_seq', 21, true);
 
 
 --
 -- TOC entry 5026 (class 0 OID 0)
+-- Dependencies: 231
+-- Name: paie_employes_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.paie_employes_id_seq', 5, true);
+
+
+--
+-- TOC entry 5027 (class 0 OID 0)
 -- Dependencies: 217
 -- Name: roles_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -583,16 +596,16 @@ SELECT pg_catalog.setval('public.roles_id_seq', 3, true);
 
 
 --
--- TOC entry 5027 (class 0 OID 0)
+-- TOC entry 5028 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: solde_conges_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.solde_conges_id_seq', 6, true);
+SELECT pg_catalog.setval('public.solde_conges_id_seq', 8, true);
 
 
 --
--- TOC entry 5028 (class 0 OID 0)
+-- TOC entry 5029 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: types_conges_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -601,25 +614,25 @@ SELECT pg_catalog.setval('public.types_conges_id_seq', 3, true);
 
 
 --
--- TOC entry 5029 (class 0 OID 0)
+-- TOC entry 5030 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 3, true);
+SELECT pg_catalog.setval('public.users_id_seq', 6, true);
 
 
 --
--- TOC entry 5030 (class 0 OID 0)
+-- TOC entry 5031 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: utilisateurs_roles_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.utilisateurs_roles_id_seq', 6, true);
+SELECT pg_catalog.setval('public.utilisateurs_roles_id_seq', 13, true);
 
 
 --
--- TOC entry 4822 (class 2606 OID 25198)
+-- TOC entry 4823 (class 2606 OID 25198)
 -- Name: demandes_conges demandes_conges_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -628,7 +641,7 @@ ALTER TABLE ONLY public.demandes_conges
 
 
 --
--- TOC entry 4833 (class 2606 OID 25246)
+-- TOC entry 4834 (class 2606 OID 25246)
 -- Name: notifications notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -637,7 +650,7 @@ ALTER TABLE ONLY public.notifications
 
 
 --
--- TOC entry 4836 (class 2606 OID 25268)
+-- TOC entry 4837 (class 2606 OID 25268)
 -- Name: paie_employes paie_employes_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -646,7 +659,7 @@ ALTER TABLE ONLY public.paie_employes
 
 
 --
--- TOC entry 4838 (class 2606 OID 25270)
+-- TOC entry 4839 (class 2606 OID 25270)
 -- Name: paie_employes paie_employes_utilisateur_id_mois_annee_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -655,7 +668,7 @@ ALTER TABLE ONLY public.paie_employes
 
 
 --
--- TOC entry 4806 (class 2606 OID 25140)
+-- TOC entry 4807 (class 2606 OID 25140)
 -- Name: roles roles_nom_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -664,7 +677,7 @@ ALTER TABLE ONLY public.roles
 
 
 --
--- TOC entry 4808 (class 2606 OID 25138)
+-- TOC entry 4809 (class 2606 OID 25138)
 -- Name: roles roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -673,7 +686,7 @@ ALTER TABLE ONLY public.roles
 
 
 --
--- TOC entry 4828 (class 2606 OID 25223)
+-- TOC entry 4829 (class 2606 OID 25223)
 -- Name: solde_conges solde_conges_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -682,7 +695,7 @@ ALTER TABLE ONLY public.solde_conges
 
 
 --
--- TOC entry 4830 (class 2606 OID 25225)
+-- TOC entry 4831 (class 2606 OID 25225)
 -- Name: solde_conges solde_conges_utilisateur_id_annee_type_conge_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -691,7 +704,7 @@ ALTER TABLE ONLY public.solde_conges
 
 
 --
--- TOC entry 4818 (class 2606 OID 25186)
+-- TOC entry 4819 (class 2606 OID 25186)
 -- Name: types_conges types_conges_code_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -700,7 +713,7 @@ ALTER TABLE ONLY public.types_conges
 
 
 --
--- TOC entry 4820 (class 2606 OID 25184)
+-- TOC entry 4821 (class 2606 OID 25184)
 -- Name: types_conges types_conges_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -709,7 +722,7 @@ ALTER TABLE ONLY public.types_conges
 
 
 --
--- TOC entry 4810 (class 2606 OID 25153)
+-- TOC entry 4811 (class 2606 OID 25153)
 -- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -718,7 +731,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4812 (class 2606 OID 25151)
+-- TOC entry 4813 (class 2606 OID 25151)
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -727,7 +740,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4814 (class 2606 OID 25165)
+-- TOC entry 4815 (class 2606 OID 25165)
 -- Name: utilisateurs_roles utilisateurs_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -736,7 +749,7 @@ ALTER TABLE ONLY public.utilisateurs_roles
 
 
 --
--- TOC entry 4816 (class 2606 OID 25167)
+-- TOC entry 4817 (class 2606 OID 25167)
 -- Name: utilisateurs_roles utilisateurs_roles_utilisateur_id_role_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -745,7 +758,7 @@ ALTER TABLE ONLY public.utilisateurs_roles
 
 
 --
--- TOC entry 4823 (class 1259 OID 25278)
+-- TOC entry 4824 (class 1259 OID 25278)
 -- Name: idx_dc_dates; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -753,7 +766,7 @@ CREATE INDEX idx_dc_dates ON public.demandes_conges USING btree (date_debut, dat
 
 
 --
--- TOC entry 4824 (class 1259 OID 25277)
+-- TOC entry 4825 (class 1259 OID 25277)
 -- Name: idx_dc_statut; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -761,7 +774,7 @@ CREATE INDEX idx_dc_statut ON public.demandes_conges USING btree (statut);
 
 
 --
--- TOC entry 4825 (class 1259 OID 25276)
+-- TOC entry 4826 (class 1259 OID 25276)
 -- Name: idx_dc_utilisateur; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -769,7 +782,7 @@ CREATE INDEX idx_dc_utilisateur ON public.demandes_conges USING btree (utilisate
 
 
 --
--- TOC entry 4831 (class 1259 OID 25279)
+-- TOC entry 4832 (class 1259 OID 25279)
 -- Name: idx_notif_utilisateur; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -777,7 +790,7 @@ CREATE INDEX idx_notif_utilisateur ON public.notifications USING btree (utilisat
 
 
 --
--- TOC entry 4834 (class 1259 OID 25280)
+-- TOC entry 4835 (class 1259 OID 25280)
 -- Name: idx_paie_utilisateur; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -785,7 +798,7 @@ CREATE INDEX idx_paie_utilisateur ON public.paie_employes USING btree (utilisate
 
 
 --
--- TOC entry 4826 (class 1259 OID 25281)
+-- TOC entry 4827 (class 1259 OID 25281)
 -- Name: idx_solde_utilisateur; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -793,7 +806,7 @@ CREATE INDEX idx_solde_utilisateur ON public.solde_conges USING btree (utilisate
 
 
 --
--- TOC entry 4842 (class 2606 OID 25209)
+-- TOC entry 4843 (class 2606 OID 25209)
 -- Name: demandes_conges demandes_conges_approbateur_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -802,7 +815,7 @@ ALTER TABLE ONLY public.demandes_conges
 
 
 --
--- TOC entry 4843 (class 2606 OID 25204)
+-- TOC entry 4844 (class 2606 OID 25204)
 -- Name: demandes_conges demandes_conges_type_conge_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -811,7 +824,7 @@ ALTER TABLE ONLY public.demandes_conges
 
 
 --
--- TOC entry 4844 (class 2606 OID 25199)
+-- TOC entry 4845 (class 2606 OID 25199)
 -- Name: demandes_conges demandes_conges_utilisateur_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -820,7 +833,7 @@ ALTER TABLE ONLY public.demandes_conges
 
 
 --
--- TOC entry 4847 (class 2606 OID 25247)
+-- TOC entry 4848 (class 2606 OID 25247)
 -- Name: notifications notifications_utilisateur_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -829,7 +842,7 @@ ALTER TABLE ONLY public.notifications
 
 
 --
--- TOC entry 4848 (class 2606 OID 25271)
+-- TOC entry 4849 (class 2606 OID 25271)
 -- Name: paie_employes paie_employes_utilisateur_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -838,7 +851,7 @@ ALTER TABLE ONLY public.paie_employes
 
 
 --
--- TOC entry 4845 (class 2606 OID 25231)
+-- TOC entry 4846 (class 2606 OID 25231)
 -- Name: solde_conges solde_conges_type_conge_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -847,7 +860,7 @@ ALTER TABLE ONLY public.solde_conges
 
 
 --
--- TOC entry 4846 (class 2606 OID 25226)
+-- TOC entry 4847 (class 2606 OID 25226)
 -- Name: solde_conges solde_conges_utilisateur_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -856,7 +869,7 @@ ALTER TABLE ONLY public.solde_conges
 
 
 --
--- TOC entry 4839 (class 2606 OID 25154)
+-- TOC entry 4840 (class 2606 OID 25154)
 -- Name: users users_manager_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -865,7 +878,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4840 (class 2606 OID 25173)
+-- TOC entry 4841 (class 2606 OID 25173)
 -- Name: utilisateurs_roles utilisateurs_roles_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -874,7 +887,7 @@ ALTER TABLE ONLY public.utilisateurs_roles
 
 
 --
--- TOC entry 4841 (class 2606 OID 25168)
+-- TOC entry 4842 (class 2606 OID 25168)
 -- Name: utilisateurs_roles utilisateurs_roles_utilisateur_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -882,11 +895,11 @@ ALTER TABLE ONLY public.utilisateurs_roles
     ADD CONSTRAINT utilisateurs_roles_utilisateur_id_fkey FOREIGN KEY (utilisateur_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
--- Completed on 2026-05-19 16:57:52
+-- Completed on 2026-05-22 11:18:56
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict xgGayAIIIyssGbL0jp6epmsg5e1NvGgffpDntjz7ARQYz99gxYK7YyFjNOaoNEu
+\unrestrict JC6Fh7huqGuLB7OXmRHsOmZB2wkd3Ie5oD7TWvhLGGLbIOhwRDjuwVWQxL3heXG
 

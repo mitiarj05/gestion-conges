@@ -1,6 +1,7 @@
 // frontend/src/components/common/Sidebar.jsx
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 function Sidebar({ role, onLogout }) {
     const location = useLocation();
@@ -9,6 +10,14 @@ function Sidebar({ role, onLogout }) {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    
+    // État des notifications par menu
+    const [notificationCounts, setNotificationCounts] = useState({
+        pendingRequests: 0,
+        pendingValidations: 0,
+        pendingAdminValidations: 0,
+        unreadNotifications: 0
+    });
 
     useEffect(() => {
         const handleResize = () => {
@@ -21,8 +30,67 @@ function Sidebar({ role, onLogout }) {
         };
         window.addEventListener('resize', handleResize);
         handleResize();
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+        
+        // Récupérer les notifications
+        fetchNotificationCounts();
+        
+        // Rafraîchir toutes les 30 secondes
+        const interval = setInterval(fetchNotificationCounts, 30000);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            clearInterval(interval);
+        };
+    }, [role]);
+
+    const fetchNotificationCounts = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            
+            let counts = {
+                pendingRequests: 0,
+                pendingValidations: 0,
+                pendingAdminValidations: 0,
+                unreadNotifications: 0
+            };
+            
+            if (role === 'admin') {
+                // Pour admin: demandes en attente de validation finale
+                const pendingRes = await axios.get('http://localhost:5000/api/admin/pending-approvals', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                counts.pendingAdminValidations = pendingRes.data.length;
+                counts.pendingValidations = pendingRes.data.length;
+                
+            } else if (role === 'manager') {
+                // Pour manager: demandes en attente de validation manager
+                const pendingRes = await axios.get('http://localhost:5000/api/leaves/team-pending', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                counts.pendingValidations = pendingRes.data.length;
+                
+                // Membres de l'équipe
+                const teamRes = await axios.get('http://localhost:5000/api/users/my-team', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                counts.teamCount = teamRes.data.length;
+                
+            } else if (role === 'employee') {
+                // Pour employé: demandes en attente (pending_manager + pending_admin)
+                const requestsRes = await axios.get('http://localhost:5000/api/leaves/my-requests', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                const pendingCount = requestsRes.data.filter(r => 
+                    r.statut === 'pending_manager' || r.statut === 'pending_admin'
+                ).length;
+                counts.pendingRequests = pendingCount;
+            }
+            
+            setNotificationCounts(counts);
+        } catch (error) {
+            console.error('Erreur chargement notifications sidebar:', error);
+        }
+    };
 
     const handleLogout = () => {
         if (onLogout) {
@@ -34,6 +102,18 @@ function Sidebar({ role, onLogout }) {
         }
     };
 
+    // Composant Badge - Cercle rouge
+    const Badge = ({ count }) => {
+        if (!count || count === 0) return null;
+        const countStr = String(count);
+        const badgeClass = countStr.length === 1 ? 'single-digit' : (countStr.length === 2 ? 'two-digits' : 'three-digits');
+        return (
+            <span className={`sidebar-badge ${badgeClass}`}>
+                {count > 99 ? '99+' : count}
+            </span>
+        );
+    };
+
     const getMenuItems = () => {
         if (role === 'admin') {
             return [
@@ -41,6 +121,7 @@ function Sidebar({ role, onLogout }) {
                     path: '/dashboard/admin', 
                     label: 'Tableau de bord', 
                     key: 'dashboard', 
+                    badge: notificationCounts.pendingAdminValidations,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <rect x="3" y="3" width="7" height="7"/>
@@ -54,6 +135,7 @@ function Sidebar({ role, onLogout }) {
                     path: '/dashboard/admin/users', 
                     label: 'Utilisateurs', 
                     key: 'users', 
+                    badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -67,6 +149,7 @@ function Sidebar({ role, onLogout }) {
                     path: '/dashboard/admin/payroll', 
                     label: 'Gestion de la paie', 
                     key: 'payroll', 
+                    badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <circle cx="12" cy="12" r="10"/>
@@ -78,6 +161,7 @@ function Sidebar({ role, onLogout }) {
                     path: '/dashboard/admin/calendar', 
                     label: 'Calendrier', 
                     key: 'calendar', 
+                    badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -91,6 +175,7 @@ function Sidebar({ role, onLogout }) {
                     path: '/dashboard/admin/logs', 
                     label: 'Historique', 
                     key: 'logs', 
+                    badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -105,6 +190,7 @@ function Sidebar({ role, onLogout }) {
                     path: '/dashboard/admin/settings', 
                     label: 'Paramètres', 
                     key: 'settings', 
+                    badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <circle cx="12" cy="12" r="3"/>
@@ -115,12 +201,14 @@ function Sidebar({ role, onLogout }) {
                 }
             ];
         }
+        
         if (role === 'manager') {
             return [
                 { 
                     path: '/dashboard/manager', 
                     label: 'Tableau de bord', 
-                    key: 'dashboard', 
+                    key: 'dashboard',
+                    badge: notificationCounts.pendingValidations,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <rect x="3" y="3" width="7" height="7"/>
@@ -133,7 +221,8 @@ function Sidebar({ role, onLogout }) {
                 { 
                     path: '/dashboard/manager/team', 
                     label: 'Mon équipe', 
-                    key: 'team', 
+                    key: 'team',
+                    badge: notificationCounts.teamCount || 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -146,7 +235,8 @@ function Sidebar({ role, onLogout }) {
                 { 
                     path: '/dashboard/manager/validations', 
                     label: 'Validations', 
-                    key: 'validations', 
+                    key: 'validations',
+                    badge: notificationCounts.pendingValidations,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
@@ -157,7 +247,8 @@ function Sidebar({ role, onLogout }) {
                 { 
                     path: '/dashboard/manager/statistics', 
                     label: 'Statistiques', 
-                    key: 'statistics', 
+                    key: 'statistics',
+                    badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <line x1="18" y1="20" x2="18" y2="10"/>
@@ -169,7 +260,8 @@ function Sidebar({ role, onLogout }) {
                 { 
                     path: '/dashboard/manager/team-calendar', 
                     label: 'Calendrier équipe', 
-                    key: 'team-calendar', 
+                    key: 'team-calendar',
+                    badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -181,11 +273,14 @@ function Sidebar({ role, onLogout }) {
                 }
             ];
         }
+        
+        // Employé
         return [
             { 
                 path: '/dashboard/employee', 
                 label: 'Tableau de bord', 
-                key: 'dashboard', 
+                key: 'dashboard',
+                badge: notificationCounts.pendingRequests,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="3" width="7" height="7"/>
@@ -198,7 +293,8 @@ function Sidebar({ role, onLogout }) {
             { 
                 path: '/dashboard/employee/balance', 
                 label: 'Mon solde', 
-                key: 'balance', 
+                key: 'balance',
+                badge: 0,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <circle cx="12" cy="12" r="10"/>
@@ -209,7 +305,8 @@ function Sidebar({ role, onLogout }) {
             { 
                 path: '/dashboard/employee/requests', 
                 label: 'Mes demandes', 
-                key: 'requests', 
+                key: 'requests',
+                badge: notificationCounts.pendingRequests,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M4 4v16h16V4H4z"/>
@@ -222,7 +319,8 @@ function Sidebar({ role, onLogout }) {
             { 
                 path: '/dashboard/employee/new-request', 
                 label: 'Nouvelle demande', 
-                key: 'new-request', 
+                key: 'new-request',
+                badge: 0,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <circle cx="12" cy="12" r="10"/>
@@ -234,7 +332,8 @@ function Sidebar({ role, onLogout }) {
             { 
                 path: '/dashboard/employee/calendar', 
                 label: 'Calendrier', 
-                key: 'calendar', 
+                key: 'calendar',
+                badge: 0,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -247,7 +346,8 @@ function Sidebar({ role, onLogout }) {
             { 
                 path: '/dashboard/employee/statistics', 
                 label: 'Statistiques', 
-                key: 'statistics', 
+                key: 'statistics',
+                badge: 0,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <line x1="18" y1="20" x2="18" y2="10"/>
@@ -259,7 +359,8 @@ function Sidebar({ role, onLogout }) {
             { 
                 path: '/dashboard/employee/payroll', 
                 label: 'Mes bulletins', 
-                key: 'payroll', 
+                key: 'payroll',
+                badge: 0,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -273,7 +374,8 @@ function Sidebar({ role, onLogout }) {
             { 
                 path: '/dashboard/employee/manager-profile', 
                 label: 'Mon manager', 
-                key: 'manager-profile', 
+                key: 'manager-profile',
+                badge: 0,
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -286,7 +388,9 @@ function Sidebar({ role, onLogout }) {
 
     const isActive = (path) => {
         if (path === '/dashboard/admin' && currentPath === '/dashboard/admin') return true;
-        if (path !== '/dashboard/admin' && currentPath.startsWith(path)) return true;
+        if (path === '/dashboard/manager' && currentPath === '/dashboard/manager') return true;
+        if (path === '/dashboard/employee' && currentPath === '/dashboard/employee') return true;
+        if (path !== '/dashboard/admin' && path !== '/dashboard/manager' && path !== '/dashboard/employee' && currentPath.startsWith(path)) return true;
         return currentPath === path;
     };
 
@@ -305,6 +409,16 @@ function Sidebar({ role, onLogout }) {
                 <button 
                     onClick={toggleSidebar} 
                     className="sidebar-toggle-btn"
+                    style={{
+                        background: '#f1f5f9',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '10px 16px',
+                        cursor: 'pointer',
+                        width: '100%',
+                        textAlign: 'left',
+                        fontWeight: '500'
+                    }}
                 >
                     {isOpen ? '✖ Fermer le menu' : '☰ Menu'}
                 </button>
@@ -318,14 +432,42 @@ function Sidebar({ role, onLogout }) {
                                     to={item.path} 
                                     className={active ? 'active' : ''}
                                     onClick={() => setIsOpen(false)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '12px',
+                                        padding: '12px 16px',
+                                        borderRadius: '10px',
+                                        textDecoration: 'none',
+                                        color: active ? '#667eea' : '#475569',
+                                        background: active ? '#eff6ff' : 'transparent',
+                                        fontWeight: active ? '600' : '500'
+                                    }}
                                 >
                                     <span className="menu-icon">{item.icon(active)}</span>
-                                    <span>{item.label}</span>
+                                    <span style={{ flex: 1 }}>{item.label}</span>
+                                    <Badge count={item.badge} />
                                 </Link>
                             );
                         })}
-                        <div className="menu-divider"></div>
-                        <button onClick={handleLogout} className="logout-menu-btn">
+                        <div className="menu-divider" style={{ height: '1px', background: '#e2e8f0', margin: '12px 0' }}></div>
+                        <button 
+                            onClick={handleLogout} 
+                            className="logout-menu-btn"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                padding: '12px 16px',
+                                width: '100%',
+                                border: 'none',
+                                background: 'none',
+                                borderRadius: '10px',
+                                cursor: 'pointer',
+                                color: '#ef4444',
+                                fontWeight: '500'
+                            }}
+                        >
                             <span className="menu-icon">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -344,8 +486,21 @@ function Sidebar({ role, onLogout }) {
     // Version desktop avec réduction
     return (
         <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
-            <div className="sidebar-header">
-                <button onClick={toggleSidebar} className="collapse-btn" title={isCollapsed ? 'Agrandir' : 'Réduire'}>
+            <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 16px 16px 16px' }}>
+                <button 
+                    onClick={toggleSidebar} 
+                    className="collapse-btn" 
+                    title={isCollapsed ? 'Agrandir' : 'Réduire'}
+                    style={{
+                        background: '#f1f5f9',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: '#475569'
+                    }}
+                >
                     {isCollapsed ? '→' : '←'}
                 </button>
             </div>
@@ -357,10 +512,11 @@ function Sidebar({ role, onLogout }) {
                             key={item.key} 
                             to={item.path} 
                             className={active ? 'active' : ''}
-                            title={isCollapsed ? item.label : ''}
+                            title={isCollapsed ? `${item.label}${item.badge > 0 ? ` (${item.badge})` : ''}` : ''}
                         >
                             <span className="menu-icon">{item.icon(active)}</span>
-                            {!isCollapsed && <span>{item.label}</span>}
+                            {!isCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+                            {!isCollapsed && <Badge count={item.badge} />}
                         </Link>
                     );
                 })}

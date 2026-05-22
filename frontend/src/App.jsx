@@ -20,6 +20,8 @@ function App() {
         };
 
         window.addEventListener('storage', handleStorageChange);
+        
+        // Vérification périodique
         const interval = setInterval(() => {
             const newToken = localStorage.getItem('token');
             if (!!newToken !== isAuthenticated) {
