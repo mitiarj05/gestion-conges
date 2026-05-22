@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 
 function Login({ onLogin }) {
     const [email, setEmail] = useState('');
@@ -218,7 +219,7 @@ function Login({ onLogin }) {
                                 <span className="checkmark"></span>
                                 Se souvenir de moi
                             </label>
-                            <a href="#" className="forgot-link">Mot de passe oublié ?</a>
+                            <a href="/forgot-password" className="forgot-link">Mot de passe oublié ?</a>
                         </div>
 
                         <button type="submit" className="pro-login-btn" disabled={loading}>
@@ -239,13 +240,13 @@ function Login({ onLogin }) {
                     </form>
 
                     <div className="login-pro-footer">
-                        <p>© 2024 - Solution de gestion des congés</p>
+                        <p>© 2026 - Solution de gestion des congés</p>
                         <div className="footer-links">
-                            <a href="#">À propos</a>
+                            <Link to="/about">À propos</Link>
                             <span>•</span>
-                            <a href="#">Confidentialité</a>
+                            <Link to="/privacy">Confidentialité</Link>
                             <span>•</span>
-                            <a href="#">Contact support</a>
+                            <Link to="/contact">Contact support</Link>
                         </div>
                     </div>
                 </div>

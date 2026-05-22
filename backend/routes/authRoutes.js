@@ -3,8 +3,11 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const pool = require('../config/database');
+const { sendResetPasswordEmail } = require('../utils/emailService');
 
+// ============ VÉRIFIER SI ADMIN EXISTE ============
 async function adminExists() {
     const result = await pool.query(
         `SELECT COUNT(*) FROM utilisateurs_roles ur 
@@ -14,6 +17,7 @@ async function adminExists() {
     return parseInt(result.rows[0].count) > 0;
 }
 
+// ============ INSCRIPTION ============
 router.post('/register', async (req, res) => {
     const { nom, prenom, email, password, telephone, role_souhaite, adminCode, adminSecretKey } = req.body;
     
@@ -93,6 +97,7 @@ router.post('/register', async (req, res) => {
     }
 });
 
+// ============ CONNEXION ============
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     
@@ -146,6 +151,126 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// ============ MOT DE PASSE OUBLIÉ - DEMANDE DE RÉINITIALISATION ============
+router.post('/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    
+    try {
+        const userResult = await pool.query(
+            `SELECT id, email, nom, prenom FROM users WHERE email = $1 AND statut = 'actif'`,
+            [email]
+        );
+        
+        if (userResult.rows.length === 0) {
+            return res.status(200).json({ 
+                message: 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation.' 
+            });
+        }
+        
+        const user = userResult.rows[0];
+        
+        // Générer un token unique
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const tokenExpiry = new Date();
+        tokenExpiry.setHours(tokenExpiry.getHours() + 1); // Token valable 1 heure
+        
+        // Supprimer l'ancien token et mettre à jour
+        await pool.query(
+            `UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3`,
+            [resetToken, tokenExpiry, user.id]
+        );
+        
+        // Envoyer l'email
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
+        
+        await sendResetPasswordEmail(user.email, `${user.prenom} ${user.nom}`, resetUrl);
+        
+        res.status(200).json({ 
+            message: 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation.' 
+        });
+        
+    } catch (error) {
+        console.error('Erreur forgot password:', error);
+        res.status(500).json({ message: 'Erreur serveur, veuillez réessayer plus tard.' });
+    }
+});
+
+// ============ VÉRIFIER LE TOKEN DE RÉINITIALISATION ============
+router.get('/verify-reset-token/:token', async (req, res) => {
+    const { token } = req.params;
+    
+    try {
+        const userResult = await pool.query(
+            `SELECT id, email, nom, prenom, reset_token_expires 
+             FROM users 
+             WHERE reset_token = $1 AND reset_token_expires > NOW()`,
+            [token]
+        );
+        
+        if (userResult.rows.length === 0) {
+            return res.status(400).json({ 
+                valid: false, 
+                message: 'Lien de réinitialisation invalide ou expiré.' 
+            });
+        }
+        
+        const user = userResult.rows[0];
+        
+        res.json({ 
+            valid: true, 
+            email: user.email,
+            userName: `${user.prenom} ${user.nom}`
+        });
+        
+    } catch (error) {
+        console.error('Erreur verify token:', error);
+        res.status(500).json({ message: 'Erreur serveur' });
+    }
+});
+
+// ============ RÉINITIALISER LE MOT DE PASSE ============
+router.post('/reset-password/:token', async (req, res) => {
+    const { token } = req.params;
+    const { password, confirmPassword } = req.body;
+    
+    if (password !== confirmPassword) {
+        return res.status(400).json({ message: 'Les mots de passe ne correspondent pas.' });
+    }
+    
+    if (password.length < 6) {
+        return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères.' });
+    }
+    
+    try {
+        const userResult = await pool.query(
+            `SELECT id FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()`,
+            [token]
+        );
+        
+        if (userResult.rows.length === 0) {
+            return res.status(400).json({ message: 'Lien de réinitialisation invalide ou expiré.' });
+        }
+        
+        const user = userResult.rows[0];
+        
+        // Hasher le nouveau mot de passe
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Mettre à jour le mot de passe et supprimer le token
+        await pool.query(
+            `UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2`,
+            [hashedPassword, user.id]
+        );
+        
+        res.json({ message: 'Mot de passe réinitialisé avec succès. Vous pouvez maintenant vous connecter.' });
+        
+    } catch (error) {
+        console.error('Erreur reset password:', error);
+        res.status(500).json({ message: 'Erreur serveur, veuillez réessayer plus tard.' });
+    }
+});
+
+// ============ ADMIN EXISTS ============
 router.get('/admin-exists', async (req, res) => {
     try {
         const exists = await adminExists();

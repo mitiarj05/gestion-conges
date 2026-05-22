@@ -1,8 +1,14 @@
+// frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import About from './pages/About';
+import Privacy from './pages/Privacy';
+import Contact from './pages/Contact';
 import DashboardRouter from './pages/DashboardRouter';
 import './styles/darkTheme.css';
 import './index.css';
@@ -21,7 +27,6 @@ function App() {
 
         window.addEventListener('storage', handleStorageChange);
         
-        // Vérification périodique
         const interval = setInterval(() => {
             const newToken = localStorage.getItem('token');
             if (!!newToken !== isAuthenticated) {
@@ -42,6 +47,11 @@ function App() {
                     <Routes>
                         <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />
                         <Route path="/register" element={<Register />} />
+                        <Route path="/forgot-password" element={<ForgotPassword />} />
+                        <Route path="/reset-password/:token" element={<ResetPassword />} />
+                        <Route path="/about" element={<About />} />
+                        <Route path="/privacy" element={<Privacy />} />
+                        <Route path="/contact" element={<Contact />} />
                         <Route 
                             path="/dashboard/*" 
                             element={isAuthenticated ? <DashboardRouter onLogout={() => setIsAuthenticated(false)} /> : <Navigate to="/login" />}

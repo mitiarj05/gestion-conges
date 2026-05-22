@@ -82,3 +82,5 @@ server.listen(PORT, () => {
     console.log(`✅ Serveur démarré sur le port ${PORT}`);
     console.log(`✅ Socket.io prêt pour notifications temps réel`);
 });
+const contactRoutes = require('./routes/contactRoutes');
+app.use('/api/contact', contactRoutes);

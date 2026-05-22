@@ -10357,3 +10357,758 @@ button:active,
 .login-pro-left {
     animation: fadeInUp 0.5s ease-out 0.1s both;
 }
+/* ====================================================
+   REGISTER PAGE - STYLES SPÉCIFIQUES
+   ==================================================== */
+
+/* Ligne double pour nom/prénom */
+.register-row {
+    display: flex;
+    gap: 16px;
+}
+
+.register-row .pro-input-group {
+    flex: 1;
+}
+
+/* Message de succès */
+.pro-success {
+    background: #ecfdf5;
+    color: #059669;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-left: 3px solid #10b981;
+}
+
+/* Sélecteur de rôle */
+.role-selector {
+    display: flex;
+    gap: 12px;
+}
+
+.role-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #f1f5f9;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.role-btn svg {
+    stroke: currentColor;
+}
+
+.role-btn.active {
+    background: #4f46e5;
+    border-color: #4f46e5;
+    color: white;
+}
+
+.role-btn:hover:not(.active) {
+    background: #e2e8f0;
+    border-color: #cbd5e1;
+}
+
+/* Champs admin */
+.admin-fields {
+    animation: fadeInUp 0.3s ease;
+    background: #f8fafc;
+    padding: 16px;
+    border-radius: 16px;
+    margin-top: 8px;
+}
+
+.admin-fields .pro-input-group:first-child {
+    margin-bottom: 16px;
+}
+
+/* Checkbox groupe */
+.pro-checkbox-group {
+    margin: 8px 0;
+}
+
+.pro-checkbox-group .pro-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.pro-checkbox-group .pro-checkbox a {
+    color: #4f46e5;
+    text-decoration: none;
+}
+
+.pro-checkbox-group .pro-checkbox a:hover {
+    text-decoration: underline;
+}
+
+/* Info text */
+.info-text-register {
+    display: block;
+    margin-top: 8px;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+/* Loading state */
+.loading-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #64748b;
+}
+
+/* Mode sombre pour l'inscription */
+[data-theme="dark"] .pro-success {
+    background: #064e3b;
+    color: #6ee7b7;
+    border-left-color: #34d399;
+}
+
+[data-theme="dark"] .role-btn {
+    background: #334155;
+    border-color: #475569;
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .role-btn.active {
+    background: #818cf8;
+    border-color: #818cf8;
+    color: white;
+}
+
+[data-theme="dark"] .role-btn:hover:not(.active) {
+    background: #475569;
+}
+
+[data-theme="dark"] .admin-fields {
+    background: #0f172a;
+}
+
+[data-theme="dark"] .pro-checkbox-group .pro-checkbox {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .pro-checkbox-group .pro-checkbox a {
+    color: #a5b4fc;
+}
+
+[data-theme="dark"] .info-text-register {
+    color: #64748b;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .register-row {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .role-selector {
+        flex-direction: column;
+    }
+    
+    .role-btn {
+        justify-content: center;
+    }
+    
+    .admin-fields {
+        padding: 12px;
+    }
+}
+/* Password strength indicator */
+.password-strength {
+    margin-top: 8px;
+}
+
+.strength-bar {
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.strength-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.strength-text {
+    font-size: 11px;
+    font-weight: 500;
+}
+
+[data-theme="dark"] .strength-bar {
+    background: #334155;
+}
+/* ====================================================
+   LEGAL PAGES - À PROPOS, CONFIDENTIALITÉ, CONTACT
+   ==================================================== */
+
+.legal-page-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.legal-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.legal-back-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #64748b;
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.legal-back-link:hover {
+    color: #4f46e5;
+}
+
+.legal-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.legal-logo-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.legal-logo-text {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.legal-logo-text span {
+    color: #8b5cf6;
+}
+
+.legal-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px;
+}
+
+.legal-hero {
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+.legal-hero h1 {
+    font-size: 36px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 16px;
+}
+
+.legal-hero p {
+    font-size: 18px;
+    color: #64748b;
+}
+
+.legal-section {
+    background: white;
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 32px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.legal-section h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.legal-section p {
+    color: #475569;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+.legal-section ul {
+    margin: 16px 0 16px 24px;
+    color: #475569;
+    line-height: 1.6;
+}
+
+.legal-section li {
+    margin-bottom: 8px;
+}
+
+/* Grid pour les cartes stats */
+.legal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 48px;
+}
+
+.legal-card {
+    background: white;
+    border-radius: 20px;
+    padding: 32px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s;
+}
+
+.legal-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.legal-card-icon {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    color: #4f46e5;
+}
+
+.legal-card h3 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.legal-card p {
+    color: #64748b;
+}
+
+/* Valeurs */
+.values-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.value-item {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.value-dot {
+    width: 8px;
+    height: 8px;
+    background: #4f46e5;
+    border-radius: 50%;
+    margin-top: 8px;
+}
+
+.value-item h4 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+
+.value-item p {
+    color: #64748b;
+    margin: 0;
+}
+
+/* Équipe */
+.team-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 24px;
+}
+
+.team-card {
+    text-align: center;
+}
+
+.team-avatar {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    color: white;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.team-card h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+
+.team-card p {
+    font-size: 13px;
+    color: #64748b;
+}
+
+/* Contact page */
+.contact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 32px;
+    margin-bottom: 48px;
+}
+
+.contact-info-side {
+    background: white;
+    border-radius: 20px;
+    padding: 32px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.contact-info-side h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 24px;
+}
+
+.contact-info-item {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.contact-info-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.contact-info-icon {
+    width: 48px;
+    height: 48px;
+    background: #f1f5f9;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4f46e5;
+}
+
+.contact-info-item h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.contact-info-item p {
+    font-size: 16px;
+    font-weight: 500;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+
+.contact-info-item small {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.contact-hours {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.contact-hours h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 12px;
+}
+
+.contact-hours p {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.contact-form-side {
+    background: white;
+    border-radius: 20px;
+    padding: 32px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.contact-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.contact-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.pro-textarea-wrapper textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 14px;
+    transition: all 0.2s;
+    background: white;
+    color: #1e293b;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.pro-textarea-wrapper textarea:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+/* FAQ */
+.faq-section {
+    background: white;
+    border-radius: 20px;
+    padding: 32px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.faq-section h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.faq-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+}
+
+.faq-item {
+    padding: 20px;
+    background: #f8fafc;
+    border-radius: 16px;
+}
+
+.faq-item h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.faq-item p {
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+/* Contact info box */
+.contact-info-box {
+    background: #f8fafc;
+    padding: 20px;
+    border-radius: 16px;
+    margin-top: 20px;
+}
+
+.contact-info-box p {
+    margin-bottom: 8px;
+}
+
+.contact-info-box a {
+    color: #4f46e5;
+    text-decoration: none;
+}
+
+.contact-info-box a:hover {
+    text-decoration: underline;
+}
+
+/* Footer */
+.legal-footer {
+    text-align: center;
+    padding: 32px;
+    border-top: 1px solid #e2e8f0;
+    background: white;
+}
+
+.legal-footer p {
+    color: #94a3b8;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.legal-footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    font-size: 12px;
+}
+
+.legal-footer-links a {
+    color: #64748b;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.legal-footer-links a:hover {
+    color: #4f46e5;
+}
+
+.legal-footer-links span {
+    color: #cbd5e1;
+}
+
+/* Mode sombre */
+[data-theme="dark"] .legal-page-container {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+[data-theme="dark"] .legal-page-header,
+[data-theme="dark"] .legal-section,
+[data-theme="dark"] .legal-card,
+[data-theme="dark"] .contact-info-side,
+[data-theme="dark"] .contact-form-side,
+[data-theme="dark"] .faq-section,
+[data-theme="dark"] .legal-footer {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+[data-theme="dark"] .legal-hero h1,
+[data-theme="dark"] .legal-section h2,
+[data-theme="dark"] .legal-card h3,
+[data-theme="dark"] .value-item h4,
+[data-theme="dark"] .team-card h4,
+[data-theme="dark"] .contact-info-item p,
+[data-theme="dark"] .contact-hours h4,
+[data-theme="dark"] .faq-section h2,
+[data-theme="dark"] .faq-item h4 {
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .legal-hero p,
+[data-theme="dark"] .legal-section p,
+[data-theme="dark"] .legal-section li,
+[data-theme="dark"] .legal-card p,
+[data-theme="dark"] .value-item p,
+[data-theme="dark"] .team-card p,
+[data-theme="dark"] .contact-hours p,
+[data-theme="dark"] .faq-item p,
+[data-theme="dark"] .legal-footer p {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .legal-card-icon {
+    background: linear-gradient(135deg, #1e293b, #334155);
+}
+
+[data-theme="dark"] .contact-info-icon {
+    background: #334155;
+}
+
+[data-theme="dark"] .faq-item {
+    background: #0f172a;
+}
+
+[data-theme="dark"] .pro-textarea-wrapper textarea {
+    background: #334155;
+    border-color: #475569;
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .contact-info-box {
+    background: #0f172a;
+}
+
+/* Responsive */
+@media (max-width: 968px) {
+    .legal-grid,
+    .team-grid,
+    .faq-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .contact-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .legal-content {
+        padding: 24px;
+    }
+    
+    .legal-section {
+        padding: 24px;
+    }
+}
+
+@media (max-width: 640px) {
+    .legal-grid,
+    .team-grid,
+    .faq-grid,
+    .contact-form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .legal-hero h1 {
+        font-size: 28px;
+    }
+    
+    .legal-page-header {
+        padding: 16px 20px;
+    }
+    
+    .legal-logo-text {
+        font-size: 16px;
+    }
+    
+    .legal-content {
+        padding: 16px;
+    }
+}
