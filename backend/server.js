@@ -15,42 +15,21 @@ const payrollRoutes = require('./routes/payrollRoutes');
 const app = express();
 const server = http.createServer(app);
 
-// Configuration CORS complète - Autoriser tous les frontends Render
-const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:5000',
-    'https://gestion-conges-frontend.onrender.com',
-    'https://gestion-conges-1.onrender.com',
-    'https://gestion-conges-puhh.onrender.com',
-    process.env.FRONTEND_URL
-].filter(Boolean);
-
+// Configuration CORS pour Socket.IO - ACCEPTE TOUTES LES ORIGINS
 const io = socketIo(server, {
     cors: {
-        origin: allowedOrigins,
+        origin: "*",  // Accepte toutes les origines
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         credentials: true,
         allowedHeaders: ["Content-Type", "Authorization"]
-    }
+    },
+    transports: ['websocket', 'polling'],
+    allowEIO3: true
 });
 
-// Middleware CORS avec options
+// Middleware CORS pour Express - ACCEPTE TOUTES LES ORIGINS
 app.use(cors({
-    origin: (origin, callback) => {
-        // Permettre les requêtes sans origin (comme les appels API)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            console.log('Origin bloqué par CORS:', origin);
-            // En développement, on accepte toutes les origins
-            if (process.env.NODE_ENV !== 'production') {
-                callback(null, true);
-            } else {
-                callback(new Error('Non autorisé par CORS'));
-            }
-        }
-    },
+    origin: "*",
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -108,5 +87,5 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
     console.log(`✅ Serveur démarré sur le port ${PORT}`);
     console.log(`✅ Environnement: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`✅ CORS autorisé pour:`, allowedOrigins);
+    console.log(`✅ CORS: toutes origines autorisées`);
 });

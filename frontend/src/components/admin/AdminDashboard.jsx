@@ -68,23 +68,45 @@ function AdminDashboard({ onLogout }) {
     });
 
     useEffect(() => {
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        setUser(storedUser);
-        if (storedUser.id) {
-            const newSocket = io(API_URL.replace('/api', ''));
-            setSocket(newSocket);
+    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    setUser(storedUser);
+    if (storedUser.id) {
+        const socketUrl = getSocketUrl();
+        const newSocket = io(socketUrl, {
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 10000
+        });
+        
+        newSocket.on('connect', () => {
+            console.log('Socket.IO admin connecté');
             newSocket.emit('join', storedUser.id);
             if (storedUser.roles?.includes('admin')) {
                 newSocket.emit('join_admin');
             }
-            newSocket.on('new_notification', (notification) => {
-                setRealtimeNotifications(prev => [notification, ...prev]);
-                success(notification.titre);
-                setTimeout(() => setRealtimeNotifications(prev => prev.slice(0, 5)), 10000);
-            });
-            return () => newSocket.close();
-        }
-    }, []);
+        });
+        
+        newSocket.on('connect_error', (error) => {
+            console.warn('Socket.IO admin erreur:', error.message);
+        });
+        
+        newSocket.on('new_notification', (notification) => {
+            setRealtimeNotifications(prev => [notification, ...prev]);
+            success(notification.titre);
+            setTimeout(() => setRealtimeNotifications(prev => prev.slice(0, 5)), 10000);
+        });
+        
+        setSocket(newSocket);
+        
+        return () => {
+            if (newSocket) {
+                newSocket.disconnect();
+                newSocket.close();
+            }
+        };
+    }
+}, []);
 
     useEffect(() => {
         fetchAllData();

@@ -1,6 +1,7 @@
 // frontend/src/hooks/useSocket.js
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import { getSocketUrl } from '../config/api';
 
 const useSocket = (userId) => {
     const [socket, setSocket] = useState(null);
@@ -9,17 +10,35 @@ const useSocket = (userId) => {
     useEffect(() => {
         if (!userId) return;
         
-        const newSocket = io('http://localhost:5000');
-        setSocket(newSocket);
+        const socketUrl = getSocketUrl();
         
-        newSocket.emit('join', userId);
+        const newSocket = io(socketUrl, {
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 10000
+        });
+        
+        newSocket.on('connect', () => {
+            console.log('Socket.IO connecté');
+            newSocket.emit('join', userId);
+        });
+        
+        newSocket.on('connect_error', (error) => {
+            console.warn('Socket.IO erreur:', error.message);
+        });
         
         newSocket.on('new_notification', (notification) => {
             setNotifications(prev => [notification, ...prev]);
         });
         
+        setSocket(newSocket);
+        
         return () => {
-            newSocket.close();
+            if (newSocket) {
+                newSocket.disconnect();
+                newSocket.close();
+            }
         };
     }, [userId]);
 

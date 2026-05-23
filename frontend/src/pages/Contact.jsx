@@ -31,8 +31,7 @@ function Contact() {
         }
 
         try {
-            // Appel API pour envoyer le message
-            const response = await axios.post('http://localhost:5000/api/contact/send', formData);
+            const response = await axios.post(`${API_URL}/contact/send`, formData);
             setSuccess('Votre message a été envoyé avec succès. Nous vous répondrons dans les plus brefs délais.');
             setFormData({ name: '', email: '', subject: '', message: '' });
         } catch (err) {

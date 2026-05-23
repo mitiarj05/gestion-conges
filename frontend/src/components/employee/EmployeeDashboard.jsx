@@ -1,7 +1,10 @@
 // frontend/src/components/employee/EmployeeDashboard.jsx
+// Remplacer TOUS les 'http://localhost:5000/api' par `${API_URL}`
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 import Navbar from '../common/Navbar';
 import Sidebar from '../common/Sidebar';
 import Footer from '../common/Footer';
@@ -41,13 +44,15 @@ function EmployeeDashboard({ onLogout }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filteredRequests, setFilteredRequests] = useState([]);
 
+    const getAuthHeaders = () => ({
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    });
+
     const fetchBalance = useCallback(async () => {
         try {
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
-            const response = await axios.get('http://localhost:5000/api/leaves/balance', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await axios.get(`${API_URL}/leaves/balance`, getAuthHeaders());
             setBalance({
                 cp_total: response.data.cp_total || 25,
                 cp_pris: response.data.cp_pris || 0,
@@ -71,9 +76,7 @@ function EmployeeDashboard({ onLogout }) {
         try {
             const token = localStorage.getItem('token');
             if (!token) return;
-            const response = await axios.get('http://localhost:5000/api/leaves/my-requests', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await axios.get(`${API_URL}/leaves/my-requests`, getAuthHeaders());
             
             const formattedRequests = response.data.map(req => {
                 let normalizedStatus = req.status || req.statut;
@@ -118,9 +121,7 @@ function EmployeeDashboard({ onLogout }) {
             for (const req of formattedRequests) {
                 if (req.request_type !== 'permission') {
                     try {
-                        const justifResponse = await axios.get(`http://localhost:5000/api/leaves/justificatifs/${req.id}`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
+                        const justifResponse = await axios.get(`${API_URL}/leaves/justificatifs/${req.id}`, getAuthHeaders());
                         justifs[req.id] = justifResponse.data;
                     } catch (e) { justifs[req.id] = []; }
                 } else { justifs[req.id] = []; }
@@ -194,13 +195,9 @@ function EmployeeDashboard({ onLogout }) {
             try {
                 const token = localStorage.getItem('token');
                 if (request.request_type === 'permission') {
-                    await axios.delete(`http://localhost:5000/api/leaves/cancel-permission/${request.id}`, { 
-                        headers: { Authorization: `Bearer ${token}` } 
-                    });
+                    await axios.delete(`${API_URL}/leaves/cancel-permission/${request.id}`, getAuthHeaders());
                 } else {
-                    await axios.delete(`http://localhost:5000/api/leaves/cancel-request/${request.id}`, { 
-                        headers: { Authorization: `Bearer ${token}` } 
-                    });
+                    await axios.delete(`${API_URL}/leaves/cancel-request/${request.id}`, getAuthHeaders());
                 }
                 success(`Demande de ${typeLabel} supprimée !`);
                 refreshAllData();
@@ -210,9 +207,7 @@ function EmployeeDashboard({ onLogout }) {
         }
     };
 
-    // NOUVELLE FONCTION: Annuler un congé déjà approuvé
     const handleCancelApprovedRequest = async (request) => {
-        // Vérifier si la date de début est dans plus de 2 jours
         const startDate = new Date(request.start_date);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -223,7 +218,6 @@ function EmployeeDashboard({ onLogout }) {
             return;
         }
         
-        // Demander le motif d'annulation
         const motif = prompt('Motif de l\'annulation (obligatoire) :\n\nVeuillez expliquer la raison de l\'annulation de votre congé.');
         
         if (!motif || motif.trim() === '') {
@@ -234,9 +228,9 @@ function EmployeeDashboard({ onLogout }) {
         if (window.confirm(`Confirmer l'annulation de votre congé ?\n\n📅 Dates : ${request.start_date} → ${request.end_date}\n📊 Durée : ${request.displayDuration}\n📝 Motif : ${motif}\n\n⚠️ Attention : Cette action est irréversible. Les jours seront recrédités sur votre solde.`)) {
             try {
                 const token = localStorage.getItem('token');
-                const response = await axios.put(`http://localhost:5000/api/leaves/cancel-approved-request/${request.id}`, 
+                const response = await axios.put(`${API_URL}/leaves/cancel-approved-request/${request.id}`, 
                     { motif_annulation: motif.trim() },
-                    { headers: { Authorization: `Bearer ${token}` } }
+                    getAuthHeaders()
                 );
                 
                 if (response.data.success) {
@@ -256,9 +250,7 @@ function EmployeeDashboard({ onLogout }) {
     const handleSaveEdit = async (editedData) => {
         try {
             const token = localStorage.getItem('token');
-            const response = await axios.put(`http://localhost:5000/api/leaves/update-request/${editingRequest.id}`, editedData, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await axios.put(`${API_URL}/leaves/update-request/${editingRequest.id}`, editedData, getAuthHeaders());
             success(response.data.message || 'Demande modifiée !');
             setEditingRequest(null);
             setShowEditModal(false);
@@ -326,7 +318,6 @@ function EmployeeDashboard({ onLogout }) {
         );
     };
 
-    // DASHBOARD ACCUEIL
     const DashboardHome = () => (
         <>
             <div className="dashboard-header">
@@ -466,7 +457,6 @@ function EmployeeDashboard({ onLogout }) {
         </>
     );
 
-    // PAGE MES DEMANDES
     const MyRequestsPage = () => (
         <>
             <div className="page-header">
@@ -501,7 +491,6 @@ function EmployeeDashboard({ onLogout }) {
                     </thead>
                     <tbody>
                         {filteredRequests.map((req) => {
-                            // Vérifier si le congé approuvé peut être annulé (date dans +2 jours)
                             const isApproved = req.status === 'approved';
                             const startDate = new Date(req.start_date);
                             const today = new Date();
@@ -554,8 +543,8 @@ function EmployeeDashboard({ onLogout }) {
                                         )}
                                         {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
                                         {(req.status === 'rejected' || req.status === 'cancelled') && <span className="info-text">Non modifiable</span>}
-                                     </td>
-                                 </tr>
+                                    </td>
+                                </tr>
                             );
                         })}
                         {filteredRequests.length === 0 && (

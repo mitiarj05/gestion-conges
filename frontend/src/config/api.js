@@ -1,6 +1,5 @@
 // frontend/src/config/api.js
 const getApiUrl = () => {
-    // Détection automatique de l'environnement
     const hostname = window.location.hostname;
     
     // Si on est sur Render (domaine .onrender.com)
@@ -39,4 +38,13 @@ export const getFileUploadHeaders = () => {
             'Content-Type': 'multipart/form-data'
         }
     };
+};
+
+// Helper pour obtenir l'URL de base Socket.IO
+export const getSocketUrl = () => {
+    const hostname = window.location.hostname;
+    if (hostname.includes('onrender.com')) {
+        return 'https://gestion-conges-puhh.onrender.com';
+    }
+    return 'http://localhost:5000';
 };

@@ -1,7 +1,6 @@
 // frontend/src/services/fileService.js
 import axios from 'axios';
-
-const API_URL = 'http://localhost:5000/api';
+import { API_URL } from '../config/api';
 
 // Upload d'un fichier justificatif
 export const uploadJustificatif = async (demandeId, file) => {
