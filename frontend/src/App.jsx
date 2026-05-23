@@ -15,11 +15,22 @@ import './index.css';
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Vérifier le token au chargement
         const token = localStorage.getItem('token');
-        setIsAuthenticated(!!token);
+        const user = localStorage.getItem('user');
+        
+        if (token && user) {
+            // Vérifier si le token est encore valide (optionnel)
+            setIsAuthenticated(true);
+        } else {
+            setIsAuthenticated(false);
+        }
+        setLoading(false);
 
+        // Écouter les changements de localStorage
         const handleStorageChange = () => {
             const newToken = localStorage.getItem('token');
             setIsAuthenticated(!!newToken);
@@ -27,12 +38,13 @@ function App() {
 
         window.addEventListener('storage', handleStorageChange);
         
+        // Vérification périodique (toutes les 30 secondes)
         const interval = setInterval(() => {
             const newToken = localStorage.getItem('token');
             if (!!newToken !== isAuthenticated) {
                 setIsAuthenticated(!!newToken);
             }
-        }, 500);
+        }, 30000);
 
         return () => {
             window.removeEventListener('storage', handleStorageChange);
@@ -40,11 +52,28 @@ function App() {
         };
     }, [isAuthenticated]);
 
+    // Fonction de déconnexion
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setIsAuthenticated(false);
+    };
+
+    if (loading) {
+        return (
+            <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <div>Chargement de l'application...</div>
+            </div>
+        );
+    }
+
     return (
         <ThemeProvider>
             <Router>
                 <div className="App">
                     <Routes>
+                        {/* Routes publiques */}
                         <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />
                         <Route path="/register" element={<Register />} />
                         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -52,11 +81,20 @@ function App() {
                         <Route path="/about" element={<About />} />
                         <Route path="/privacy" element={<Privacy />} />
                         <Route path="/contact" element={<Contact />} />
+                        
+                        {/* Routes protégées (dashboard) */}
                         <Route 
                             path="/dashboard/*" 
-                            element={isAuthenticated ? <DashboardRouter onLogout={() => setIsAuthenticated(false)} /> : <Navigate to="/login" />}
+                            element={
+                                isAuthenticated ? 
+                                <DashboardRouter onLogout={handleLogout} /> : 
+                                <Navigate to="/login" replace />
+                            } 
                         />
-                        <Route path="/" element={<Navigate to="/login" />} />
+                        
+                        {/* Redirection par défaut */}
+                        <Route path="/" element={<Navigate to="/login" replace />} />
+                        <Route path="*" element={<Navigate to="/login" replace />} />
                     </Routes>
                 </div>
             </Router>
