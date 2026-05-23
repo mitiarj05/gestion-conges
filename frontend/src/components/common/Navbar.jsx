@@ -25,25 +25,29 @@ function Navbar({ user, role, onLogout }) {
     }, [role]);
 
     const fetchNotifications = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) return;
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
 
-            let endpoint = `${API_URL}/leaves/notifications`;
-
-            if (role === 'admin') {
-                endpoint = `${API_URL}/admin/notifications`;
-            }
-
-            const response = await axios.get(endpoint, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setNotifications(response.data);
-            setUnreadCount(response.data.filter(n => !n.est_lu).length);
-        } catch (error) {
-            console.error('Erreur chargement notifications:', error);
+        let endpoint = '';
+        if (role === 'admin') {
+            endpoint = `${API_URL}/admin/notifications`;
+        } else {
+            endpoint = `${API_URL}/leaves/notifications`;
         }
-    };
+
+        const response = await axios.get(endpoint, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 10000  // Ajouter un timeout
+        });
+        setNotifications(response.data);
+        setUnreadCount(response.data.filter(n => !n.est_lu).length);
+    } catch (error) {
+        console.error('Erreur chargement notifications:', error.message);
+        // Ne pas bloquer l'application
+        setNotifications([]);
+    }
+};
 
     const markAsRead = async (id) => {
         try {

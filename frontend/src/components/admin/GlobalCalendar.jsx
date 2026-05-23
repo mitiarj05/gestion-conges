@@ -33,7 +33,7 @@ function GlobalCalendar() {
     const fetchAllAbsences = async () => {
         setLoading(true);
         try {
-            const response = await axios.get(`\${API_URL}/leaves/all-absences`, getAuthHeaders());
+const response = await axios.get(`${API_URL}/leaves/all-absences`, getAuthHeaders());
             setAllAbsences(response.data);
             calculateStatsFromData(response.data);
         } catch (error) {
