@@ -1,7 +1,8 @@
 // frontend/src/pages/Register.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { API_URL } from '../config/api';
 
 function Register() {
     const [formData, setFormData] = useState({
@@ -21,7 +22,7 @@ function Register() {
     useEffect(() => {
         const checkAdminExists = async () => {
             try {
-                const response = await axios.get('http://localhost:5000/api/auth/admin-exists');
+                const response = await axios.get(`${API_URL}/auth/admin-exists`);
                 setAdminAlreadyExists(response.data.adminExists);
             } catch (err) { 
                 console.error(err); 
@@ -70,7 +71,7 @@ function Register() {
                 payload.adminCode = formData.adminCode;
                 payload.adminSecretKey = formData.adminSecretKey;
             }
-            const response = await axios.post('http://localhost:5000/api/auth/register', payload);
+            const response = await axios.post(`${API_URL}/auth/register`, payload);
             
             if (response.status === 201) {
                 setSuccess(response.data.message);
@@ -438,8 +439,8 @@ function Register() {
                                     onChange={(e) => setAcceptTerms(e.target.checked)}
                                 />
                                 <span className="checkmark"></span>
-                                J'accepte les <a href="#">conditions générales d'utilisation</a> et la 
-                                <a href="#">politique de confidentialité</a>
+                                J'accepte les <Link to="/terms">conditions générales d'utilisation</Link> et la 
+                                <Link to="/privacy">politique de confidentialité</Link>
                             </label>
                         </div>
 
@@ -463,11 +464,11 @@ function Register() {
                     <div className="login-pro-footer">
                         <p>© 2024 - Solution de gestion des congés</p>
                         <div className="footer-links">
-                            <a href="#">À propos</a>
+                            <Link to="/about">À propos</Link>
                             <span>•</span>
-                            <a href="#">Confidentialité</a>
+                            <Link to="/privacy">Confidentialité</Link>
                             <span>•</span>
-                            <a href="#">Contact</a>
+                            <Link to="/contact">Contact</Link>
                         </div>
                     </div>
                 </div>

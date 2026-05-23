@@ -1,7 +1,8 @@
 // frontend/src/config/api.js
 const getApiUrl = () => {
-    // En production (Render)
+    // En production (sur Render)
     if (process.env.NODE_ENV === 'production') {
+        // Utiliser l'URL du backend Render
         return 'https://gestion-conges-puhh.onrender.com/api';
     }
     // En développement local

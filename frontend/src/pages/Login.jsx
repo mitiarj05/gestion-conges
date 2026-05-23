@@ -1,8 +1,8 @@
 // frontend/src/pages/Login.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
+import { API_URL } from '../config/api';
 
 function Login({ onLogin }) {
     const [email, setEmail] = useState('');
@@ -43,7 +43,7 @@ function Login({ onLogin }) {
         setError('');
 
         try {
-            const response = await axios.post('http://localhost:5000/api/auth/login', { email, password });
+            const response = await axios.post(`${API_URL}/auth/login`, { email, password });
             const { token, user } = response.data;
             
             localStorage.setItem('token', token);
@@ -219,7 +219,7 @@ function Login({ onLogin }) {
                                 <span className="checkmark"></span>
                                 Se souvenir de moi
                             </label>
-                            <a href="/forgot-password" className="forgot-link">Mot de passe oublié ?</a>
+                            <Link to="/forgot-password" className="forgot-link">Mot de passe oublié ?</Link>
                         </div>
 
                         <button type="submit" className="pro-login-btn" disabled={loading}>
