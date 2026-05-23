@@ -1,6 +1,7 @@
 // frontend/src/components/payroll/PayrollDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -73,9 +74,9 @@ function PayrollDashboard() {
         setLoading(true);
         try {
             const [bulletinsRes, employeesRes, statsRes] = await Promise.all([
-                axios.get('http://localhost:5000/api/payroll/tous-bulletins', getAuthHeaders()),
-                axios.get('http://localhost:5000/api/admin/employees-for-payroll', getAuthHeaders()),
-                axios.get('http://localhost:5000/api/payroll/stats', getAuthHeaders())
+                axios.get(`\${API_URL}/payroll/tous-bulletins`, getAuthHeaders()),
+                axios.get(`\${API_URL}/admin/employees-for-payroll`, getAuthHeaders()),
+                axios.get(`\${API_URL}/payroll/stats`, getAuthHeaders())
             ]);
             
             setBulletins(bulletinsRes.data);
@@ -136,7 +137,7 @@ function PayrollDashboard() {
 
         try {
             const response = await axios.post(
-                'http://localhost:5000/api/payroll/generer-bulletin',
+                `\${API_URL}/payroll/generer-bulletin`,
                 {
                     utilisateur_id: parseInt(formData.utilisateur_id),
                     mois: parseInt(formData.mois),
@@ -165,7 +166,7 @@ function PayrollDashboard() {
 
         try {
             const response = await axios.post(
-                'http://localhost:5000/api/payroll/generer-bulletins-equipe',
+                `\${API_URL}/payroll/generer-bulletins-equipe`,
                 { 
                     mois: parseInt(formData.mois), 
                     annee: parseInt(formData.annee) 
@@ -190,7 +191,7 @@ function PayrollDashboard() {
         if (!window.confirm('Marquer ce bulletin comme payé ?')) return;
         try {
             await axios.put(
-                `http://localhost:5000/api/payroll/marquer-paye/${id}`,
+                `${API_URL}/payroll/marquer-paye/${id}`,
                 {},
                 getAuthHeaders()
             );
@@ -206,7 +207,7 @@ function PayrollDashboard() {
 
         try {
             await axios.delete(
-                `http://localhost:5000/api/payroll/bulletin/${id}`,
+                `${API_URL}/payroll/bulletin/${id}`,
                 getAuthHeaders()
             );
             alert('Bulletin supprimé');
@@ -234,7 +235,7 @@ function PayrollDashboard() {
 
         try {
             const response = await axios.put(
-                `http://localhost:5000/api/payroll/bulletin/${selectedBulletin.id}`,
+                `${API_URL}/payroll/bulletin/${selectedBulletin.id}`,
                 {
                     salaire_base: parseFloat(formData.salaire_base),
                     prime: parseFloat(formData.prime) || 0

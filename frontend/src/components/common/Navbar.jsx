@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from './ThemeToggle';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function Navbar({ user, role, onLogout }) {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -27,14 +28,13 @@ function Navbar({ user, role, onLogout }) {
         try {
             const token = localStorage.getItem('token');
             if (!token) return;
-            
-            let endpoint = 'http://localhost:5000/api/leaves/notifications';
-            
-            // Utiliser un endpoint différent selon le rôle
+
+            let endpoint = `${API_URL}/leaves/notifications`;
+
             if (role === 'admin') {
-                endpoint = 'http://localhost:5000/api/admin/notifications';
+                endpoint = `${API_URL}/admin/notifications`;
             }
-            
+
             const response = await axios.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -48,12 +48,12 @@ function Navbar({ user, role, onLogout }) {
     const markAsRead = async (id) => {
         try {
             const token = localStorage.getItem('token');
-            let endpoint = `http://localhost:5000/api/leaves/notifications/${id}/read`;
-            
+            let endpoint = `${API_URL}/leaves/notifications/${id}/read`;
+
             if (role === 'admin') {
-                endpoint = `http://localhost:5000/api/admin/notifications/${id}/read`;
+                endpoint = `${API_URL}/admin/notifications/${id}/read`;
             }
-            
+
             await axios.put(endpoint, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -68,9 +68,9 @@ function Navbar({ user, role, onLogout }) {
             const token = localStorage.getItem('token');
             const unreadIds = notifications.filter(n => !n.est_lu && n.id).map(n => n.id);
             for (const id of unreadIds) {
-                let endpoint = `http://localhost:5000/api/leaves/notifications/${id}/read`;
+                let endpoint = `${API_URL}/leaves/notifications/${id}/read`;
                 if (role === 'admin') {
-                    endpoint = `http://localhost:5000/api/admin/notifications/${id}/read`;
+                    endpoint = `${API_URL}/admin/notifications/${id}/read`;
                 }
                 await axios.put(endpoint, {}, {
                     headers: { Authorization: `Bearer ${token}` }
@@ -102,8 +102,7 @@ function Navbar({ user, role, onLogout }) {
 
     const getNotificationLink = (notif) => {
         if (notif.lien) return notif.lien;
-        
-        // Définir des liens par défaut selon le type
+
         switch (notif.type) {
             case 'validation_requise':
                 return '/dashboard/admin';
@@ -129,7 +128,7 @@ function Navbar({ user, role, onLogout }) {
             <div className="user-info">
                 {/* Bouton Notifications */}
                 <div className="notifications-wrapper">
-                    <button 
+                    <button
                         className="notifications-btn"
                         onClick={() => setShowNotifications(!showNotifications)}
                         title="Notifications"
@@ -142,7 +141,7 @@ function Navbar({ user, role, onLogout }) {
                             <span className="notifications-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
                         )}
                     </button>
-                    
+
                     {/* Dropdown Notifications */}
                     {showNotifications && (
                         <div className="notifications-dropdown">
@@ -165,8 +164,8 @@ function Navbar({ user, role, onLogout }) {
                                     </div>
                                 ) : (
                                     notifications.slice(0, 10).map((notif, index) => (
-                                        <div 
-                                            key={notif.id || index} 
+                                        <div
+                                            key={notif.id || index}
                                             className={`notification-item ${!notif.est_lu ? 'unread' : ''}`}
                                             onClick={() => {
                                                 if (!notif.est_lu && notif.id) markAsRead(notif.id);

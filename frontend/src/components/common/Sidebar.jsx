@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function Sidebar({ role, onLogout }) {
     const location = useLocation();
@@ -10,7 +11,7 @@ function Sidebar({ role, onLogout }) {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
-    
+
     // État des notifications par menu
     const [notificationCounts, setNotificationCounts] = useState({
         pendingRequests: 0,
@@ -30,11 +31,9 @@ function Sidebar({ role, onLogout }) {
         };
         window.addEventListener('resize', handleResize);
         handleResize();
-        
-        // Récupérer les notifications
+
         fetchNotificationCounts();
-        
-        // Rafraîchir toutes les 30 secondes
+
         const interval = setInterval(fetchNotificationCounts, 30000);
         return () => {
             window.removeEventListener('resize', handleResize);
@@ -46,46 +45,42 @@ function Sidebar({ role, onLogout }) {
         try {
             const token = localStorage.getItem('token');
             if (!token) return;
-            
+
             let counts = {
                 pendingRequests: 0,
                 pendingValidations: 0,
                 pendingAdminValidations: 0,
                 unreadNotifications: 0
             };
-            
+
             if (role === 'admin') {
-                // Pour admin: demandes en attente de validation finale
-                const pendingRes = await axios.get('http://localhost:5000/api/admin/pending-approvals', {
+                const pendingRes = await axios.get(`${API_URL}/admin/pending-approvals`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 counts.pendingAdminValidations = pendingRes.data.length;
                 counts.pendingValidations = pendingRes.data.length;
-                
+
             } else if (role === 'manager') {
-                // Pour manager: demandes en attente de validation manager
-                const pendingRes = await axios.get('http://localhost:5000/api/leaves/team-pending', {
+                const pendingRes = await axios.get(`${API_URL}/leaves/team-pending`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 counts.pendingValidations = pendingRes.data.length;
-                
-                // Membres de l'équipe
-                const teamRes = await axios.get('http://localhost:5000/api/users/my-team', {
+
+                const teamRes = await axios.get(`${API_URL}/users/my-team`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 counts.teamCount = teamRes.data.length;
-                
+
             } else if (role === 'employee') {
-                // Pour employé: demandes en attente (pending_manager + pending_admin)
-                const requestsRes = await axios.get('http://localhost:5000/api/leaves/my-requests', {
+                const requestsRes = await axios.get(`${API_URL}/leaves/my-requests`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                const pendingCount = requestsRes.data.filter(r => 
+                const pendingCount = requestsRes.data.filter(r =>
                     r.statut === 'pending_manager' || r.statut === 'pending_admin'
                 ).length;
                 counts.pendingRequests = pendingCount;
             }
-            
+
             setNotificationCounts(counts);
         } catch (error) {
             console.error('Erreur chargement notifications sidebar:', error);
@@ -117,10 +112,10 @@ function Sidebar({ role, onLogout }) {
     const getMenuItems = () => {
         if (role === 'admin') {
             return [
-                { 
-                    path: '/dashboard/admin', 
-                    label: 'Tableau de bord', 
-                    key: 'dashboard', 
+                {
+                    path: '/dashboard/admin',
+                    label: 'Tableau de bord',
+                    key: 'dashboard',
                     badge: notificationCounts.pendingAdminValidations,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -131,10 +126,10 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/admin/users', 
-                    label: 'Utilisateurs', 
-                    key: 'users', 
+                {
+                    path: '/dashboard/admin/users',
+                    label: 'Utilisateurs',
+                    key: 'users',
                     badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -145,10 +140,10 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/admin/payroll', 
-                    label: 'Gestion de la paie', 
-                    key: 'payroll', 
+                {
+                    path: '/dashboard/admin/payroll',
+                    label: 'Gestion de la paie',
+                    key: 'payroll',
                     badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -157,10 +152,10 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/admin/calendar', 
-                    label: 'Calendrier', 
-                    key: 'calendar', 
+                {
+                    path: '/dashboard/admin/calendar',
+                    label: 'Calendrier',
+                    key: 'calendar',
                     badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -171,10 +166,10 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/admin/logs', 
-                    label: 'Historique', 
-                    key: 'logs', 
+                {
+                    path: '/dashboard/admin/logs',
+                    label: 'Historique',
+                    key: 'logs',
                     badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -186,10 +181,10 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/admin/settings', 
-                    label: 'Paramètres', 
-                    key: 'settings', 
+                {
+                    path: '/dashboard/admin/settings',
+                    label: 'Paramètres',
+                    key: 'settings',
                     badge: 0,
                     icon: (active) => (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -201,12 +196,12 @@ function Sidebar({ role, onLogout }) {
                 }
             ];
         }
-        
+
         if (role === 'manager') {
             return [
-                { 
-                    path: '/dashboard/manager', 
-                    label: 'Tableau de bord', 
+                {
+                    path: '/dashboard/manager',
+                    label: 'Tableau de bord',
                     key: 'dashboard',
                     badge: notificationCounts.pendingValidations,
                     icon: (active) => (
@@ -218,9 +213,9 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/manager/team', 
-                    label: 'Mon équipe', 
+                {
+                    path: '/dashboard/manager/team',
+                    label: 'Mon équipe',
                     key: 'team',
                     badge: notificationCounts.teamCount || 0,
                     icon: (active) => (
@@ -232,9 +227,9 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/manager/validations', 
-                    label: 'Validations', 
+                {
+                    path: '/dashboard/manager/validations',
+                    label: 'Validations',
                     key: 'validations',
                     badge: notificationCounts.pendingValidations,
                     icon: (active) => (
@@ -244,9 +239,9 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/manager/statistics', 
-                    label: 'Statistiques', 
+                {
+                    path: '/dashboard/manager/statistics',
+                    label: 'Statistiques',
                     key: 'statistics',
                     badge: 0,
                     icon: (active) => (
@@ -257,9 +252,9 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                { 
-                    path: '/dashboard/manager/team-calendar', 
-                    label: 'Calendrier équipe', 
+                {
+                    path: '/dashboard/manager/team-calendar',
+                    label: 'Calendrier équipe',
                     key: 'team-calendar',
                     badge: 0,
                     icon: (active) => (
@@ -273,12 +268,12 @@ function Sidebar({ role, onLogout }) {
                 }
             ];
         }
-        
+
         // Employé
         return [
-            { 
-                path: '/dashboard/employee', 
-                label: 'Tableau de bord', 
+            {
+                path: '/dashboard/employee',
+                label: 'Tableau de bord',
                 key: 'dashboard',
                 badge: notificationCounts.pendingRequests,
                 icon: (active) => (
@@ -290,9 +285,9 @@ function Sidebar({ role, onLogout }) {
                     </svg>
                 )
             },
-            { 
-                path: '/dashboard/employee/balance', 
-                label: 'Mon solde', 
+            {
+                path: '/dashboard/employee/balance',
+                label: 'Mon solde',
                 key: 'balance',
                 badge: 0,
                 icon: (active) => (
@@ -302,9 +297,9 @@ function Sidebar({ role, onLogout }) {
                     </svg>
                 )
             },
-            { 
-                path: '/dashboard/employee/requests', 
-                label: 'Mes demandes', 
+            {
+                path: '/dashboard/employee/requests',
+                label: 'Mes demandes',
                 key: 'requests',
                 badge: notificationCounts.pendingRequests,
                 icon: (active) => (
@@ -316,9 +311,9 @@ function Sidebar({ role, onLogout }) {
                     </svg>
                 )
             },
-            { 
-                path: '/dashboard/employee/new-request', 
-                label: 'Nouvelle demande', 
+            {
+                path: '/dashboard/employee/new-request',
+                label: 'Nouvelle demande',
                 key: 'new-request',
                 badge: 0,
                 icon: (active) => (
@@ -329,9 +324,9 @@ function Sidebar({ role, onLogout }) {
                     </svg>
                 )
             },
-            { 
-                path: '/dashboard/employee/calendar', 
-                label: 'Calendrier', 
+            {
+                path: '/dashboard/employee/calendar',
+                label: 'Calendrier',
                 key: 'calendar',
                 badge: 0,
                 icon: (active) => (
@@ -343,9 +338,9 @@ function Sidebar({ role, onLogout }) {
                     </svg>
                 )
             },
-            { 
-                path: '/dashboard/employee/statistics', 
-                label: 'Statistiques', 
+            {
+                path: '/dashboard/employee/statistics',
+                label: 'Statistiques',
                 key: 'statistics',
                 badge: 0,
                 icon: (active) => (
@@ -356,9 +351,9 @@ function Sidebar({ role, onLogout }) {
                     </svg>
                 )
             },
-            { 
-                path: '/dashboard/employee/payroll', 
-                label: 'Mes bulletins', 
+            {
+                path: '/dashboard/employee/payroll',
+                label: 'Mes bulletins',
                 key: 'payroll',
                 badge: 0,
                 icon: (active) => (
@@ -371,9 +366,9 @@ function Sidebar({ role, onLogout }) {
                     </svg>
                 )
             },
-            { 
-                path: '/dashboard/employee/manager-profile', 
-                label: 'Mon manager', 
+            {
+                path: '/dashboard/employee/manager-profile',
+                label: 'Mon manager',
                 key: 'manager-profile',
                 badge: 0,
                 icon: (active) => (
@@ -406,8 +401,8 @@ function Sidebar({ role, onLogout }) {
     if (isMobile) {
         return (
             <aside className="sidebar" style={{ padding: '16px' }}>
-                <button 
-                    onClick={toggleSidebar} 
+                <button
+                    onClick={toggleSidebar}
                     className="sidebar-toggle-btn"
                     style={{
                         background: '#f1f5f9',
@@ -427,9 +422,9 @@ function Sidebar({ role, onLogout }) {
                         {getMenuItems().map(item => {
                             const active = isActive(item.path);
                             return (
-                                <Link 
-                                    key={item.key} 
-                                    to={item.path} 
+                                <Link
+                                    key={item.key}
+                                    to={item.path}
                                     className={active ? 'active' : ''}
                                     onClick={() => setIsOpen(false)}
                                     style={{
@@ -451,8 +446,8 @@ function Sidebar({ role, onLogout }) {
                             );
                         })}
                         <div className="menu-divider" style={{ height: '1px', background: '#e2e8f0', margin: '12px 0' }}></div>
-                        <button 
-                            onClick={handleLogout} 
+                        <button
+                            onClick={handleLogout}
                             className="logout-menu-btn"
                             style={{
                                 display: 'flex',
@@ -487,9 +482,9 @@ function Sidebar({ role, onLogout }) {
     return (
         <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
             <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 16px 16px 16px' }}>
-                <button 
-                    onClick={toggleSidebar} 
-                    className="collapse-btn" 
+                <button
+                    onClick={toggleSidebar}
+                    className="collapse-btn"
                     title={isCollapsed ? 'Agrandir' : 'Réduire'}
                     style={{
                         background: '#f1f5f9',
@@ -508,9 +503,9 @@ function Sidebar({ role, onLogout }) {
                 {getMenuItems().map(item => {
                     const active = isActive(item.path);
                     return (
-                        <Link 
-                            key={item.key} 
-                            to={item.path} 
+                        <Link
+                            key={item.key}
+                            to={item.path}
                             className={active ? 'active' : ''}
                             title={isCollapsed ? `${item.label}${item.badge > 0 ? ` (${item.badge})` : ''}` : ''}
                         >

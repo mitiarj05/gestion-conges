@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 import { io } from 'socket.io-client';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import Navbar from '../common/Navbar';
@@ -70,7 +71,7 @@ function AdminDashboard({ onLogout }) {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
         if (storedUser.id) {
-            const newSocket = io('http://localhost:5000');
+            const newSocket = io(API_URL.replace('/api', ''));
             setSocket(newSocket);
             newSocket.emit('join', storedUser.id);
             if (storedUser.roles?.includes('admin')) {
@@ -113,7 +114,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchStats = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/stats', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/stats`, getAuthHeaders());
             setStats(response.data);
         } catch (error) {
             console.error('Erreur stats:', error);
@@ -122,7 +123,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchUsers = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/users', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/users`, getAuthHeaders());
             setUsers(response.data);
         } catch (error) {
             console.error('Erreur users:', error);
@@ -131,7 +132,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchPendingApprovals = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/pending-approvals', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/pending-approvals`, getAuthHeaders());
             setPendingApprovals(response.data);
         } catch (error) {
             console.error('Erreur pending approvals:', error);
@@ -140,7 +141,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchLeaveRequests = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/leave-requests', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
             setLeaveRequests(response.data);
         } catch (error) {
             console.error('Erreur leave requests:', error);
@@ -149,7 +150,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchMonthlyStats = async (year) => {
         try {
-            const response = await axios.get(`http://localhost:5000/api/admin/stats-by-month?year=${year}`, getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/stats-by-month?year=${year}`, getAuthHeaders());
             setMonthlyStats(response.data);
         } catch (error) {
             console.error('Erreur stats mensuelles:', error);
@@ -158,7 +159,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchTypeStats = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/stats-by-type', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/stats-by-type`, getAuthHeaders());
             setTypeStats(response.data);
         } catch (error) {
             console.error('Erreur stats par type:', error);
@@ -167,7 +168,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchAvailableYears = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/available-years', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/available-years`, getAuthHeaders());
             setAvailableYears(response.data);
         } catch (error) {
             console.error('Erreur récupération années:', error);
@@ -182,7 +183,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchFilteredLeaveRequests = async (periode) => {
         try {
-            const response = await axios.get(`http://localhost:5000/api/admin/leave-requests-filtered?periode=${periode}`, getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/leave-requests-filtered?periode=${periode}`, getAuthHeaders());
             setFilteredLeaveRequests(response.data);
         } catch (error) {
             console.error('Erreur filtered requests:', error);
@@ -196,7 +197,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchManagers = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/managers-list', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/managers-list`, getAuthHeaders());
             setManagers(response.data);
         } catch (error) {
             console.error('Erreur managers:', error);
@@ -205,7 +206,7 @@ function AdminDashboard({ onLogout }) {
 
     const fetchEmployeesOnly = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/employees-only', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/admin/employees-only`, getAuthHeaders());
             setEmployeesOnly(response.data);
         } catch (error) {
             console.error('Erreur employees only:', error);
@@ -223,7 +224,7 @@ function AdminDashboard({ onLogout }) {
     const handleCreateEmployee = async (e) => {
         e.preventDefault();
         try {
-            await axios.post('http://localhost:5000/api/admin/create-employee', createForm, getAuthHeaders());
+            await axios.post(`${API_URL}/admin/create-employee`, createForm, getAuthHeaders());
             success('Employé créé avec succès');
             setShowCreateModal(false);
             setCreateForm({ nom: '', prenom: '', email: '', password: '', telephone: '', service: '', salaire_base: 500000 });
@@ -236,7 +237,7 @@ function AdminDashboard({ onLogout }) {
     const handleEditUser = async (e) => {
         e.preventDefault();
         try {
-            await axios.put(`http://localhost:5000/api/admin/users/${selectedUser.id}`, editForm, getAuthHeaders());
+            await axios.put(`${API_URL}/admin/users/${selectedUser.id}`, editForm, getAuthHeaders());
             success('Utilisateur modifié');
             setShowEditModal(false);
             setSelectedUser(null);
@@ -257,7 +258,7 @@ function AdminDashboard({ onLogout }) {
             return;
         }
         try {
-            await axios.put(`http://localhost:5000/api/admin/users/${selectedUser.id}/reset-password`, 
+            await axios.put(`${API_URL}/admin/users/${selectedUser.id}/reset-password`, 
                 { password: passwordForm.password }, getAuthHeaders());
             success('Mot de passe réinitialisé');
             setShowPasswordModal(false);
@@ -271,7 +272,7 @@ function AdminDashboard({ onLogout }) {
     const handleDeleteUser = async (userId) => {
         if (!window.confirm('Supprimer définitivement cet utilisateur ?')) return;
         try {
-            await axios.delete(`http://localhost:5000/api/admin/users/${userId}`, getAuthHeaders());
+            await axios.delete(`${API_URL}/admin/users/${userId}`, getAuthHeaders());
             success('Utilisateur supprimé');
             refreshAll();
         } catch (error) {
@@ -282,7 +283,7 @@ function AdminDashboard({ onLogout }) {
     const handlePromoteToManager = async (e) => {
         e.preventDefault();
         try {
-            await axios.post('http://localhost:5000/api/admin/promote-to-manager', 
+            await axios.post(`${API_URL}/admin/promote-to-manager`, 
                 { userId: parseInt(promoteUserId) }, getAuthHeaders());
             success('Employé promu manager');
             setShowPromoteModal(false);
@@ -296,7 +297,7 @@ function AdminDashboard({ onLogout }) {
     const handleAssignManager = async (e) => {
         e.preventDefault();
         try {
-            await axios.put(`http://localhost:5000/api/admin/assign-manager/${assignForm.employeeId}`, 
+            await axios.put(`${API_URL}/admin/assign-manager/${assignForm.employeeId}`, 
                 { managerId: parseInt(assignForm.managerId) }, getAuthHeaders());
             success('Manager assigné');
             setShowAssignManagerModal(false);
@@ -329,7 +330,7 @@ function AdminDashboard({ onLogout }) {
 
     const handleExportExcel = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/export-users', {
+            const response = await axios.get(`${API_URL}/admin/export-users`, {
                 ...getAuthHeaders(),
                 responseType: 'blob'
             });
@@ -348,7 +349,7 @@ function AdminDashboard({ onLogout }) {
 
     const handleExportDemandes = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/admin/export-demandes', {
+            const response = await axios.get(`${API_URL}/admin/export-demandes`, {
                 ...getAuthHeaders(),
                 responseType: 'blob'
             });
@@ -369,7 +370,7 @@ function AdminDashboard({ onLogout }) {
         if (!window.confirm('Approuver définitivement cette demande ?')) return;
         setProcessingId(id);
         try {
-            await axios.put(`http://localhost:5000/api/admin/final-approve/${id}`, 
+            await axios.put(`${API_URL}/admin/final-approve/${id}`, 
                 { request_type }, getAuthHeaders());
             success('Demande approuvée définitivement');
             refreshAll();
@@ -385,7 +386,7 @@ function AdminDashboard({ onLogout }) {
         if (!motif) return;
         setProcessingId(id);
         try {
-            await axios.put(`http://localhost:5000/api/admin/final-reject/${id}`, 
+            await axios.put(`${API_URL}/admin/final-reject/${id}`, 
                 { motif, request_type }, getAuthHeaders());
             success('Demande refusée');
             refreshAll();
@@ -398,7 +399,7 @@ function AdminDashboard({ onLogout }) {
 
     const handleSaveSettings = async () => {
         try {
-            await axios.put('http://localhost:5000/api/admin/settings', settings, getAuthHeaders());
+            await axios.put(`${API_URL}/admin/settings`, settings, getAuthHeaders());
             success('Paramètres enregistrés');
         } catch (error) {
             toastError('Erreur paramètres');

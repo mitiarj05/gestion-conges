@@ -1,6 +1,7 @@
 // frontend/src/components/admin/GlobalCalendar.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function GlobalCalendar() {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -32,7 +33,7 @@ function GlobalCalendar() {
     const fetchAllAbsences = async () => {
         setLoading(true);
         try {
-            const response = await axios.get('http://localhost:5000/api/leaves/all-absences', getAuthHeaders());
+            const response = await axios.get(`\${API_URL}/leaves/all-absences`, getAuthHeaders());
             setAllAbsences(response.data);
             calculateStatsFromData(response.data);
         } catch (error) {
