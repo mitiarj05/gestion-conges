@@ -18,19 +18,16 @@ function App() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Vérifier le token au chargement
         const token = localStorage.getItem('token');
         const user = localStorage.getItem('user');
         
         if (token && user) {
-            // Vérifier si le token est encore valide (optionnel)
             setIsAuthenticated(true);
         } else {
             setIsAuthenticated(false);
         }
         setLoading(false);
 
-        // Écouter les changements de localStorage
         const handleStorageChange = () => {
             const newToken = localStorage.getItem('token');
             setIsAuthenticated(!!newToken);
@@ -38,7 +35,6 @@ function App() {
 
         window.addEventListener('storage', handleStorageChange);
         
-        // Vérification périodique (toutes les 30 secondes)
         const interval = setInterval(() => {
             const newToken = localStorage.getItem('token');
             if (!!newToken !== isAuthenticated) {
@@ -52,7 +48,6 @@ function App() {
         };
     }, [isAuthenticated]);
 
-    // Fonction de déconnexion
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -73,6 +68,9 @@ function App() {
             <Router>
                 <div className="App">
                     <Routes>
+                        {/* Route racine - redirection vers login */}
+                        <Route path="/" element={<Navigate to="/login" replace />} />
+                        
                         {/* Routes publiques */}
                         <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />
                         <Route path="/register" element={<Register />} />
@@ -92,8 +90,7 @@ function App() {
                             } 
                         />
                         
-                        {/* Redirection par défaut */}
-                        <Route path="/" element={<Navigate to="/login" replace />} />
+                        {/* Route 404 - redirection vers login */}
                         <Route path="*" element={<Navigate to="/login" replace />} />
                     </Routes>
                 </div>

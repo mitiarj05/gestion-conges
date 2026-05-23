@@ -17,15 +17,24 @@ function Register() {
     const [adminAlreadyExists, setAdminAlreadyExists] = useState(true);
     const [checkingAdmin, setCheckingAdmin] = useState(true);
     const [acceptTerms, setAcceptTerms] = useState(false);
+    const [connectionError, setConnectionError] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
         const checkAdminExists = async () => {
             try {
+                console.log('Vérification admin sur:', `${API_URL}/auth/admin-exists`);
                 const response = await axios.get(`${API_URL}/auth/admin-exists`);
                 setAdminAlreadyExists(response.data.adminExists);
+                setConnectionError(false);
             } catch (err) { 
-                console.error(err); 
+                console.error('Erreur vérification admin:', err);
+                if (err.code === 'ERR_NETWORK') {
+                    setConnectionError(true);
+                    setError('Impossible de contacter le serveur. Vérifiez que le backend est démarré.');
+                } else {
+                    setError(err.response?.data?.message || 'Erreur de connexion au serveur');
+                }
             } finally { 
                 setCheckingAdmin(false); 
             }
@@ -71,6 +80,7 @@ function Register() {
                 payload.adminCode = formData.adminCode;
                 payload.adminSecretKey = formData.adminSecretKey;
             }
+            console.log('Envoi inscription à:', `${API_URL}/auth/register`);
             const response = await axios.post(`${API_URL}/auth/register`, payload);
             
             if (response.status === 201) {
@@ -78,7 +88,12 @@ function Register() {
                 setTimeout(() => navigate('/login'), 2000);
             }
         } catch (err) {
-            setError(err.response?.data?.message || 'Erreur lors de l\'inscription');
+            console.error('Erreur inscription:', err);
+            if (err.code === 'ERR_NETWORK') {
+                setError('Impossible de contacter le serveur. Vérifiez que le backend est démarré.');
+            } else {
+                setError(err.response?.data?.message || 'Erreur lors de l\'inscription');
+            }
         } finally { 
             setLoading(false); 
         }
@@ -125,7 +140,6 @@ function Register() {
 
     return (
         <div className="login-pro-container">
-            {/* Section gauche - Branding */}
             <div className="login-pro-left">
                 <div className="login-pro-brand">
                     <div className="login-pro-logo">
@@ -175,7 +189,6 @@ function Register() {
                 </div>
             </div>
 
-            {/* Section droite - Formulaire d'inscription */}
             <div className="login-pro-right">
                 <div className="login-pro-card">
                     <div className="login-pro-tabs">
@@ -282,7 +295,7 @@ function Register() {
                                     name="telephone"
                                     value={formData.telephone}
                                     onChange={handleChange}
-                                    placeholder="+33 6 12 34 56 78"
+                                    placeholder="+261 38 98 154 87"
                                 />
                             </div>
                         </div>
