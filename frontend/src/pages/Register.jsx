@@ -1,7 +1,6 @@
 // frontend/src/pages/Register.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
 import { authService } from '../services/apiService';
 import { API_URL } from '../config/api';
 
@@ -22,78 +21,26 @@ function Register() {
     const navigate = useNavigate();
 
     useEffect(() => {
-    const checkAdminExists = async () => {
-        try {
-            console.log('Vérification admin sur:', `${API_URL}/auth/admin-exists`);
-            const response = await authService.adminExists();
-            setAdminAlreadyExists(response.data.adminExists);
-            setConnectionError(false);
-        } catch (err) { 
-            console.error('Erreur vérification admin:', err);
-            if (err.code === 'ERR_NETWORK') {
-                setConnectionError(true);
-                setError('Impossible de contacter le serveur. Vérifiez que le backend est démarré.');
-            } else {
-                setError(err.response?.data?.message || 'Erreur de connexion au serveur');
+        const checkAdminExists = async () => {
+            try {
+                console.log('Vérification admin sur:', `${API_URL}/auth/admin-exists`);
+                const response = await authService.adminExists();
+                setAdminAlreadyExists(response.data.adminExists);
+                setConnectionError(false);
+            } catch (err) { 
+                console.error('Erreur vérification admin:', err);
+                if (err.code === 'ERR_NETWORK') {
+                    setConnectionError(true);
+                    setError('Impossible de contacter le serveur. Vérifiez que le backend est démarré.');
+                } else {
+                    setError(err.response?.data?.message || 'Erreur de connexion au serveur');
+                }
+            } finally { 
+                setCheckingAdmin(false); 
             }
-        } finally { 
-            setCheckingAdmin(false); 
-        }
-    };
-    checkAdminExists();
-}, []);
-
-// Dans handleSubmit
-const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    if (formData.password !== formData.confirmPassword) {
-        setError('Les mots de passe ne correspondent pas');
-        setLoading(false);
-        return;
-    }
-    if (formData.password.length < 6) {
-        setError('Le mot de passe doit contenir au moins 6 caractères');
-        setLoading(false);
-        return;
-    }
-    if (!acceptTerms) {
-        setError('Vous devez accepter les conditions d\'utilisation');
-        setLoading(false);
-        return;
-    }
-
-    try {
-        const payload = {
-            nom: formData.nom, prenom: formData.prenom, email: formData.email,
-            password: formData.password, telephone: formData.telephone, 
-            role_souhaite: formData.role_souhaite
         };
-        if (formData.role_souhaite === 'admin') {
-            payload.adminCode = formData.adminCode;
-            payload.adminSecretKey = formData.adminSecretKey;
-        }
-        console.log('Envoi inscription à:', `${API_URL}/auth/register`);
-        const response = await authService.register(payload);
-        
-        if (response.status === 201) {
-            setSuccess(response.data.message);
-            setTimeout(() => navigate('/login'), 2000);
-        }
-    } catch (err) {
-        console.error('Erreur inscription:', err);
-        if (err.code === 'ERR_NETWORK') {
-            setError('Impossible de contacter le serveur. Vérifiez que le backend est démarré.');
-        } else {
-            setError(err.response?.data?.message || 'Erreur lors de l\'inscription');
-        }
-    } finally { 
-        setLoading(false); 
-    }
-};
+        checkAdminExists();
+    }, []);
 
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -134,7 +81,7 @@ const handleSubmit = async (e) => {
                 payload.adminSecretKey = formData.adminSecretKey;
             }
             console.log('Envoi inscription à:', `${API_URL}/auth/register`);
-            const response = await axios.post(`${API_URL}/auth/register`, payload);
+            const response = await authService.register(payload);
             
             if (response.status === 201) {
                 setSuccess(response.data.message);
@@ -193,6 +140,7 @@ const handleSubmit = async (e) => {
 
     return (
         <div className="login-pro-container">
+            {/* Section gauche - Branding */}
             <div className="login-pro-left">
                 <div className="login-pro-brand">
                     <div className="login-pro-logo">
@@ -242,6 +190,7 @@ const handleSubmit = async (e) => {
                 </div>
             </div>
 
+            {/* Section droite - Formulaire d'inscription */}
             <div className="login-pro-right">
                 <div className="login-pro-card">
                     <div className="login-pro-tabs">
