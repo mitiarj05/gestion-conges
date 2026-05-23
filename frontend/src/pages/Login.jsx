@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
+import { authService } from '../services/apiService';
 
 function Login({ onLogin }) {
     const [email, setEmail] = useState('');
@@ -38,36 +39,35 @@ function Login({ onLogin }) {
     }, []);
 
     const handleSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-        try {
-            const response = await axios.post(`${API_URL}/auth/login`, { email, password });
-            const { token, user } = response.data;
-            
-            localStorage.setItem('token', token);
-            localStorage.setItem('user', JSON.stringify(user));
-            
-            if (rememberMe) {
-                localStorage.setItem('savedEmail', email);
-            } else {
-                localStorage.removeItem('savedEmail');
-            }
-            
-            if (onLogin) onLogin();
-
-            const roles = user.roles || [];
-            if (roles.includes('admin')) navigate('/dashboard/admin', { replace: true });
-            else if (roles.includes('manager')) navigate('/dashboard/manager', { replace: true });
-            else navigate('/dashboard/employee', { replace: true });
-        } catch (err) {
-            setError(err.response?.data?.message || 'Email ou mot de passe incorrect');
-        } finally {
-            setLoading(false);
+    try {
+        const response = await authService.login(email, password);
+        const { token, user } = response.data;
+        
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        
+        if (rememberMe) {
+            localStorage.setItem('savedEmail', email);
+        } else {
+            localStorage.removeItem('savedEmail');
         }
-    };
+        
+        if (onLogin) onLogin();
 
+        const roles = user.roles || [];
+        if (roles.includes('admin')) navigate('/dashboard/admin', { replace: true });
+        else if (roles.includes('manager')) navigate('/dashboard/manager', { replace: true });
+        else navigate('/dashboard/employee', { replace: true });
+    } catch (err) {
+        setError(err.response?.data?.message || 'Email ou mot de passe incorrect');
+    } finally {
+        setLoading(false);
+    }
+};
     return (
         <div className="login-pro-container">
             {/* Section gauche - Branding RH/Congés */}

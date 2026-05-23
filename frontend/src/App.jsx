@@ -10,12 +10,15 @@ import About from './pages/About';
 import Privacy from './pages/Privacy';
 import Contact from './pages/Contact';
 import DashboardRouter from './pages/DashboardRouter';
+import { API_URL } from './config/api';
 import './styles/darkTheme.css';
 import './index.css';
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
+
+    console.log('🔧 Application démarrée - API URL:', API_URL);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -68,10 +71,7 @@ function App() {
             <Router>
                 <div className="App">
                     <Routes>
-                        {/* Route racine - redirection vers login */}
                         <Route path="/" element={<Navigate to="/login" replace />} />
-                        
-                        {/* Routes publiques */}
                         <Route path="/login" element={<Login onLogin={() => setIsAuthenticated(true)} />} />
                         <Route path="/register" element={<Register />} />
                         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -79,8 +79,6 @@ function App() {
                         <Route path="/about" element={<About />} />
                         <Route path="/privacy" element={<Privacy />} />
                         <Route path="/contact" element={<Contact />} />
-                        
-                        {/* Routes protégées (dashboard) */}
                         <Route 
                             path="/dashboard/*" 
                             element={
@@ -89,8 +87,6 @@ function App() {
                                 <Navigate to="/login" replace />
                             } 
                         />
-                        
-                        {/* Route 404 - redirection vers login */}
                         <Route path="*" element={<Navigate to="/login" replace />} />
                     </Routes>
                 </div>
