@@ -66,7 +66,7 @@ function PendingValidations({ requests, onRefresh }) {
         };
     };
 
-    if (requests.length === 0) {
+    if (!Array.isArray(requests) || requests.length === 0) {
         return (
             <div className="empty-state-card">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.5">
@@ -78,9 +78,11 @@ function PendingValidations({ requests, onRefresh }) {
         );
     }
 
+    const safeRequests = Array.isArray(requests) ? requests : [];
+
     return (
         <div className="requests-list-modern">
-            {requests.map(req => {
+            {safeRequests.map(req => {
                 const info = getDisplayInfo(req);
                 return (
                     <div key={`${req.request_type}-${req.id}`} className="request-card">
