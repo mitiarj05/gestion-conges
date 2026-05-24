@@ -1,48 +1,25 @@
 // frontend/src/components/manager/TeamStatistics.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { 
-    BarChart, 
-    Bar, 
-    XAxis, 
-    YAxis, 
-    CartesianGrid, 
-    Tooltip, 
-    Legend, 
-    ResponsiveContainer, 
-    PieChart, 
-    Pie, 
-    Cell,
-    LineChart,
-    Line
-} from 'recharts';
+import { API_URL } from '../../config/api';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 function TeamStatistics({ teamMembers }) {
     const [stats, setStats] = useState({
-        totalRequests: 0,
-        approvedRequests: 0,
-        pendingRequests: 0,
-        rejectedRequests: 0,
-        totalDaysTaken: 0,
-        requestsByEmployee: [],
-        requestsByType: { CP: 0, SANS_SOLDE: 0 },
-        monthlyData: []
+        totalRequests: 0, approvedRequests: 0, pendingRequests: 0, rejectedRequests: 0,
+        totalDaysTaken: 0, requestsByEmployee: [], requestsByType: { CP: 0, SANS_SOLDE: 0 }, monthlyData: []
     });
     const [loading, setLoading] = useState(true);
     const [activeChart, setActiveChart] = useState('bar');
 
-    const getAuthHeaders = () => ({ 
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } 
-    });
+    const getAuthHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
-    useEffect(() => {
-        fetchTeamStats();
-    }, []);
+    useEffect(() => { fetchTeamStats(); }, []);
 
     const fetchTeamStats = async () => {
         setLoading(true);
         try {
-            const response = await axios.get('http://localhost:5000/api/leaves/team-stats', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/leaves/team-stats`, getAuthHeaders());
             setStats(response.data);
         } catch (error) {
             console.error('Erreur chargement stats:', error);
@@ -51,8 +28,7 @@ function TeamStatistics({ teamMembers }) {
         }
     };
 
-    const moisNoms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 
-                      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    const moisNoms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     const COLORS = ['#667eea', '#10b981', '#f59e0b', '#ef4444'];
 
     if (loading) {
@@ -64,9 +40,7 @@ function TeamStatistics({ teamMembers }) {
         );
     }
 
-    const tauxApprobation = stats.totalRequests > 0 
-        ? Math.round((stats.approvedRequests / stats.totalRequests) * 100) 
-        : 0;
+    const tauxApprobation = stats.totalRequests > 0 ? Math.round((stats.approvedRequests / stats.totalRequests) * 100) : 0;
 
     const statusData = [
         { name: 'Approuvées', value: stats.approvedRequests, color: '#10b981' },
@@ -96,100 +70,41 @@ function TeamStatistics({ teamMembers }) {
                     <p className="dashboard-subtitle">Analyse des demandes de votre équipe</p>
                 </div>
             </div>
-            
-            {/* Cartes récapitulatives */}
+
             <div className="stats-cards-grid team-stats-cards">
-                <div className="stat-card-progress">
-                    <div className="stat-card-progress-header">
-                        <span className="stat-card-progress-title">Total demandes</span>
-                        <span className="stat-card-progress-value">{stats.totalRequests}</span>
+                {[
+                    { title: 'Total demandes', value: stats.totalRequests, color: '#667eea', pct: stats.totalRequests / Math.max(stats.totalRequests, 100), label: 'demandes totales' },
+                    { title: 'Approuvées', value: stats.approvedRequests, color: '#10b981', pct: tauxApprobation / 100, label: "taux d'approbation", display: `${tauxApprobation}%` },
+                    { title: 'En attente', value: stats.pendingRequests, color: '#f59e0b', pct: stats.pendingRequests / Math.max(stats.totalRequests, 1), label: 'demandes en attente' },
+                    { title: 'Refusées', value: stats.rejectedRequests, color: '#ef4444', pct: stats.rejectedRequests / Math.max(stats.totalRequests, 1), label: 'demandes refusées' }
+                ].map((card, i) => (
+                    <div key={i} className="stat-card-progress">
+                        <div className="stat-card-progress-header">
+                            <span className="stat-card-progress-title">{card.title}</span>
+                            <span className="stat-card-progress-value">{card.value}</span>
+                        </div>
+                        <div className="progress-circle-container">
+                            <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
+                                <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                                <circle cx="60" cy="60" r="54" fill="none" stroke={card.color} strokeWidth="8"
+                                    strokeDasharray={`${2 * Math.PI * 54}`}
+                                    strokeDashoffset={`${2 * Math.PI * 54 * (1 - card.pct)}`}
+                                    transform="rotate(-90 60 60)" strokeLinecap="round"
+                                />
+                                <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill={card.color}>{card.display || card.value}</text>
+                            </svg>
+                        </div>
+                        <div className="stat-card-progress-footer">{card.label}</div>
                     </div>
-                    <div className="progress-circle-container">
-                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#667eea" strokeWidth="8" 
-                                strokeDasharray={`${2 * Math.PI * 54}`} 
-                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.totalRequests / Math.max(stats.totalRequests, 100))}`}
-                                transform="rotate(-90 60 60)"
-                                strokeLinecap="round"
-                            />
-                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#667eea">{stats.totalRequests}</text>
-                        </svg>
-                    </div>
-                    <div className="stat-card-progress-footer">demandes totales</div>
-                </div>
-
-                <div className="stat-card-progress">
-                    <div className="stat-card-progress-header">
-                        <span className="stat-card-progress-title">Approuvées</span>
-                        <span className="stat-card-progress-value">{stats.approvedRequests}</span>
-                    </div>
-                    <div className="progress-circle-container">
-                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#10b981" strokeWidth="8" 
-                                strokeDasharray={`${2 * Math.PI * 54}`} 
-                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.approvedRequests / Math.max(stats.totalRequests, 1))}`}
-                                transform="rotate(-90 60 60)"
-                                strokeLinecap="round"
-                            />
-                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#10b981">{tauxApprobation}%</text>
-                        </svg>
-                    </div>
-                    <div className="stat-card-progress-footer">taux d'approbation</div>
-                </div>
-
-                <div className="stat-card-progress">
-                    <div className="stat-card-progress-header">
-                        <span className="stat-card-progress-title">En attente</span>
-                        <span className="stat-card-progress-value">{stats.pendingRequests}</span>
-                    </div>
-                    <div className="progress-circle-container">
-                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#f59e0b" strokeWidth="8" 
-                                strokeDasharray={`${2 * Math.PI * 54}`} 
-                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.pendingRequests / Math.max(stats.totalRequests, 1))}`}
-                                transform="rotate(-90 60 60)"
-                                strokeLinecap="round"
-                            />
-                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#f59e0b">{stats.pendingRequests}</text>
-                        </svg>
-                    </div>
-                    <div className="stat-card-progress-footer">demandes en attente</div>
-                </div>
-
-                <div className="stat-card-progress">
-                    <div className="stat-card-progress-header">
-                        <span className="stat-card-progress-title">Refusées</span>
-                        <span className="stat-card-progress-value">{stats.rejectedRequests}</span>
-                    </div>
-                    <div className="progress-circle-container">
-                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#ef4444" strokeWidth="8" 
-                                strokeDasharray={`${2 * Math.PI * 54}`} 
-                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - stats.rejectedRequests / Math.max(stats.totalRequests, 1))}`}
-                                transform="rotate(-90 60 60)"
-                                strokeLinecap="round"
-                            />
-                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#ef4444">{stats.rejectedRequests}</text>
-                        </svg>
-                    </div>
-                    <div className="stat-card-progress-footer">demandes refusées</div>
-                </div>
+                ))}
             </div>
 
-            {/* Deuxième ligne - indicateurs clés SANS EMOJIS */}
             <div className="stats-cards-grid secondary team-kpi-cards">
                 <div className="kpi-card">
                     <div className="kpi-icon-wrapper blue">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                            <line x1="16" y1="2" x2="16" y2="6"/>
-                            <line x1="8" y1="2" x2="8" y2="6"/>
-                            <line x1="3" y1="10" x2="21" y2="10"/>
-                            <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
                     </div>
                     <div className="kpi-content">
@@ -215,8 +130,7 @@ function TeamStatistics({ teamMembers }) {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                             <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                         </svg>
                     </div>
                     <div className="kpi-content">
@@ -227,122 +141,44 @@ function TeamStatistics({ teamMembers }) {
                 </div>
             </div>
 
-            {/* Graphique des demandes par mois */}
             <div className="team-chart-card">
                 <div className="chart-header">
                     <h4>Évolution des demandes par mois</h4>
                     <div className="chart-toggle">
-                        <button 
-                            className={`toggle-btn ${activeChart === 'bar' ? 'active' : ''}`}
-                            onClick={() => setActiveChart('bar')}
-                        >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '4px' }}>
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                            </svg>
-                            Barres
-                        </button>
-                        <button 
-                            className={`toggle-btn ${activeChart === 'line' ? 'active' : ''}`}
-                            onClick={() => setActiveChart('line')}
-                        >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '4px' }}>
-                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                            </svg>
-                            Ligne
-                        </button>
+                        <button className={`toggle-btn ${activeChart === 'bar' ? 'active' : ''}`} onClick={() => setActiveChart('bar')}>Barres</button>
+                        <button className={`toggle-btn ${activeChart === 'line' ? 'active' : ''}`} onClick={() => setActiveChart('line')}>Ligne</button>
                     </div>
                 </div>
                 <ResponsiveContainer width="100%" height={350}>
                     {activeChart === 'bar' ? (
                         <BarChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis 
-                                dataKey="moisCourt" 
-                                tick={{ fontSize: 11 }}
-                                interval={0}
-                                angle={-45}
-                                textAnchor="end"
-                                height={60}
-                            />
-                            <YAxis 
-                                tick={{ fontSize: 11 }} 
-                                allowDecimals={false}
-                                domain={[0, maxTotal + 1]}
-                            />
-                            <Tooltip 
-                                formatter={(value) => [`${value} demande(s)`, 'Nombre']}
-                                labelFormatter={(label) => `${label}`}
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                            />
+                            <XAxis dataKey="moisCourt" tick={{ fontSize: 11 }} interval={0} angle={-45} textAnchor="end" height={60} />
+                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} domain={[0, maxTotal + 1]} />
+                            <Tooltip formatter={(value) => [`${value} demande(s)`, 'Nombre']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                             <Legend />
-                            <Bar 
-                                dataKey="total" 
-                                fill="#667eea" 
-                                name="Demandes" 
-                                radius={[8, 8, 0, 0]} 
-                                barSize={40}
-                            />
+                            <Bar dataKey="total" fill="#667eea" name="Demandes" radius={[8, 8, 0, 0]} barSize={40} />
                         </BarChart>
                     ) : (
                         <LineChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis 
-                                dataKey="moisCourt" 
-                                tick={{ fontSize: 11 }}
-                                interval={0}
-                                angle={-45}
-                                textAnchor="end"
-                                height={60}
-                            />
-                            <YAxis 
-                                tick={{ fontSize: 11 }} 
-                                allowDecimals={false}
-                                domain={[0, maxTotal + 1]}
-                            />
-                            <Tooltip 
-                                formatter={(value) => [`${value} demande(s)`, 'Nombre']}
-                                labelFormatter={(label) => `${label}`}
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                            />
+                            <XAxis dataKey="moisCourt" tick={{ fontSize: 11 }} interval={0} angle={-45} textAnchor="end" height={60} />
+                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} domain={[0, maxTotal + 1]} />
+                            <Tooltip formatter={(value) => [`${value} demande(s)`, 'Nombre']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                             <Legend />
-                            <Line 
-                                type="monotone" 
-                                dataKey="total" 
-                                stroke="#667eea" 
-                                name="Demandes" 
-                                strokeWidth={3} 
-                                dot={{ r: 6, fill: '#667eea' }}
-                            />
+                            <Line type="monotone" dataKey="total" stroke="#667eea" name="Demandes" strokeWidth={3} dot={{ r: 6, fill: '#667eea' }} />
                         </LineChart>
                     )}
                 </ResponsiveContainer>
-                {monthlyChartData.every(d => d.total === 0) && (
-                    <div className="info-box text-center" style={{ marginTop: '15px' }}>
-                        Aucune demande de congé pour cette année
-                    </div>
-                )}
             </div>
 
-            {/* Graphique circulaire des statuts */}
             {statusData.length > 0 && (
                 <div className="team-chart-card">
                     <h4>Répartition des demandes par statut</h4>
                     <ResponsiveContainer width="100%" height={300}>
                         <PieChart>
-                            <Pie
-                                data={statusData}
-                                cx="50%"
-                                cy="50%"
-                                labelLine={true}
-                                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                                outerRadius={100}
-                                fill="#8884d8"
-                                dataKey="value"
-                                nameKey="name"
-                            >
-                                {statusData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                ))}
+                            <Pie data={statusData} cx="50%" cy="50%" labelLine={true} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value" nameKey="name">
+                                {statusData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
                             </Pie>
                             <Tooltip formatter={(value) => [`${value} demande(s)`, 'Nombre']} />
                             <Legend />
@@ -351,7 +187,6 @@ function TeamStatistics({ teamMembers }) {
                 </div>
             )}
 
-            {/* Graphique des types de congé */}
             {typeData.length > 0 && (
                 <div className="team-chart-card">
                     <h4>Répartition par type de congé</h4>
@@ -363,13 +198,7 @@ function TeamStatistics({ teamMembers }) {
                                 <div key={index} className="horizontal-bar-item">
                                     <div className="horizontal-bar-label">{stat.name}</div>
                                     <div className="horizontal-bar-wrapper">
-                                        <div 
-                                            className="horizontal-bar-fill"
-                                            style={{ 
-                                                width: `${percentage}%`,
-                                                backgroundColor: stat.color
-                                            }}
-                                        >
+                                        <div className="horizontal-bar-fill" style={{ width: `${percentage}%`, backgroundColor: stat.color }}>
                                             <span className="horizontal-bar-value">{stat.value} demande(s)</span>
                                         </div>
                                     </div>
@@ -381,22 +210,13 @@ function TeamStatistics({ teamMembers }) {
                 </div>
             )}
 
-            {/* Tableau des demandes par employé SANS EMOJI */}
             {stats.requestsByEmployee.length > 0 && (
                 <div className="team-table-container">
                     <h4>Demandes par employé</h4>
                     <div className="table-responsive">
                         <table className="team-stats-table">
                             <thead>
-                                <tr>
-                                    <th>Employé</th>
-                                    <th>Total demandes</th>
-                                    <th>Approuvées</th>
-                                    <th>Refusées</th>
-                                    <th>En attente</th>
-                                    <th>Jours pris</th>
-                                    <th>Taux succès</th>
-                                </tr>
+                                <tr><th>Employé</th><th>Total demandes</th><th>Approuvées</th><th>Refusées</th><th>En attente</th><th>Jours pris</th><th>Taux succès</th></tr>
                             </thead>
                             <tbody>
                                 {stats.requestsByEmployee.map((emp, idx) => {
@@ -427,12 +247,11 @@ function TeamStatistics({ teamMembers }) {
             <div className="info-card-tip">
                 <div className="tip-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 16v-4M12 8h.01"/>
+                        <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
                     </svg>
                 </div>
                 <div className="tip-content">
-                    <strong>Conseils :</strong> Surveillez les demandes en attente pour les traiter rapidement. 
+                    <strong>Conseils :</strong> Surveillez les demandes en attente pour les traiter rapidement.
                     Le taux d'approbation reflète la qualité des demandes de votre équipe.
                 </div>
             </div>

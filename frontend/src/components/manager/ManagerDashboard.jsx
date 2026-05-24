@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 import Navbar from '../common/Navbar';
 import Sidebar from '../common/Sidebar';
 import Footer from '../common/Footer';
@@ -45,7 +46,7 @@ function ManagerDashboard({ onLogout }) {
         try {
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
-            const response = await axios.get('http://localhost:5000/api/leaves/team-pending', getAuthHeaders());
+            const response = await axios.get(`\${API_URL}/leaves/team-pending`, getAuthHeaders());
             setPendingRequests(response.data);
         } catch (error) {
             console.error('Erreur fetchPendingRequests:', error);
@@ -59,7 +60,7 @@ function ManagerDashboard({ onLogout }) {
 
     const fetchFilteredTeamRequests = async (periode) => {
         try {
-            const response = await axios.get(`http://localhost:5000/api/leaves/team-pending-filtered?periode=${periode}`, getAuthHeaders());
+            const response = await axios.get(`${API_URL}/leaves/team-pending-filtered?periode=${periode}`, getAuthHeaders());
             setPendingRequests(response.data);
         } catch (error) {
             console.error('Erreur fetch filtered:', error);
@@ -73,7 +74,7 @@ function ManagerDashboard({ onLogout }) {
 
     const fetchTeamMembers = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/users/my-team', getAuthHeaders());
+            const response = await axios.get(`\${API_URL}/users/my-team`, getAuthHeaders());
             setTeamMembers(response.data);
         } catch (error) {
             console.error('Erreur fetchTeamMembers:', error);
@@ -83,7 +84,7 @@ function ManagerDashboard({ onLogout }) {
 
     const fetchBalance = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/leaves/balance', getAuthHeaders());
+            const response = await axios.get(`\${API_URL}/leaves/balance`, getAuthHeaders());
             setBalance(response.data);
         } catch (error) {
             console.error('Erreur fetchBalance:', error);

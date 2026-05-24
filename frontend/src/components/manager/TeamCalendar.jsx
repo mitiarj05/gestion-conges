@@ -1,6 +1,7 @@
 // frontend/src/components/manager/TeamCalendar.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function TeamCalendar() {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -32,7 +33,7 @@ function TeamCalendar() {
     const fetchTeamAbsences = async () => {
         setLoading(true);
         try {
-            const response = await axios.get('http://localhost:5000/api/leaves/team-absences', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/leaves/team-absences`, getAuthHeaders());
             setTeamAbsences(response.data);
             calculateStatsFromData(response.data);
         } catch (error) {
@@ -47,40 +48,22 @@ function TeamCalendar() {
         const pendingAdmin = absences.filter(a => a.statut === 'pending_admin').length;
         const pendingManager = absences.filter(a => a.statut === 'pending_manager').length;
         const rejected = absences.filter(a => a.statut === 'rejected').length;
-        
-        setStats({
-            total: absences.length,
-            approved,
-            pending: pendingAdmin + pendingManager,
-            pendingManager,
-            pendingAdmin,
-            rejected
-        });
+        setStats({ total: absences.length, approved, pending: pendingAdmin + pendingManager, pendingManager, pendingAdmin, rejected });
     };
 
-    const calculateStats = () => {
-        calculateStatsFromData(teamAbsences);
-    };
+    const calculateStats = () => { calculateStatsFromData(teamAbsences); };
 
     const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
     const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
     const getMonthName = (month) => ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][month];
 
     const isDateInRange = (date, startDate, endDate) => {
-        const d = new Date(date);
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        d.setHours(0, 0, 0, 0);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(0, 0, 0, 0);
+        const d = new Date(date); const start = new Date(startDate); const end = new Date(endDate);
+        d.setHours(0,0,0,0); start.setHours(0,0,0,0); end.setHours(0,0,0,0);
         return d >= start && d <= end;
     };
 
-    const getAbsencesForDate = (date) => {
-        return teamAbsences.filter(absence => {
-            return isDateInRange(date, absence.date_debut, absence.date_fin);
-        });
-    };
+    const getAbsencesForDate = (date) => teamAbsences.filter(absence => isDateInRange(date, absence.date_debut, absence.date_fin));
 
     const getStatusLabel = (statut) => {
         switch(statut) {
@@ -94,15 +77,10 @@ function TeamCalendar() {
 
     const getDayClass = (absences) => {
         if (absences.length === 0) return '';
-        const hasApproved = absences.some(a => a.statut === 'approved');
-        const hasPendingAdmin = absences.some(a => a.statut === 'pending_admin');
-        const hasPendingManager = absences.some(a => a.statut === 'pending_manager');
-        const hasRejected = absences.some(a => a.statut === 'rejected');
-        
-        if (hasApproved) return 'calendar-day-approved';
-        if (hasPendingAdmin) return 'calendar-day-pending-admin';
-        if (hasPendingManager) return 'calendar-day-pending-manager';
-        if (hasRejected) return 'calendar-day-rejected';
+        if (absences.some(a => a.statut === 'approved')) return 'calendar-day-approved';
+        if (absences.some(a => a.statut === 'pending_admin')) return 'calendar-day-pending-admin';
+        if (absences.some(a => a.statut === 'pending_manager')) return 'calendar-day-pending-manager';
+        if (absences.some(a => a.statut === 'rejected')) return 'calendar-day-rejected';
         return '';
     };
 
@@ -111,87 +89,32 @@ function TeamCalendar() {
         const daysInMonth = getDaysInMonth(currentYear, currentMonth);
         const prevMonthDays = getDaysInMonth(currentYear, currentMonth - 1);
         const days = [];
-        
         let startOffset = firstDay === 0 ? 6 : firstDay - 1;
-        
         for (let i = startOffset - 1; i >= 0; i--) {
             const date = new Date(currentYear, currentMonth - 1, prevMonthDays - i);
             const absences = getAbsencesForDate(date);
-            const status = getDayClass(absences);
-            days.push({
-                date,
-                isCurrentMonth: false,
-                dayNumber: prevMonthDays - i,
-                status,
-                absencesCount: absences.length,
-                absences: absences
-            });
+            days.push({ date, isCurrentMonth: false, dayNumber: prevMonthDays - i, status: getDayClass(absences), absencesCount: absences.length, absences });
         }
-        
         for (let i = 1; i <= daysInMonth; i++) {
             const date = new Date(currentYear, currentMonth, i);
             const absences = getAbsencesForDate(date);
-            const status = getDayClass(absences);
-            days.push({
-                date,
-                isCurrentMonth: true,
-                dayNumber: i,
-                status,
-                absencesCount: absences.length,
-                absences: absences
-            });
+            days.push({ date, isCurrentMonth: true, dayNumber: i, status: getDayClass(absences), absencesCount: absences.length, absences });
         }
-        
         const remainingDays = 42 - days.length;
         for (let i = 1; i <= remainingDays; i++) {
             const date = new Date(currentYear, currentMonth + 1, i);
             const absences = getAbsencesForDate(date);
-            const status = getDayClass(absences);
-            days.push({
-                date,
-                isCurrentMonth: false,
-                dayNumber: i,
-                status,
-                absencesCount: absences.length,
-                absences: absences
-            });
+            days.push({ date, isCurrentMonth: false, dayNumber: i, status: getDayClass(absences), absencesCount: absences.length, absences });
         }
-        
         setCalendarDays(days);
     };
 
-    const changeMonth = (delta) => {
-        setCurrentDate(new Date(currentYear, currentMonth + delta, 1));
-        setSelectedDayInfo(null);
-    };
-
-    const handleDayClick = (day) => {
-        if (day.absencesCount > 0) {
-            setSelectedDayInfo(day);
-        }
-    };
-
-    const isToday = (date) => {
-        const today = new Date();
-        return date.getDate() === today.getDate() && 
-               date.getMonth() === today.getMonth() && 
-               date.getFullYear() === today.getFullYear();
-    };
-
+    const changeMonth = (delta) => { setCurrentDate(new Date(currentYear, currentMonth + delta, 1)); setSelectedDayInfo(null); };
+    const handleDayClick = (day) => { if (day.absencesCount > 0) setSelectedDayInfo(day); };
+    const isToday = (date) => { const today = new Date(); return date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear(); };
     const weekDays = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-
-    const formatDateFR = (date) => {
-        return date.toLocaleDateString('fr-FR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
-    };
-
-    const upcomingAbsences = teamAbsences
-        .filter(a => new Date(a.date_debut) >= new Date())
-        .sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut))
-        .slice(0, 5);
+    const formatDateFR = (date) => date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const upcomingAbsences = teamAbsences.filter(a => new Date(a.date_debut) >= new Date()).sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut)).slice(0, 5);
 
     if (loading) {
         return (
@@ -210,51 +133,21 @@ function TeamCalendar() {
                     <p className="calendar-subtitle">Visualisation des absences de votre équipe</p>
                 </div>
                 <div className="view-toggle">
-                    <button className={`view-btn ${viewMode === 'month' ? 'active' : ''}`} onClick={() => setViewMode('month')}>
-                        📅 Mois
-                    </button>
-                    <button className={`view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}>
-                        📋 Liste
-                    </button>
+                    <button className={`view-btn ${viewMode === 'month' ? 'active' : ''}`} onClick={() => setViewMode('month')}>📅 Mois</button>
+                    <button className={`view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}>📋 Liste</button>
                 </div>
             </div>
 
             <div className="calendar-stats-bar">
-                <div className="stat-item">
-                    <span className="stat-dot total-dot"></span>
-                    <div className="stat-info">
-                        <span className="stat-number">{stats.total}</span>
-                        <span className="stat-label">Total</span>
-                    </div>
-                </div>
-                <div className="stat-item">
-                    <span className="stat-dot approved-dot"></span>
-                    <div className="stat-info">
-                        <span className="stat-number">{stats.approved}</span>
-                        <span className="stat-label">Approuvés</span>
-                    </div>
-                </div>
-                <div className="stat-item">
-                    <span className="stat-dot pending-dot"></span>
-                    <div className="stat-info">
-                        <span className="stat-number">{stats.pending}</span>
-                        <span className="stat-label">En attente</span>
-                    </div>
-                </div>
-                <div className="stat-item">
-                    <span className="stat-dot rejected-dot"></span>
-                    <div className="stat-info">
-                        <span className="stat-number">{stats.rejected}</span>
-                        <span className="stat-label">Refusés</span>
-                    </div>
-                </div>
+                <div className="stat-item"><span className="stat-dot total-dot"></span><div className="stat-info"><span className="stat-number">{stats.total}</span><span className="stat-label">Total</span></div></div>
+                <div className="stat-item"><span className="stat-dot approved-dot"></span><div className="stat-info"><span className="stat-number">{stats.approved}</span><span className="stat-label">Approuvés</span></div></div>
+                <div className="stat-item"><span className="stat-dot pending-dot"></span><div className="stat-info"><span className="stat-number">{stats.pending}</span><span className="stat-label">En attente</span></div></div>
+                <div className="stat-item"><span className="stat-dot rejected-dot"></span><div className="stat-info"><span className="stat-number">{stats.rejected}</span><span className="stat-label">Refusés</span></div></div>
             </div>
 
             <div className="calendar-nav">
                 <button className="nav-btn" onClick={() => changeMonth(-1)}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M15 18l-6-6 6-6"/>
-                    </svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
                     Mois précédent
                 </button>
                 <div className="current-month">
@@ -263,71 +156,36 @@ function TeamCalendar() {
                 </div>
                 <button className="nav-btn" onClick={() => changeMonth(1)}>
                     Mois suivant
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 18l6-6-6-6"/>
-                    </svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
-                <button className="today-btn" onClick={() => { setCurrentDate(new Date()); setSelectedDayInfo(null); }}>
-                    Aujourd'hui
-                </button>
+                <button className="today-btn" onClick={() => { setCurrentDate(new Date()); setSelectedDayInfo(null); }}>Aujourd'hui</button>
             </div>
 
             <div className="calendar-legend-compact">
-                <div className="legend-item-compact">
-                    <div className="legend-color-compact approved"></div>
-                    <span>Approuvé</span>
-                </div>
-                <div className="legend-item-compact">
-                    <div className="legend-color-compact pending-admin"></div>
-                    <span>Attente admin</span>
-                </div>
-                <div className="legend-item-compact">
-                    <div className="legend-color-compact pending-manager"></div>
-                    <span>Attente manager</span>
-                </div>
-                <div className="legend-item-compact">
-                    <div className="legend-color-compact rejected"></div>
-                    <span>Refusé</span>
-                </div>
-                <div className="legend-item-compact">
-                    <div className="legend-color-compact today"></div>
-                    <span>Aujourd'hui</span>
-                </div>
+                <div className="legend-item-compact"><div className="legend-color-compact approved"></div><span>Approuvé</span></div>
+                <div className="legend-item-compact"><div className="legend-color-compact pending-admin"></div><span>Attente admin</span></div>
+                <div className="legend-item-compact"><div className="legend-color-compact pending-manager"></div><span>Attente manager</span></div>
+                <div className="legend-item-compact"><div className="legend-color-compact rejected"></div><span>Refusé</span></div>
+                <div className="legend-item-compact"><div className="legend-color-compact today"></div><span>Aujourd'hui</span></div>
             </div>
 
             {viewMode === 'month' ? (
                 <div className="calendar-grid-modern">
-                    {weekDays.map(day => (
-                        <div key={day} className="calendar-weekday-modern">{day}</div>
-                    ))}
+                    {weekDays.map(day => (<div key={day} className="calendar-weekday-modern">{day}</div>))}
                     {calendarDays.map((day, index) => {
                         const isCurrentDay = isToday(day.date);
-                        const dayClassName = day.status;
-                        
                         return (
-                            <div 
-                                key={index}
-                                className={`calendar-cell-modern ${dayClassName} ${!day.isCurrentMonth ? 'other-month' : ''}`}
-                                onClick={() => handleDayClick(day)}
-                            >
+                            <div key={index} className={`calendar-cell-modern ${day.status} ${!day.isCurrentMonth ? 'other-month' : ''}`} onClick={() => handleDayClick(day)}>
                                 <div className="calendar-day-header-modern">
-                                    <span className={`calendar-day-number-modern ${isCurrentDay ? 'today' : ''}`}>
-                                        {day.dayNumber}
-                                    </span>
-                                    {day.absencesCount > 0 && (
-                                        <span className="calendar-event-badge">{day.absencesCount}</span>
-                                    )}
+                                    <span className={`calendar-day-number-modern ${isCurrentDay ? 'today' : ''}`}>{day.dayNumber}</span>
+                                    {day.absencesCount > 0 && <span className="calendar-event-badge">{day.absencesCount}</span>}
                                 </div>
                                 {day.absencesCount > 0 && day.absencesCount <= 3 && (
                                     <div className="calendar-event-mini">
                                         {day.absences.slice(0, 2).map((absence, idx) => (
-                                            <div key={idx} className="mini-event" title={`${absence.prenom} ${absence.nom}`}>
-                                                {absence.prenom?.charAt(0)}{absence.nom?.charAt(0)}
-                                            </div>
+                                            <div key={idx} className="mini-event" title={`${absence.prenom} ${absence.nom}`}>{absence.prenom?.charAt(0)}{absence.nom?.charAt(0)}</div>
                                         ))}
-                                        {day.absencesCount > 2 && (
-                                            <div className="mini-event more">+{day.absencesCount - 2}</div>
-                                        )}
+                                        {day.absencesCount > 2 && <div className="mini-event more">+{day.absencesCount - 2}</div>}
                                     </div>
                                 )}
                             </div>
@@ -336,12 +194,7 @@ function TeamCalendar() {
                 </div>
             ) : (
                 <div className="absences-list-view">
-                    <div className="list-header">
-                        <span>Employé</span>
-                        <span>Dates</span>
-                        <span>Type</span>
-                        <span>Statut</span>
-                    </div>
+                    <div className="list-header"><span>Employé</span><span>Dates</span><span>Type</span><span>Statut</span></div>
                     {teamAbsences.length === 0 ? (
                         <div className="empty-list">Aucune absence planifiée dans votre équipe</div>
                     ) : (
@@ -350,9 +203,7 @@ function TeamCalendar() {
                                 <span className="list-employee">{absence.prenom} {absence.nom}</span>
                                 <span className="list-dates">{absence.date_debut} → {absence.date_fin}</span>
                                 <span className="list-type">{absence.type_name}</span>
-                                <span className={`list-status status-${absence.statut}`}>
-                                    {getStatusLabel(absence.statut)}
-                                </span>
+                                <span className={`list-status status-${absence.statut}`}>{getStatusLabel(absence.statut)}</span>
                             </div>
                         ))
                     )}
@@ -369,20 +220,14 @@ function TeamCalendar() {
                         {selectedDayInfo.absences.map((absence, idx) => (
                             <div key={idx} className="detail-item-modern">
                                 <div className="detail-employee">
-                                    <div className="detail-avatar">
-                                        {absence.prenom?.charAt(0)}{absence.nom?.charAt(0)}
-                                    </div>
+                                    <div className="detail-avatar">{absence.prenom?.charAt(0)}{absence.nom?.charAt(0)}</div>
                                     <div className="detail-info">
                                         <div className="detail-name">{absence.prenom} {absence.nom}</div>
                                         <div className="detail-type">{absence.type_name}</div>
                                     </div>
-                                    <div className={`detail-status status-${absence.statut}`}>
-                                        {getStatusLabel(absence.statut)}
-                                    </div>
+                                    <div className={`detail-status status-${absence.statut}`}>{getStatusLabel(absence.statut)}</div>
                                 </div>
-                                <div className="detail-dates">
-                                    📆 Du {absence.date_debut} au {absence.date_fin}
-                                </div>
+                                <div className="detail-dates">📆 Du {absence.date_debut} au {absence.date_fin}</div>
                             </div>
                         ))}
                     </div>
@@ -395,16 +240,9 @@ function TeamCalendar() {
                     <div className="upcoming-list">
                         {upcomingAbsences.map((absence, idx) => (
                             <div key={idx} className="upcoming-item">
-                                <div className="upcoming-date">
-                                    {new Date(absence.date_debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                                </div>
-                                <div className="upcoming-info">
-                                    <strong>{absence.prenom} {absence.nom}</strong>
-                                    <span>{absence.type_name}</span>
-                                </div>
-                                <div className={`upcoming-status status-${absence.statut}`}>
-                                    {getStatusLabel(absence.statut).split(' ')[0]}
-                                </div>
+                                <div className="upcoming-date">{new Date(absence.date_debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</div>
+                                <div className="upcoming-info"><strong>{absence.prenom} {absence.nom}</strong><span>{absence.type_name}</span></div>
+                                <div className={`upcoming-status status-${absence.statut}`}>{getStatusLabel(absence.statut).split(' ')[0]}</div>
                             </div>
                         ))}
                     </div>

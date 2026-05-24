@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function TeamList({ teamMembers, onRefresh }) {
     const [showAddModal, setShowAddModal] = useState(false);
@@ -8,22 +9,16 @@ function TeamList({ teamMembers, onRefresh }) {
     const [loading, setLoading] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-    const getAuthHeaders = () => ({ 
-        headers: { 
-            Authorization: `Bearer ${localStorage.getItem('token')}` 
-        } 
-    });
+    const getAuthHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
     useEffect(() => {
-        if (showAddModal) {
-            fetchAvailableEmployees();
-        }
+        if (showAddModal) fetchAvailableEmployees();
     }, [showAddModal, refreshTrigger]);
 
     const fetchAvailableEmployees = async () => {
         try {
             setLoading(true);
-            const response = await axios.get('http://localhost:5000/api/users/available-employees', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/users/available-employees`, getAuthHeaders());
             setAvailableEmployees(response.data);
         } catch (error) {
             console.error('Erreur fetchAvailableEmployees:', error);
@@ -38,23 +33,12 @@ function TeamList({ teamMembers, onRefresh }) {
     };
 
     const handleAddMember = async () => {
-        if (!selectedEmployeeId) {
-            alert('Veuillez sélectionner un employé');
-            return;
-        }
-        
+        if (!selectedEmployeeId) { alert('Veuillez sélectionner un employé'); return; }
         const selectedEmployee = availableEmployees.find(emp => emp.id === parseInt(selectedEmployeeId));
-        if (!selectedEmployee) {
-            alert('Employé non trouvé');
-            return;
-        }
-        
+        if (!selectedEmployee) { alert('Employé non trouvé'); return; }
         setLoading(true);
         try {
-            await axios.post('http://localhost:5000/api/users/add-team-member', 
-                { employee_id: selectedEmployee.id }, 
-                getAuthHeaders()
-            );
+            await axios.post(`${API_URL}/users/add-team-member`, { employee_id: selectedEmployee.id }, getAuthHeaders());
             alert(`✅ ${selectedEmployee.prenom} ${selectedEmployee.nom} a été ajouté à votre équipe !`);
             setShowAddModal(false);
             setSelectedEmployeeId('');
@@ -71,7 +55,7 @@ function TeamList({ teamMembers, onRefresh }) {
     const handleRemoveMember = async (employeeId, employeeName) => {
         if (window.confirm(`Retirer ${employeeName} de votre équipe ?`)) {
             try {
-                await axios.delete(`http://localhost:5000/api/users/remove-team-member/${employeeId}`, getAuthHeaders());
+                await axios.delete(`${API_URL}/users/remove-team-member/${employeeId}`, getAuthHeaders());
                 alert(`✅ ${employeeName} a été retiré de votre équipe.`);
                 if (onRefresh) onRefresh();
                 setRefreshTrigger(prev => prev + 1);
@@ -91,21 +75,17 @@ function TeamList({ teamMembers, onRefresh }) {
                 </div>
                 <div className="dashboard-header-actions">
                     <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 5v14M5 12h14"/>
-                        </svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
                         Ajouter un membre
                     </button>
                 </div>
             </div>
-            
+
             {teamMembers.length === 0 ? (
                 <div className="empty-state-card">
                     <p>📭 Aucun membre dans votre équipe pour le moment.</p>
                     <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 5v14M5 12h14"/>
-                        </svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
                         Ajouter votre premier membre
                     </button>
                 </div>
@@ -113,13 +93,7 @@ function TeamList({ teamMembers, onRefresh }) {
                 <div className="table-wrapper-modern">
                     <table className="modern-table full-width">
                         <thead>
-                            <tr>
-                                <th>Nom</th>
-                                <th>Prénom</th>
-                                <th>Email</th>
-                                <th>Service</th>
-                                <th>Actions</th>
-                            </tr>
+                            <tr><th>Nom</th><th>Prénom</th><th>Email</th><th>Service</th><th>Actions</th></tr>
                         </thead>
                         <tbody>
                             {teamMembers.map(member => (
@@ -129,11 +103,7 @@ function TeamList({ teamMembers, onRefresh }) {
                                     <td>{member.email}</td>
                                     <td>{member.service || '-'}</td>
                                     <td>
-                                        <button 
-                                            className="action-btn delete" 
-                                            onClick={() => handleRemoveMember(member.id, `${member.prenom} ${member.nom}`)}
-                                            title="Retirer de l'équipe"
-                                        >
+                                        <button className="action-btn delete" onClick={() => handleRemoveMember(member.id, `${member.prenom} ${member.nom}`)} title="Retirer de l'équipe">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                 <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
                                             </svg>
@@ -146,7 +116,6 @@ function TeamList({ teamMembers, onRefresh }) {
                 </div>
             )}
 
-            {/* Modal Ajout Membre */}
             {showAddModal && (
                 <div className="modal-overlay">
                     <div className="modal" style={{ maxWidth: '500px' }}>
@@ -154,7 +123,6 @@ function TeamList({ teamMembers, onRefresh }) {
                             <h3>➕ Ajouter un membre à mon équipe</h3>
                             <button className="modal-close" onClick={() => setShowAddModal(false)}>✖</button>
                         </div>
-                        
                         {loading && availableEmployees.length === 0 ? (
                             <div className="text-center">Chargement des employés...</div>
                         ) : availableEmployees.length === 0 ? (
@@ -174,11 +142,7 @@ function TeamList({ teamMembers, onRefresh }) {
                             <>
                                 <div className="form-group">
                                     <label>Sélectionner un employé</label>
-                                    <select 
-                                        className="form-input" 
-                                        onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                                        value={selectedEmployeeId}
-                                    >
+                                    <select className="form-input" onChange={(e) => setSelectedEmployeeId(e.target.value)} value={selectedEmployeeId}>
                                         <option value="">-- Choisir un employé --</option>
                                         {availableEmployees.map(emp => (
                                             <option key={emp.id} value={emp.id}>
@@ -188,20 +152,10 @@ function TeamList({ teamMembers, onRefresh }) {
                                     </select>
                                 </div>
                                 <div className="modal-footer">
-                                    <button 
-                                        className="btn-primary" 
-                                        onClick={handleAddMember} 
-                                        disabled={!selectedEmployeeId || loading}
-                                    >
+                                    <button className="btn-primary" onClick={handleAddMember} disabled={!selectedEmployeeId || loading}>
                                         {loading ? 'Ajout en cours...' : '✅ Ajouter à l\'équipe'}
                                     </button>
-                                    <button 
-                                        className="btn-secondary" 
-                                        onClick={() => {
-                                            setShowAddModal(false);
-                                            setSelectedEmployeeId('');
-                                        }}
-                                    >
+                                    <button className="btn-secondary" onClick={() => { setShowAddModal(false); setSelectedEmployeeId(''); }}>
                                         Annuler
                                     </button>
                                 </div>

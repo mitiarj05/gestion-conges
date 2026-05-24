@@ -1,6 +1,7 @@
 // frontend/src/components/manager/PendingValidations.jsx
 import React, { useState } from 'react';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function PendingValidations({ requests, onRefresh }) {
     const [processingId, setProcessingId] = useState(null);
@@ -12,7 +13,7 @@ function PendingValidations({ requests, onRefresh }) {
         if (window.confirm(`✅ Valider cette demande de ${typeLabel} (1ère étape) ?\n\nAprès validation, elle sera transmise à l'administrateur pour validation finale.`)) {
             setProcessingId(id);
             try {
-                await axios.put(`http://localhost:5000/api/leaves/manager-approve/${id}`, 
+                await axios.put(`${API_URL}/leaves/manager-approve/${id}`, 
                     { request_type },
                     getAuthHeaders()
                 );
@@ -33,7 +34,7 @@ function PendingValidations({ requests, onRefresh }) {
         if (motif !== null && motif.trim() !== '') {
             setProcessingId(id);
             try {
-                await axios.put(`http://localhost:5000/api/leaves/manager-reject/${id}`, 
+                await axios.put(`${API_URL}/leaves/manager-reject/${id}`, 
                     { motif, request_type },
                     getAuthHeaders()
                 );
