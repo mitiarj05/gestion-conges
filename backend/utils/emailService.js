@@ -1,23 +1,28 @@
 // backend/utils/emailService.js
 const mailjet = require('node-mailjet');
-require('dotenv').config();
 
-// Initialisation Mailjet
 let mailjetClient = null;
 let mailjetConfigured = false;
 
+// Initialisation Mailjet - Appelée immédiatement
 const initMailjet = () => {
+    // Utiliser les mêmes noms que sur Render
     const apiKey = process.env.MAILJET_API_KEY;
-    const apiSecret = process.env.MAILJET_SECRET_KEY;
+    const apiSecret = process.env.MAILJET_API_SECRET;  // ⚠️ API_SECRET (pas SECRET_KEY)
+    const fromEmail = process.env.MAILJET_FROM_EMAIL || 'mitiarj05@gmail.com';
+    const fromName = process.env.MAILJET_FROM_NAME || 'Gestion des Congés';
+    
+    console.log('=== INIT MAILJET ===');
+    console.log('MAILJET_API_KEY:', apiKey ? '✅ Présent' : '❌ Manquant');
+    console.log('MAILJET_API_SECRET:', apiSecret ? '✅ Présent' : '❌ Manquant');
+    console.log('MAILJET_FROM_EMAIL:', fromEmail);
+    console.log('MAILJET_FROM_NAME:', fromName);
     
     if (apiKey && apiSecret && apiKey !== '' && apiSecret !== '') {
         try {
-            // Syntaxe correcte pour node-mailjet v6
             mailjetClient = mailjet.apiConnect(apiKey, apiSecret);
             mailjetConfigured = true;
             console.log('✅ Mailjet configuré avec succès');
-            console.log(`   From Email: ${process.env.MAILJET_FROM_EMAIL || 'mitiarj05@gmail.com'}`);
-            console.log(`   From Name: ${process.env.MAILJET_FROM_NAME || 'Gestion des Congés'}`);
             return true;
         } catch (error) {
             console.error('❌ Erreur configuration Mailjet:', error.message);
@@ -25,20 +30,20 @@ const initMailjet = () => {
             return false;
         }
     }
-    console.warn('⚠️ Mailjet non configuré - veuillez définir MAILJET_API_KEY et MAILJET_SECRET_KEY');
+    console.warn('⚠️ Mailjet non configuré - variables manquantes');
     mailjetConfigured = false;
     return false;
 };
+
+// Initialisation immédiate
+initMailjet();
 
 // Envoyer un email via Mailjet
 const sendEmail = async (to, subject, htmlContent, toName = '') => {
     try {
         if (!mailjetConfigured) {
-            initMailjet();
-            if (!mailjetConfigured) {
-                console.log(`❌ Email non envoyé à ${to}: Mailjet non configuré`);
-                return false;
-            }
+            console.log(`❌ Email non envoyé à ${to}: Mailjet non configuré`);
+            return false;
         }
         
         const fromEmail = process.env.MAILJET_FROM_EMAIL || 'mitiarj05@gmail.com';
