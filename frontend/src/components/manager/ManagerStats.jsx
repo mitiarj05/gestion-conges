@@ -16,6 +16,7 @@ import {
     LineChart,
     Line
 } from 'recharts';
+import { API_URL } from '../../config/api';
 
 function ManagerStats() {
     const [stats, setStats] = useState({
@@ -40,7 +41,7 @@ function ManagerStats() {
     const fetchManagerStats = async () => {
         try {
             console.log('📊 Chargement des stats manager...');
-            const response = await axios.get('http://localhost:5000/api/leaves/manager-dashboard-stats', getAuthHeaders());
+            const response = await axios.get(`${API_URL}/leaves/manager-dashboard-stats`, getAuthHeaders());
             console.log('📊 Stats manager reçues:', response.data);
             setStats(response.data);
         } catch (error) {

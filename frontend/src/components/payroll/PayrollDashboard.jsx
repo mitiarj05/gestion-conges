@@ -74,9 +74,9 @@ function PayrollDashboard() {
         setLoading(true);
         try {
             const [bulletinsRes, employeesRes, statsRes] = await Promise.all([
-                axios.get(`\${API_URL}/payroll/tous-bulletins`, getAuthHeaders()),
-                axios.get(`\${API_URL}/admin/employees-for-payroll`, getAuthHeaders()),
-                axios.get(`\${API_URL}/payroll/stats`, getAuthHeaders())
+                axios.get(`${API_URL}/payroll/tous-bulletins`, getAuthHeaders()),
+                axios.get(`${API_URL}/admin/employees-for-payroll`, getAuthHeaders()),
+                axios.get(`${API_URL}/payroll/stats`, getAuthHeaders())
             ]);
             
             setBulletins(bulletinsRes.data);
@@ -137,7 +137,7 @@ function PayrollDashboard() {
 
         try {
             const response = await axios.post(
-                `\${API_URL}/payroll/generer-bulletin`,
+                `${API_URL}/payroll/generer-bulletin`,
                 {
                     utilisateur_id: parseInt(formData.utilisateur_id),
                     mois: parseInt(formData.mois),
@@ -166,7 +166,7 @@ function PayrollDashboard() {
 
         try {
             const response = await axios.post(
-                `\${API_URL}/payroll/generer-bulletins-equipe`,
+                `${API_URL}/payroll/generer-bulletins-equipe`,
                 { 
                     mois: parseInt(formData.mois), 
                     annee: parseInt(formData.annee) 

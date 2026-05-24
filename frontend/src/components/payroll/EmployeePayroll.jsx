@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { API_URL } from '../../config/api';
 
 function EmployeePayroll() {
     const [bulletins, setBulletins] = useState([]);
@@ -18,7 +19,7 @@ function EmployeePayroll() {
     const fetchMesBulletins = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await axios.get('http://localhost:5000/api/payroll/mes-bulletins', {
+            const response = await axios.get(`${API_URL}/payroll/mes-bulletins`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setBulletins(response.data);

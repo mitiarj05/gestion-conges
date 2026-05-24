@@ -1,6 +1,7 @@
 // frontend/src/components/employee/ManagerProfile.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function ManagerProfile() {
     const [manager, setManager] = useState(null);
@@ -20,7 +21,7 @@ function ManagerProfile() {
                 return;
             }
             
-            const response = await axios.get('http://localhost:5000/api/users/my-manager', {
+            const response = await axios.get(`${API_URL}/users/my-manager`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             

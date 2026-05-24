@@ -46,7 +46,7 @@ function ManagerDashboard({ onLogout }) {
         try {
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
-            const response = await axios.get(`\${API_URL}/leaves/team-pending`, getAuthHeaders());
+            const response = await axios.get(`${API_URL}/leaves/team-pending`, getAuthHeaders());
             setPendingRequests(response.data);
         } catch (error) {
             console.error('Erreur fetchPendingRequests:', error);
@@ -74,7 +74,7 @@ function ManagerDashboard({ onLogout }) {
 
     const fetchTeamMembers = async () => {
         try {
-            const response = await axios.get(`\${API_URL}/users/my-team`, getAuthHeaders());
+            const response = await axios.get(`${API_URL}/users/my-team`, getAuthHeaders());
             setTeamMembers(response.data);
         } catch (error) {
             console.error('Erreur fetchTeamMembers:', error);
@@ -84,7 +84,7 @@ function ManagerDashboard({ onLogout }) {
 
     const fetchBalance = async () => {
         try {
-            const response = await axios.get(`\${API_URL}/leaves/balance`, getAuthHeaders());
+            const response = await axios.get(`${API_URL}/leaves/balance`, getAuthHeaders());
             setBalance(response.data);
         } catch (error) {
             console.error('Erreur fetchBalance:', error);

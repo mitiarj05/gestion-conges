@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function LeaveRequest({ onSuccess }) {
     const [formData, setFormData] = useState({ 
@@ -63,7 +64,7 @@ function LeaveRequest({ onSuccess }) {
         }
         
         try {
-            const response = await axios.post('http://localhost:5000/api/leaves/request', formData, {
+            const response = await axios.post(`${API_URL}/leaves/request`, formData, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             

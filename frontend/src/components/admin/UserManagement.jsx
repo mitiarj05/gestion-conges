@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../../config/api';
 
 function UserManagement() {
     const [users, setUsers] = useState([]);
@@ -15,7 +16,6 @@ function UserManagement() {
     const [newPassword, setNewPassword] = useState('');
     const [formData, setFormData] = useState({ nom: '', prenom: '', email: '', password: '', telephone: '', service: '' });
 
-    const API_URL = 'http://localhost:5000/api';
     const getAuthHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
     useEffect(() => { fetchAll(); }, []);
