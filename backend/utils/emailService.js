@@ -1,5 +1,5 @@
 // backend/utils/emailService.js
-const mailjet = require('node-mailjet').apiConnect;
+const mailjet = require('node-mailjet');
 require('dotenv').config();
 
 // Initialisation Mailjet
@@ -12,10 +12,12 @@ const initMailjet = () => {
     
     if (apiKey && apiSecret && apiKey !== '' && apiSecret !== '') {
         try {
-            mailjetClient = mailjet.connect(apiKey, apiSecret);
+            // Syntaxe correcte pour node-mailjet v6
+            mailjetClient = mailjet.apiConnect(apiKey, apiSecret);
             mailjetConfigured = true;
             console.log('✅ Mailjet configuré avec succès');
-            console.log(`   From Email: ${process.env.MAILJET_FROM_EMAIL || 'noreply@monariary.com'}`);
+            console.log(`   From Email: ${process.env.MAILJET_FROM_EMAIL || 'mitiarj05@gmail.com'}`);
+            console.log(`   From Name: ${process.env.MAILJET_FROM_NAME || 'Gestion des Congés'}`);
             return true;
         } catch (error) {
             console.error('❌ Erreur configuration Mailjet:', error.message);
@@ -39,8 +41,11 @@ const sendEmail = async (to, subject, htmlContent, toName = '') => {
             }
         }
         
-        const fromEmail = process.env.MAILJET_FROM_EMAIL || 'noreply@monariary.com';
-        const fromName = process.env.MAILJET_FROM_NAME || 'MonAriary - Gestion des Congés';
+        const fromEmail = process.env.MAILJET_FROM_EMAIL || 'mitiarj05@gmail.com';
+        const fromName = process.env.MAILJET_FROM_NAME || 'Gestion des Congés';
+        
+        console.log(`📧 Envoi d'email à: ${to}`);
+        console.log(`   Sujet: ${subject}`);
         
         const request = mailjetClient.post('send', { version: 'v3.1' }).request({
             Messages: [
@@ -64,11 +69,17 @@ const sendEmail = async (to, subject, htmlContent, toName = '') => {
         
         const result = await request;
         console.log(`✅ Email envoyé avec succès à ${to} (${subject})`);
+        if (result.body && result.body.Messages) {
+            console.log(`   Message ID: ${result.body.Messages[0]?.To?.[0]?.MessageID || 'inconnu'}`);
+        }
         return true;
     } catch (error) {
         console.error(`❌ Erreur envoi email à ${to}:`, error.message);
         if (error.statusCode) {
             console.error(`   Status Code: ${error.statusCode}`);
+        }
+        if (error.response && error.response.body) {
+            console.error(`   Détails:`, JSON.stringify(error.response.body, null, 2));
         }
         return false;
     }
@@ -76,7 +87,7 @@ const sendEmail = async (to, subject, htmlContent, toName = '') => {
 
 // ============ EMAIL RÉINITIALISATION MOT DE PASSE ============
 const sendResetPasswordEmail = async (email, userName, resetUrl) => {
-    const subject = '🔐 Réinitialisation de votre mot de passe - MonAriary';
+    const subject = '🔐 Réinitialisation de votre mot de passe - Gestion des Congés';
     const html = `
         <!DOCTYPE html>
         <html>
@@ -102,8 +113,8 @@ const sendResetPasswordEmail = async (email, userName, resetUrl) => {
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🏢 MonAriary</h1>
-                    <p>Gestion des Congés</p>
+                    <h1>🏢 Gestion des Congés</h1>
+                    <p>Solution RH professionnelle</p>
                 </div>
                 <div class="content">
                     <div class="greeting">Bonjour <strong>${userName}</strong>,</div>
@@ -125,8 +136,8 @@ const sendResetPasswordEmail = async (email, userName, resetUrl) => {
                     </p>
                 </div>
                 <div class="footer">
-                    <p>© 2025 MonAriary - Tous droits réservés</p>
-                    <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}">Accéder à l'application</a></p>
+                    <p>© 2025 Gestion des Congés - Tous droits réservés</p>
+                    <p><a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}">Accéder à l'application</a></p>
                 </div>
             </div>
         </body>
@@ -137,7 +148,7 @@ const sendResetPasswordEmail = async (email, userName, resetUrl) => {
 
 // ============ EMAIL QUAND MANAGER APPROUVE ============
 const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) => {
-    const subject = '✅ Votre demande de congé a été approuvée par votre manager - MonAriary';
+    const subject = '✅ Votre demande de congé a été approuvée par votre manager';
     const html = `
         <!DOCTYPE html>
         <html>
@@ -149,6 +160,8 @@ const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) 
                 body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f4; }
                 .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
                 .header { background: #0f3460; color: white; padding: 24px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }
                 .content { padding: 32px 24px; background: white; }
                 .info-card { background: #e8f4fd; padding: 20px; border-radius: 12px; margin: 20px 0; }
                 .button { display: inline-block; padding: 12px 28px; background: #0f3460; color: white; text-decoration: none; border-radius: 40px; font-weight: 600; margin: 20px 0; }
@@ -158,8 +171,8 @@ const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) 
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🏢 MonAriary</h1>
-                    <p>Gestion des Congés</p>
+                    <h1>🏢 Gestion des Congés</h1>
+                    <p>Solution RH professionnelle</p>
                 </div>
                 <div class="content">
                     <h2>Bonjour ${employeNom},</h2>
@@ -170,11 +183,11 @@ const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) 
                     </div>
                     <p>Votre demande est maintenant en attente de validation finale par l'administrateur.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/employee/requests" class="button">📋 Voir mes demandes</a>
+                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/employee/requests" class="button">📋 Voir mes demandes</a>
                     </div>
                 </div>
                 <div class="footer">
-                    <p>© 2025 MonAriary - Gestion des Congés</p>
+                    <p>© 2025 Gestion des Congés</p>
                 </div>
             </div>
         </body>
@@ -185,7 +198,7 @@ const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) 
 
 // ============ EMAIL QUAND MANAGER REFUSE ============
 const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif) => {
-    const subject = '❌ Votre demande de congé a été refusée - MonAriary';
+    const subject = '❌ Votre demande de congé a été refusée';
     const html = `
         <!DOCTYPE html>
         <html>
@@ -197,6 +210,8 @@ const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif)
                 body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f4; }
                 .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
                 .header { background: #dc3545; color: white; padding: 24px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }
                 .content { padding: 32px 24px; background: white; }
                 .info-card { background: #f8d7da; padding: 20px; border-radius: 12px; margin: 20px 0; }
                 .button { display: inline-block; padding: 12px 28px; background: #28a745; color: white; text-decoration: none; border-radius: 40px; font-weight: 600; margin: 20px 0; }
@@ -206,8 +221,8 @@ const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif)
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🏢 MonAriary</h1>
-                    <p>Gestion des Congés</p>
+                    <h1>🏢 Gestion des Congés</h1>
+                    <p>Solution RH professionnelle</p>
                 </div>
                 <div class="content">
                     <h2>Bonjour ${employeNom},</h2>
@@ -218,11 +233,11 @@ const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif)
                     </div>
                     <p>Vous pouvez faire une nouvelle demande en tenant compte de ce motif.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/employee/new-request" class="button">📝 Nouvelle demande</a>
+                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/employee/new-request" class="button">📝 Nouvelle demande</a>
                     </div>
                 </div>
                 <div class="footer">
-                    <p>© 2025 MonAriary - Gestion des Congés</p>
+                    <p>© 2025 Gestion des Congés</p>
                 </div>
             </div>
         </body>
@@ -233,7 +248,7 @@ const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif)
 
 // ============ EMAIL QUAND ADMIN APPROUVE DÉFINITIVEMENT ============
 const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) => {
-    const subject = '✅ Votre demande de congé a été définitivement approuvée - MonAriary';
+    const subject = '✅ Votre demande de congé a été définitivement approuvée';
     const html = `
         <!DOCTYPE html>
         <html>
@@ -245,6 +260,8 @@ const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) =>
                 body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f4; }
                 .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
                 .header { background: #28a745; color: white; padding: 24px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }
                 .content { padding: 32px 24px; background: white; }
                 .info-card { background: #d4edda; padding: 20px; border-radius: 12px; margin: 20px 0; }
                 .button { display: inline-block; padding: 12px 28px; background: #0f3460; color: white; text-decoration: none; border-radius: 40px; font-weight: 600; margin: 20px 0; }
@@ -254,8 +271,8 @@ const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) =>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🏢 MonAriary</h1>
-                    <p>Gestion des Congés</p>
+                    <h1>🏢 Gestion des Congés</h1>
+                    <p>Solution RH professionnelle</p>
                 </div>
                 <div class="content">
                     <h2>Félicitations ${employeNom} ! 🎉</h2>
@@ -266,11 +283,11 @@ const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) =>
                     </div>
                     <p>Profitez bien de vos congés ! ☀️</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/employee/calendar" class="button">📅 Voir mon calendrier</a>
+                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/employee/calendar" class="button">📅 Voir mon calendrier</a>
                     </div>
                 </div>
                 <div class="footer">
-                    <p>© 2025 MonAriary - Gestion des Congés</p>
+                    <p>© 2025 Gestion des Congés</p>
                 </div>
             </div>
         </body>
@@ -281,7 +298,7 @@ const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) =>
 
 // ============ EMAIL QUAND ADMIN REFUSE DÉFINITIVEMENT ============
 const sendAdminRejectionEmail = async (employeEmail, employeNom, dates, motif) => {
-    const subject = '❌ Votre demande de congé a été définitivement refusée - MonAriary';
+    const subject = '❌ Votre demande de congé a été définitivement refusée';
     const html = `
         <!DOCTYPE html>
         <html>
@@ -293,6 +310,8 @@ const sendAdminRejectionEmail = async (employeEmail, employeNom, dates, motif) =
                 body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f4; }
                 .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
                 .header { background: #dc3545; color: white; padding: 24px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }
                 .content { padding: 32px 24px; background: white; }
                 .info-card { background: #f8d7da; padding: 20px; border-radius: 12px; margin: 20px 0; }
                 .footer { text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #888; }
@@ -301,8 +320,8 @@ const sendAdminRejectionEmail = async (employeEmail, employeNom, dates, motif) =
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🏢 MonAriary</h1>
-                    <p>Gestion des Congés</p>
+                    <h1>🏢 Gestion des Congés</h1>
+                    <p>Solution RH professionnelle</p>
                 </div>
                 <div class="content">
                     <h2>Bonjour ${employeNom},</h2>
@@ -314,7 +333,7 @@ const sendAdminRejectionEmail = async (employeEmail, employeNom, dates, motif) =
                     <p>Vous pouvez contacter l'administrateur pour plus d'informations.</p>
                 </div>
                 <div class="footer">
-                    <p>© 2025 MonAriary - Gestion des Congés</p>
+                    <p>© 2025 Gestion des Congés</p>
                 </div>
             </div>
         </body>
@@ -325,7 +344,7 @@ const sendAdminRejectionEmail = async (employeEmail, employeNom, dates, motif) =
 
 // ============ EMAIL NOTIFICATION AU MANAGER (NOUVELLE DEMANDE) ============
 const sendNewRequestToManagerEmail = async (managerEmail, managerNom, employeNom, dates, jours) => {
-    const subject = '📋 Nouvelle demande de congé à valider - MonAriary';
+    const subject = '📋 Nouvelle demande de congé à valider';
     const html = `
         <!DOCTYPE html>
         <html>
@@ -337,18 +356,19 @@ const sendNewRequestToManagerEmail = async (managerEmail, managerNom, employeNom
                 body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f4; }
                 .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
                 .header { background: #ff9800; color: white; padding: 24px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }
                 .content { padding: 32px 24px; background: white; }
                 .info-card { background: #fff3cd; padding: 20px; border-radius: 12px; margin: 20px 0; }
                 .button { display: inline-block; padding: 12px 28px; background: #0f3460; color: white; text-decoration: none; border-radius: 40px; font-weight: 600; margin: 20px 0; }
-                .button:hover { background: #1e4a76; transform: translateY(-2px); }
                 .footer { text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #888; }
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🏢 MonAriary</h1>
-                    <p>Gestion des Congés</p>
+                    <h1>🏢 Gestion des Congés</h1>
+                    <p>Solution RH professionnelle</p>
                 </div>
                 <div class="content">
                     <h2>Bonjour ${managerNom},</h2>
@@ -359,11 +379,11 @@ const sendNewRequestToManagerEmail = async (managerEmail, managerNom, employeNom
                     </div>
                     <p>Veuillez vous connecter pour approuver ou refuser cette demande.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/manager/validations" class="button">✅ Valider les demandes</a>
+                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/manager/validations" class="button">✅ Valider les demandes</a>
                     </div>
                 </div>
                 <div class="footer">
-                    <p>© 2025 MonAriary - Gestion des Congés</p>
+                    <p>© 2025 Gestion des Congés</p>
                     <p><small>Cet email est automatique, merci de ne pas y répondre.</small></p>
                 </div>
             </div>
@@ -375,7 +395,7 @@ const sendNewRequestToManagerEmail = async (managerEmail, managerNom, employeNom
 
 // ============ EMAIL NOTIFICATION À L'ADMIN (NOUVELLE DEMANDE APRÈS MANAGER) ============
 const sendAdminNewRequestEmail = async (adminEmail, adminName, employeNom, dates, jours) => {
-    const subject = '📋 Nouvelle demande de congé en attente de validation - MonAriary';
+    const subject = '📋 Nouvelle demande de congé en attente de validation - Admin';
     const html = `
         <!DOCTYPE html>
         <html>
@@ -387,6 +407,8 @@ const sendAdminNewRequestEmail = async (adminEmail, adminName, employeNom, dates
                 body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f4f4f4; }
                 .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
                 .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+                .header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }
                 .content { padding: 32px 24px; background: white; }
                 .info-card { background: #e8f4fd; padding: 20px; border-radius: 12px; margin: 20px 0; }
                 .button { display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 40px; font-weight: 600; margin: 20px 0; }
@@ -396,8 +418,8 @@ const sendAdminNewRequestEmail = async (adminEmail, adminName, employeNom, dates
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🏢 MonAriary</h1>
-                    <p>Gestion des Congés - Administration</p>
+                    <h1>🏢 Gestion des Congés</h1>
+                    <p>Solution RH professionnelle - Administration</p>
                 </div>
                 <div class="content">
                     <h2>Bonjour ${adminName},</h2>
@@ -408,11 +430,12 @@ const sendAdminNewRequestEmail = async (adminEmail, adminName, employeNom, dates
                     </div>
                     <p>Veuillez vous connecter pour approuver ou refuser définitivement cette demande.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/admin" class="button">👑 Valider la demande</a>
+                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/admin" class="button">👑 Valider la demande</a>
                     </div>
                 </div>
                 <div class="footer">
-                    <p>© 2025 MonAriary - Gestion des Congés</p>
+                    <p>© 2025 Gestion des Congés</p>
+                    <p><small>Cet email est automatique, merci de ne pas y répondre.</small></p>
                 </div>
             </div>
         </body>
