@@ -1,7 +1,6 @@
-// backend/server.js
+// backend/server.js - VERSION CORRIGÉE (sans serveur statique)
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
 require('dotenv').config();
@@ -15,36 +14,36 @@ const payrollRoutes = require('./routes/payrollRoutes');
 const app = express();
 const server = http.createServer(app);
 
-// Configuration CORS pour Socket.IO - ACCEPTE TOUTES LES ORIGINS
+// Configuration CORS pour autoriser le frontend Render
 const io = socketIo(server, {
     cors: {
-        origin: "*",  // Accepte toutes les origines
+        origin: [
+            'http://localhost:3000',
+            'https://gestion-conges-1.onrender.com',
+            'https://gestion-conges-puhh.onrender.com'
+        ],
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        credentials: true,
-        allowedHeaders: ["Content-Type", "Authorization"]
+        credentials: true
     },
-    transports: ['websocket', 'polling'],
-    allowEIO3: true
+    transports: ['websocket', 'polling']
 });
 
-// Middleware CORS pour Express - ACCEPTE TOUTES LES ORIGINS
 app.use(cors({
-    origin: "*",
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    origin: [
+        'http://localhost:3000',
+        'https://gestion-conges-1.onrender.com',
+        'https://gestion-conges-puhh.onrender.com'
+    ],
+    credentials: true
 }));
-
-// Pré-vol pour les requêtes OPTIONS
 app.options('*', cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Stocker io dans app
 app.set('io', io);
 
-// Routes API
+// ============ ROUTES API UNIQUEMENT ============
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/leaves', leaveRoutes);
@@ -57,8 +56,7 @@ app.get('/api/health', (req, res) => {
         status: 'ok', 
         timestamp: new Date(),
         uptime: process.uptime(),
-        database: 'Neon.tech',
-        cors: 'enabled'
+        backend: 'gestion-conges-puhh'
     });
 });
 
@@ -85,7 +83,6 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-    console.log(`✅ Serveur démarré sur le port ${PORT}`);
-    console.log(`✅ Environnement: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`✅ CORS: toutes origines autorisées`);
+    console.log(`✅ Backend démarré sur le port ${PORT}`);
+    console.log(`✅ Frontend attendu sur: https://gestion-conges-1.onrender.com`);
 });

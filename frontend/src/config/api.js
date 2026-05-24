@@ -2,23 +2,18 @@
 const getApiUrl = () => {
     const hostname = window.location.hostname;
     
-    // Si on est sur Render (domaine .onrender.com)
+    // Sur Render (frontend)
     if (hostname.includes('onrender.com')) {
+        // URL FIXE de votre backend Render
         return 'https://gestion-conges-puhh.onrender.com/api';
     }
     
-    // Si on est en développement local
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:5000/api';
-    }
-    
-    // Par défaut, utiliser le backend Render
-    return 'https://gestion-conges-puhh.onrender.com/api';
+    // En développement local
+    return 'http://localhost:5000/api';
 };
 
 export const API_URL = getApiUrl();
 
-// Helper pour obtenir les headers d'authentification
 export const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
     return {
@@ -29,7 +24,6 @@ export const getAuthHeaders = () => {
     };
 };
 
-// Helper pour les requêtes avec fichiers
 export const getFileUploadHeaders = () => {
     const token = localStorage.getItem('token');
     return {
@@ -40,7 +34,6 @@ export const getFileUploadHeaders = () => {
     };
 };
 
-// Helper pour obtenir l'URL de base Socket.IO
 export const getSocketUrl = () => {
     const hostname = window.location.hostname;
     if (hostname.includes('onrender.com')) {
