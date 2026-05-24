@@ -21,10 +21,12 @@ const upload = multer({
     }
 });
 
+// Import des fonctions email
 const { 
     sendNewRequestToManagerEmail,
     sendManagerApprovalEmail,
-    sendManagerRejectionEmail 
+    sendManagerRejectionEmail,
+    sendAdminNewRequestEmail
 } = require('../utils/emailService');
 
 // ============ FONCTION DE VALIDATION SIMPLIFIÉE ============
@@ -232,7 +234,7 @@ router.post('/request', authMiddleware, async (req, res) => {
                     );
                 }
             } catch (emailError) {
-                console.error('Erreur envoi email:', emailError);
+                console.error('Erreur envoi email manager:', emailError);
             }
         }
         
@@ -624,7 +626,7 @@ router.get('/team-pending', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ AUTRES ROUTES (à conserver telles quelles) ============
+// ============ VALIDATION MANAGER AVEC FILTRE ============
 
 router.get('/team-pending-filtered', authMiddleware, async (req, res) => {
     const { periode } = req.query;
@@ -673,6 +675,8 @@ router.get('/team-pending-filtered', authMiddleware, async (req, res) => {
     }
 });
 
+// ============ MANAGER APPROUVE ============
+
 router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
     const managerId = req.user.id;
@@ -710,22 +714,7 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
             [demande.utilisateur_id, `Votre demande de congé a été validée par votre manager.`]
         );
         
-        const adminResult = await pool.query(
-            `SELECT u.id FROM users u
-             JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
-             JOIN roles r ON ur.role_id = r.id
-             WHERE r.nom = 'admin' LIMIT 1`
-        );
-        
-        if (adminResult.rows.length > 0) {
-            await pool.query(
-                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'validation_requise', 'Demande à valider', 
-                         $2, '/dashboard/admin', NOW())`,
-                [adminResult.rows[0].id, `Une demande de congé de ${demande.prenom} ${demande.nom} attend votre validation.`]
-            );
-        }
-        
+        // Envoyer email à l'employé
         try {
             const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
             if (employeEmailResult.rows.length > 0) {
@@ -736,9 +725,43 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
                     `${demande.date_debut} au ${demande.date_fin}`,
                     demande.nombre_jours
                 );
+                console.log(`✅ Email d'approbation envoyé à l'employé ${employe.email}`);
             }
         } catch (emailError) {
-            console.error('Erreur envoi email:', emailError);
+            console.error('Erreur envoi email employé:', emailError);
+        }
+        
+        // Récupérer l'admin et lui envoyer un email
+        const adminResult = await pool.query(
+            `SELECT u.id, u.email, u.prenom, u.nom FROM users u
+             JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
+             JOIN roles r ON ur.role_id = r.id
+             WHERE r.nom = 'admin' LIMIT 1`
+        );
+        
+        if (adminResult.rows.length > 0) {
+            const admin = adminResult.rows[0];
+            
+            await pool.query(
+                `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                 VALUES ($1, 'validation_requise', 'Demande à valider', 
+                         $2, '/dashboard/admin', NOW())`,
+                [admin.id, `Une demande de congé de ${demande.prenom} ${demande.nom} attend votre validation.`]
+            );
+            
+            // Envoyer email à l'admin
+            try {
+                await sendAdminNewRequestEmail(
+                    admin.email,
+                    `${admin.prenom} ${admin.nom}`,
+                    `${demande.prenom} ${demande.nom}`,
+                    `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.nombre_jours
+                );
+                console.log(`✅ Email de notification envoyé à l'admin ${admin.email}`);
+            } catch (emailError) {
+                console.error('Erreur envoi email admin:', emailError);
+            }
         }
         
         res.json({ message: 'Demande pré-approuvée' });
@@ -748,6 +771,8 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
+
+// ============ MANAGER REJET ============
 
 router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
@@ -787,6 +812,7 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
             [demande.utilisateur_id, `Votre demande de congé a été refusée par votre manager. Motif : ${motifFinal}`]
         );
         
+        // Envoyer email à l'employé
         try {
             const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
             if (employeEmailResult.rows.length > 0) {
@@ -797,9 +823,10 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
                     `${demande.date_debut} au ${demande.date_fin}`,
                     motifFinal
                 );
+                console.log(`✅ Email de refus envoyé à l'employé ${employe.email}`);
             }
         } catch (emailError) {
-            console.error('Erreur envoi email:', emailError);
+            console.error('Erreur envoi email refus:', emailError);
         }
         
         res.json({ message: 'Demande refusée' });
@@ -810,7 +837,7 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ CALENDRIER ============
+// ============ CALENDRIER - ABSENCES DE L'ÉQUIPE ============
 
 router.get('/team-absences', authMiddleware, async (req, res) => {
     try {
@@ -840,6 +867,8 @@ router.get('/team-absences', authMiddleware, async (req, res) => {
     }
 });
 
+// ============ CALENDRIER - TOUTES LES ABSENCES ============
+
 router.get('/all-absences', authMiddleware, async (req, res) => {
     try {
         const congesResult = await pool.query(
@@ -867,7 +896,7 @@ router.get('/all-absences', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ STATISTIQUES ============
+// ============ STATISTIQUES MANAGER DASHBOARD ============
 
 router.get('/manager-dashboard-stats', authMiddleware, async (req, res) => {
     try {
@@ -949,6 +978,8 @@ router.get('/manager-dashboard-stats', authMiddleware, async (req, res) => {
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
+
+// ============ STATISTIQUES DE L'ÉQUIPE ============
 
 router.get('/team-stats', authMiddleware, async (req, res) => {
     try {
@@ -1152,6 +1183,8 @@ router.get('/notifications', authMiddleware, async (req, res) => {
         res.json([]);
     }
 });
+
+// ============ MARQUER NOTIFICATION COMME LUE ============
 
 router.put('/notifications/:id/read', authMiddleware, async (req, res) => {
     try {
