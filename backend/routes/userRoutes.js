@@ -22,13 +22,20 @@ router.get('/my-team', authMiddleware, async (req, res) => {
 router.get('/my-manager', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
-        const userResult = await pool.query(`SELECT manager_id FROM users WHERE id = $1`, [userId]);
+        
+        // Récupérer le manager de l'utilisateur
+        const userResult = await pool.query(
+            `SELECT manager_id FROM users WHERE id = $1`,
+            [userId]
+        );
+        
         const managerId = userResult.rows[0]?.manager_id;
         
         if (!managerId) {
             return res.status(404).json({ message: 'Aucun manager assigné' });
         }
         
+        // Récupérer les infos du manager
         const managerResult = await pool.query(
             `SELECT u.id, u.nom, u.prenom, u.email, u.telephone, u.service,
                     COUNT(DISTINCT e.id) as team_count
