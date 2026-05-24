@@ -69,10 +69,27 @@ function LeaveRequest({ onSuccess }) {
             });
             
             if (response.status === 201) {
-                const message = formData.type_id === 1 
-                    ? 'Demande de congés payés envoyée !'
-                    : 'Demande de congé sans solde envoyée (non rémunéré)';
-                alert(message + '\n\nEn attente de validation par votre manager.\n\nVous pouvez modifier ou annuler votre demande tant qu\'elle n\'a pas été validée.');
+                // Récupérer les rôles de l'utilisateur pour adapter le message
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                const userRoles = user.roles || [];
+                const isManager = userRoles.includes('manager');
+                const isAdmin = userRoles.includes('admin');
+                
+                let message = '';
+                if (isManager || isAdmin) {
+                    message = '✅ Votre demande de congé a été envoyée !\n\n' +
+                              '📋 Elle est en attente de validation par l\'administrateur.\n\n' +
+                              '📧 Vous recevrez une notification par email une fois qu\'elle sera traitée.\n\n' +
+                              '💡 Vous pouvez suivre l\'état de votre demande dans "Mes demandes".';
+                } else {
+                    message = formData.type_id === 1 
+                        ? '✅ Demande de congés payés envoyée !'
+                        : '✅ Demande de congé sans solde envoyée (non rémunéré)';
+                    message += '\n\n📋 En attente de validation par votre manager.\n\n' +
+                              '✏️ Vous pouvez modifier ou annuler votre demande tant qu\'elle n\'a pas été validée.\n\n' +
+                              '📧 Vous recevrez une notification par email à chaque étape.';
+                }
+                alert(message);
                 if (onSuccess) onSuccess();
                 else navigate('/dashboard/employee/requests');
             }
@@ -229,10 +246,10 @@ function LeaveRequest({ onSuccess }) {
             <div className="info-card-tip">
                 <div className="tip-icon">ℹ️</div>
                 <div className="tip-content">
-                    <strong>Processus de validation en 2 étapes :</strong><br/>
-                    1ère étape : Votre manager valide la demande<br/>
-                    2ème étape : L'administrateur valide définitivement<br/>
-                    <strong>Vous pouvez modifier ou annuler votre demande tant qu'elle est en attente de validation par le manager.</strong>
+                    <strong>Processus de validation :</strong><br/>
+                    • <strong>Employé :</strong> Manager → Administrateur<br/>
+                    • <strong>Manager / Admin :</strong> Directement administrateur<br/>
+                    • <strong>Vous pouvez modifier ou annuler votre demande tant qu'elle n'a pas été validée par l'étape suivante.</strong>
                 </div>
             </div>
         </div>

@@ -4,11 +4,10 @@ const mailjet = require('node-mailjet');
 let mailjetClient = null;
 let mailjetConfigured = false;
 
-// Initialisation Mailjet - Appelée immédiatement
+// Initialisation Mailjet
 const initMailjet = () => {
-    // Utiliser les mêmes noms que sur Render
     const apiKey = process.env.MAILJET_API_KEY;
-    const apiSecret = process.env.MAILJET_API_SECRET;  // ⚠️ API_SECRET (pas SECRET_KEY)
+    const apiSecret = process.env.MAILJET_API_SECRET;  // ⚠️ API_SECRET pas SECRET_KEY
     const fromEmail = process.env.MAILJET_FROM_EMAIL || 'mitiarj05@gmail.com';
     const fromName = process.env.MAILJET_FROM_NAME || 'Gestion des Congés';
     
@@ -17,6 +16,7 @@ const initMailjet = () => {
     console.log('MAILJET_API_SECRET:', apiSecret ? '✅ Présent' : '❌ Manquant');
     console.log('MAILJET_FROM_EMAIL:', fromEmail);
     console.log('MAILJET_FROM_NAME:', fromName);
+    console.log('NODE_ENV:', process.env.NODE_ENV);
     
     if (apiKey && apiSecret && apiKey !== '' && apiSecret !== '') {
         try {
@@ -30,6 +30,7 @@ const initMailjet = () => {
             return false;
         }
     }
+    
     console.warn('⚠️ Mailjet non configuré - variables manquantes');
     mailjetConfigured = false;
     return false;
@@ -40,12 +41,16 @@ initMailjet();
 
 // Envoyer un email via Mailjet
 const sendEmail = async (to, subject, htmlContent, toName = '') => {
+    if (!mailjetConfigured) {
+        console.log(`❌ Email non envoyé à ${to}: Mailjet non configuré`);
+        console.log(`   Sujet: ${subject}`);
+        console.log(`   En mode développement, l'email aurait été envoyé avec:`);
+        console.log(`   - À: ${to}`);
+        console.log(`   - Sujet: ${subject}`);
+        return true; // Retourne true pour ne pas bloquer l'application
+    }
+    
     try {
-        if (!mailjetConfigured) {
-            console.log(`❌ Email non envoyé à ${to}: Mailjet non configuré`);
-            return false;
-        }
-        
         const fromEmail = process.env.MAILJET_FROM_EMAIL || 'mitiarj05@gmail.com';
         const fromName = process.env.MAILJET_FROM_NAME || 'Gestion des Congés';
         
@@ -85,6 +90,12 @@ const sendEmail = async (to, subject, htmlContent, toName = '') => {
         }
         if (error.response && error.response.body) {
             console.error(`   Détails:`, JSON.stringify(error.response.body, null, 2));
+        }
+        
+        // En développement, on logue l'erreur mais on continue
+        if (process.env.NODE_ENV === 'development') {
+            console.log('📧 [DEV MODE] Email non envoyé mais l\'application continue...');
+            return true;
         }
         return false;
     }
@@ -142,7 +153,7 @@ const sendResetPasswordEmail = async (email, userName, resetUrl) => {
                 </div>
                 <div class="footer">
                     <p>© 2025 Gestion des Congés - Tous droits réservés</p>
-                    <p><a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}">Accéder à l'application</a></p>
+                    <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}">Accéder à l'application</a></p>
                 </div>
             </div>
         </body>
@@ -151,7 +162,6 @@ const sendResetPasswordEmail = async (email, userName, resetUrl) => {
     return sendEmail(email, subject, html, userName);
 };
 
-// ============ EMAIL QUAND MANAGER APPROUVE ============
 const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) => {
     const subject = '✅ Votre demande de congé a été approuvée par votre manager';
     const html = `
@@ -188,7 +198,7 @@ const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) 
                     </div>
                     <p>Votre demande est maintenant en attente de validation finale par l'administrateur.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/employee/requests" class="button">📋 Voir mes demandes</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/employee/requests" class="button">📋 Voir mes demandes</a>
                     </div>
                 </div>
                 <div class="footer">
@@ -201,7 +211,6 @@ const sendManagerApprovalEmail = async (employeEmail, employeNom, dates, jours) 
     return sendEmail(employeEmail, subject, html, employeNom);
 };
 
-// ============ EMAIL QUAND MANAGER REFUSE ============
 const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif) => {
     const subject = '❌ Votre demande de congé a été refusée';
     const html = `
@@ -238,7 +247,7 @@ const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif)
                     </div>
                     <p>Vous pouvez faire une nouvelle demande en tenant compte de ce motif.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/employee/new-request" class="button">📝 Nouvelle demande</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/employee/new-request" class="button">📝 Nouvelle demande</a>
                     </div>
                 </div>
                 <div class="footer">
@@ -251,7 +260,6 @@ const sendManagerRejectionEmail = async (employeEmail, employeNom, dates, motif)
     return sendEmail(employeEmail, subject, html, employeNom);
 };
 
-// ============ EMAIL QUAND ADMIN APPROUVE DÉFINITIVEMENT ============
 const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) => {
     const subject = '✅ Votre demande de congé a été définitivement approuvée';
     const html = `
@@ -288,7 +296,7 @@ const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) =>
                     </div>
                     <p>Profitez bien de vos congés ! ☀️</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/employee/calendar" class="button">📅 Voir mon calendrier</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/employee/calendar" class="button">📅 Voir mon calendrier</a>
                     </div>
                 </div>
                 <div class="footer">
@@ -301,7 +309,6 @@ const sendAdminApprovalEmail = async (employeEmail, employeNom, dates, jours) =>
     return sendEmail(employeEmail, subject, html, employeNom);
 };
 
-// ============ EMAIL QUAND ADMIN REFUSE DÉFINITIVEMENT ============
 const sendAdminRejectionEmail = async (employeEmail, employeNom, dates, motif) => {
     const subject = '❌ Votre demande de congé a été définitivement refusée';
     const html = `
@@ -347,7 +354,6 @@ const sendAdminRejectionEmail = async (employeEmail, employeNom, dates, motif) =
     return sendEmail(employeEmail, subject, html, employeNom);
 };
 
-// ============ EMAIL NOTIFICATION AU MANAGER (NOUVELLE DEMANDE) ============
 const sendNewRequestToManagerEmail = async (managerEmail, managerNom, employeNom, dates, jours) => {
     const subject = '📋 Nouvelle demande de congé à valider';
     const html = `
@@ -384,7 +390,7 @@ const sendNewRequestToManagerEmail = async (managerEmail, managerNom, employeNom
                     </div>
                     <p>Veuillez vous connecter pour approuver ou refuser cette demande.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/manager/validations" class="button">✅ Valider les demandes</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/manager/validations" class="button">✅ Valider les demandes</a>
                     </div>
                 </div>
                 <div class="footer">
@@ -398,7 +404,6 @@ const sendNewRequestToManagerEmail = async (managerEmail, managerNom, employeNom
     return sendEmail(managerEmail, subject, html, managerNom);
 };
 
-// ============ EMAIL NOTIFICATION À L'ADMIN (NOUVELLE DEMANDE APRÈS MANAGER) ============
 const sendAdminNewRequestEmail = async (adminEmail, adminName, employeNom, dates, jours) => {
     const subject = '📋 Nouvelle demande de congé en attente de validation - Admin';
     const html = `
@@ -435,7 +440,7 @@ const sendAdminNewRequestEmail = async (adminEmail, adminName, employeNom, dates
                     </div>
                     <p>Veuillez vous connecter pour approuver ou refuser définitivement cette demande.</p>
                     <div style="text-align: center;">
-                        <a href="${process.env.FRONTEND_URL || 'https://gestion-conges-1.onrender.com'}/dashboard/admin" class="button">👑 Valider la demande</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/admin" class="button">👑 Valider la demande</a>
                     </div>
                 </div>
                 <div class="footer">
@@ -451,6 +456,7 @@ const sendAdminNewRequestEmail = async (adminEmail, adminName, employeNom, dates
 
 // ============ EXPORT DES FONCTIONS ============
 module.exports = {
+    sendEmail,  // <-- Ajout de sendEmail pour une utilisation générique
     sendResetPasswordEmail,
     sendManagerApprovalEmail,
     sendManagerRejectionEmail,

@@ -101,8 +101,11 @@ function PendingValidations({ requests, onRefresh }) {
                                             📝 Motif : {req.motif}
                                         </div>
                                     )}
-                                    <div className="request-status-info">
-                                        En attente de votre validation (1ère étape)
+                                    <div className="request-status-info" style={{ color: '#f59e0b', fontSize: '12px', marginTop: '6px' }}>
+                                        ⏳ En attente de votre validation (1ère étape)
+                                    </div>
+                                    <div className="request-process-info" style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>
+                                        Après validation, la demande sera transmise à l'administrateur
                                     </div>
                                 </div>
                             </div>

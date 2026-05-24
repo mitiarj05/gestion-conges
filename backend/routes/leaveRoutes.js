@@ -26,7 +26,8 @@ const {
     sendNewRequestToManagerEmail,
     sendManagerApprovalEmail,
     sendManagerRejectionEmail,
-    sendAdminNewRequestEmail
+    sendAdminNewRequestEmail,
+    sendEmail
 } = require('../utils/emailService');
 
 // ============ FONCTION DE VALIDATION ============
@@ -183,7 +184,7 @@ router.get('/my-requests', authMiddleware, async (req, res) => {
     }
 });
 
-// ============ DEMANDE DE CONGÉ (POUR TOUS - EMPLOYÉS ET MANAGERS) ============
+// ============ DEMANDE DE CONGÉ ============
 
 router.post('/request', authMiddleware, async (req, res) => {
     const { type_id, start_date, end_date, motif } = req.body;
@@ -191,6 +192,10 @@ router.post('/request', authMiddleware, async (req, res) => {
     const userRoles = req.user.roles || [];
     const isManager = userRoles.includes('manager');
     const isAdmin = userRoles.includes('admin');
+    
+    if (!type_id || (type_id !== 1 && type_id !== 2)) {
+        return res.status(400).json({ message: "Type de congé invalide. Choisissez 1 (Congés Payés) ou 2 (Congé sans solde)" });
+    }
     
     try {
         const validation = await validateLeaveRequest(userId, type_id, start_date, end_date);
@@ -201,8 +206,6 @@ router.post('/request', authMiddleware, async (req, res) => {
         
         const days = validation.days;
         
-        // Si l'utilisateur est manager ou admin, la demande va directement en pending_admin
-        // Si c'est un employé, la demande va en pending_manager
         let statut = 'pending_manager';
         if (isManager || isAdmin) {
             statut = 'pending_admin';
@@ -216,7 +219,6 @@ router.post('/request', authMiddleware, async (req, res) => {
             [userId, type_id, start_date, end_date, days, motif, statut]
         );
         
-        // Si c'est un employé, envoyer notification et email au manager
         if (!isManager && !isAdmin) {
             const managerResult = await pool.query(`SELECT manager_id FROM users WHERE id = $1`, [userId]);
             const managerId = managerResult.rows[0]?.manager_id;
@@ -250,7 +252,6 @@ router.post('/request', authMiddleware, async (req, res) => {
                 }
             }
         } else {
-            // Si c'est un manager ou admin, envoyer notification directement à l'admin
             const adminResult = await pool.query(
                 `SELECT u.id, u.email, u.prenom, u.nom FROM users u
                  JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
@@ -302,18 +303,40 @@ router.put('/update-request/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
     const userId = req.user.id;
     const { type_id, start_date, end_date, motif } = req.body;
+    const userRoles = req.user.roles || [];
+    const isManager = userRoles.includes('manager');
+    const isAdmin = userRoles.includes('admin');
+    
+    if (!type_id || (parseInt(type_id) !== 1 && parseInt(type_id) !== 2)) {
+        return res.status(400).json({ 
+            message: "Type de congé invalide. Valeurs acceptées: 1 (Congés Payés) ou 2 (Congé sans solde)",
+            errors: ["Le type de congé doit être 'Congés Payés' ou 'Congé sans solde'"]
+        });
+    }
     
     try {
-        const requestCheck = await pool.query(
-            `SELECT dc.*, u.manager_id, u.nom, u.prenom
-             FROM demandes_conges dc
-             JOIN users u ON dc.utilisateur_id = u.id
-             WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'pending_manager'`,
-            [requestId, userId]
-        );
+        let requestCheck;
+        
+        if (isManager || isAdmin) {
+            requestCheck = await pool.query(
+                `SELECT dc.*, u.manager_id, u.nom, u.prenom, u.email
+                 FROM demandes_conges dc
+                 JOIN users u ON dc.utilisateur_id = u.id
+                 WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'pending_admin'`,
+                [requestId, userId]
+            );
+        } else {
+            requestCheck = await pool.query(
+                `SELECT dc.*, u.manager_id, u.nom, u.prenom, u.email
+                 FROM demandes_conges dc
+                 JOIN users u ON dc.utilisateur_id = u.id
+                 WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'pending_manager'`,
+                [requestId, userId]
+            );
+        }
         
         if (requestCheck.rows.length === 0) {
-            return res.status(404).json({ message: 'Demande non modifiable' });
+            return res.status(404).json({ message: 'Demande non modifiable ou déjà traitée' });
         }
         
         const demande = requestCheck.rows[0];
@@ -326,44 +349,174 @@ router.put('/update-request/:id', authMiddleware, async (req, res) => {
         
         const days = validation.days;
         
+        const newStatut = (isManager || isAdmin) ? 'pending_admin' : 'pending_manager';
+        
         await pool.query(
             `UPDATE demandes_conges 
-             SET type_conge_id = $1, date_debut = $2, date_fin = $3, nombre_jours = $4, motif = $5, statut = 'pending_manager'
-             WHERE id = $6`,
-            [type_id, start_date, end_date, days, motif || demande.motif, requestId]
+             SET type_conge_id = $1, date_debut = $2, date_fin = $3, nombre_jours = $4, motif = $5, statut = $6
+             WHERE id = $7`,
+            [type_id, start_date, end_date, days, motif || demande.motif, newStatut, requestId]
         );
         
-        if (demande.manager_id) {
+        const typeNom = (parseInt(type_id) === 1) ? "Congés Payés" : "Congé sans solde";
+        
+        if (!isManager && !isAdmin && demande.manager_id) {
+            const notificationMessage = `${demande.prenom} ${demande.nom} a MODIFIÉ sa demande de congé. Nouvelle période: du ${start_date} au ${end_date} (${days} jours, ${typeNom})`;
+            
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
                  VALUES ($1, 'demande_modifiee', 'Demande de congé modifiée',
                          $2, '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id, `${demande.prenom} ${demande.nom} a modifié sa demande de congé.`]
+                [demande.manager_id, notificationMessage]
             );
+            
+            try {
+                const managerResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.manager_id]);
+                if (managerResult.rows.length > 0) {
+                    const manager = managerResult.rows[0];
+                    const subject = '✏️ Demande de congé modifiée - À revalider';
+                    const html = `
+                        <!DOCTYPE html>
+                        <html>
+                        <head><meta charset="UTF-8"><title>Demande de congé modifiée</title>
+                        <style>
+                            body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
+                            .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+                            .header { background: #ff9800; color: white; padding: 24px; text-align: center; }
+                            .content { padding: 32px 24px; }
+                            .info-card { background: #fff3cd; padding: 20px; border-radius: 12px; margin: 20px 0; }
+                            .button { display: inline-block; padding: 12px 28px; background: #0f3460; color: white; text-decoration: none; border-radius: 40px; }
+                            .footer { text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #888; }
+                        </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="header"><h1>🏢 Gestion des Congés</h1><p>Modification de demande de congé</p></div>
+                                <div class="content">
+                                    <h2>Bonjour ${manager.prenom},</h2>
+                                    <p>✏️ <strong>${demande.prenom} ${demande.nom}</strong> a modifié sa demande de congé.</p>
+                                    <div class="info-card">
+                                        <p><strong>📅 Nouvelles dates :</strong> du ${start_date} au ${end_date}</p>
+                                        <p><strong>📊 Durée :</strong> ${days} jour(s)</p>
+                                        <p><strong>📝 Type :</strong> ${typeNom}</p>
+                                    </div>
+                                    <p>Veuillez vous connecter pour revalider ou refuser cette demande modifiée.</p>
+                                    <div style="text-align: center;">
+                                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/manager/validations" class="button">✅ Revalider la demande</a>
+                                    </div>
+                                </div>
+                                <div class="footer"><p>© 2025 Gestion des Congés</p></div>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+                    await sendEmail(manager.email, subject, html, manager.prenom);
+                }
+            } catch (emailError) {
+                console.error('Erreur envoi email modification:', emailError);
+            }
         }
         
-        res.json({ message: 'Demande modifiée avec succès' });
+        if ((isManager || isAdmin) && !isAdmin) {
+            const adminResult = await pool.query(
+                `SELECT u.id, u.email, u.prenom FROM users u
+                 JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
+                 JOIN roles r ON ur.role_id = r.id
+                 WHERE r.nom = 'admin' LIMIT 1`
+            );
+            
+            if (adminResult.rows.length > 0) {
+                const admin = adminResult.rows[0];
+                const notificationMessage = `${demande.prenom} ${demande.nom} (manager) a MODIFIÉ sa demande de congé. Nouvelle période: du ${start_date} au ${end_date} (${days} jours, ${typeNom})`;
+                
+                await pool.query(
+                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                     VALUES ($1, 'demande_modifiee_manager', 'Demande de congé modifiée (Manager)',
+                             $2, '/dashboard/admin', NOW())`,
+                    [admin.id, notificationMessage]
+                );
+                
+                try {
+                    const subject = '✏️ Demande de congé modifiée par un manager - À valider';
+                    const html = `
+                        <!DOCTYPE html>
+                        <html>
+                        <head><meta charset="UTF-8"><title>Demande de congé modifiée (Manager)</title>
+                        <style>
+                            body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }
+                            .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+                            .header { background: #ff9800; color: white; padding: 24px; text-align: center; }
+                            .content { padding: 32px 24px; }
+                            .info-card { background: #fff3cd; padding: 20px; border-radius: 12px; margin: 20px 0; }
+                            .button { display: inline-block; padding: 12px 28px; background: #0f3460; color: white; text-decoration: none; border-radius: 40px; }
+                            .footer { text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #888; }
+                        </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="header"><h1>🏢 Gestion des Congés</h1><p>Modification de demande de congé (Manager)</p></div>
+                                <div class="content">
+                                    <h2>Bonjour ${admin.prenom},</h2>
+                                    <p>✏️ Le manager <strong>${demande.prenom} ${demande.nom}</strong> a modifié sa demande de congé.</p>
+                                    <div class="info-card">
+                                        <p><strong>📅 Nouvelles dates :</strong> du ${start_date} au ${end_date}</p>
+                                        <p><strong>📊 Durée :</strong> ${days} jour(s)</p>
+                                        <p><strong>📝 Type :</strong> ${typeNom}</p>
+                                    </div>
+                                    <p>Veuillez vous connecter pour revalider ou refuser cette demande modifiée.</p>
+                                    <div style="text-align: center;">
+                                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard/admin" class="button">👑 Valider la demande</a>
+                                    </div>
+                                </div>
+                                <div class="footer"><p>© 2025 Gestion des Congés</p></div>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+                    await sendEmail(admin.email, subject, html, admin.prenom);
+                } catch (emailError) {
+                    console.error('Erreur envoi email admin pour modification manager:', emailError);
+                }
+            }
+        }
+        
+        res.json({ message: 'Demande modifiée avec succès.' });
         
     } catch (error) {
         console.error('Erreur update request:', error);
-        res.status(500).json({ message: 'Erreur serveur' });
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
     }
 });
 
-// ============ ANNULER UNE DEMANDE (EN ATTENTE) ============
+// ============ ANNULER/SUPPRIMER UNE DEMANDE ============
 
 router.delete('/cancel-request/:id', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
     const userId = req.user.id;
+    const userRoles = req.user.roles || [];
+    const isManager = userRoles.includes('manager');
+    const isAdmin = userRoles.includes('admin');
     
     try {
-        const requestCheck = await pool.query(
-            `SELECT dc.*, u.manager_id, u.nom, u.prenom
-             FROM demandes_conges dc
-             JOIN users u ON dc.utilisateur_id = u.id
-             WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'pending_manager'`,
-            [requestId, userId]
-        );
+        let requestCheck;
+        
+        if (isManager || isAdmin) {
+            requestCheck = await pool.query(
+                `SELECT dc.*, u.manager_id, u.nom, u.prenom
+                 FROM demandes_conges dc
+                 JOIN users u ON dc.utilisateur_id = u.id
+                 WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'pending_admin'`,
+                [requestId, userId]
+            );
+        } else {
+            requestCheck = await pool.query(
+                `SELECT dc.*, u.manager_id, u.nom, u.prenom
+                 FROM demandes_conges dc
+                 JOIN users u ON dc.utilisateur_id = u.id
+                 WHERE dc.id = $1 AND dc.utilisateur_id = $2 AND dc.statut = 'pending_manager'`,
+                [requestId, userId]
+            );
+        }
         
         if (requestCheck.rows.length === 0) {
             return res.status(404).json({ message: 'Demande non annulable' });
@@ -373,13 +526,31 @@ router.delete('/cancel-request/:id', authMiddleware, async (req, res) => {
         
         await pool.query(`DELETE FROM demandes_conges WHERE id = $1`, [requestId]);
         
-        if (demande.manager_id) {
+        if (!isManager && !isAdmin && demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
                  VALUES ($1, 'demande_annulee', 'Demande de congé annulée',
                          $2, '/dashboard/manager/validations', NOW())`,
                 [demande.manager_id, `${demande.prenom} ${demande.nom} a annulé sa demande de congé.`]
             );
+        }
+        
+        if ((isManager || isAdmin) && !isAdmin) {
+            const adminResult = await pool.query(
+                `SELECT u.id FROM users u
+                 JOIN utilisateurs_roles ur ON u.id = ur.utilisateur_id
+                 JOIN roles r ON ur.role_id = r.id
+                 WHERE r.nom = 'admin' LIMIT 1`
+            );
+            
+            if (adminResult.rows.length > 0) {
+                await pool.query(
+                    `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
+                     VALUES ($1, 'demande_annulee_manager', 'Demande de congé annulée (Manager)',
+                             $2, '/dashboard/admin', NOW())`,
+                    [adminResult.rows[0].id, `Le manager ${demande.prenom} ${demande.nom} a annulé sa demande de congé.`]
+                );
+            }
         }
         
         res.json({ message: 'Demande annulée avec succès' });
@@ -445,7 +616,7 @@ router.put('/cancel-approved-request/:id', authMiddleware, async (req, res) => {
         
         await pool.query(
             `UPDATE demandes_conges 
-             SET statut = 'cancelled', motif_refus = $1, date_annulation = NOW(), annulation_motif = $1
+             SET statut = 'cancelled', motif_refus = $1, date_annulation = NOW()
              WHERE id = $2`,
             [motif_annulation, requestId]
         );
@@ -546,9 +717,9 @@ router.post('/upload-justificatif', authMiddleware, upload.single('justificatif'
         
         await pool.query(
             `UPDATE demandes_conges 
-             SET justificatif_nom = $1, justificatif_type = $2, justificatif_data = $3, justificatif_upload_le = NOW()
-             WHERE id = $4`,
-            [file.originalname, file.mimetype, file.buffer, demandeId]
+             SET justificatif_nom = $1, justificatif_data = $2, justificatif_upload_le = NOW()
+             WHERE id = $3`,
+            [file.originalname, file.buffer, demandeId]
         );
         
         res.status(200).json({ message: 'Justificatif ajouté avec succès' });
@@ -566,7 +737,7 @@ router.get('/justificatifs/:demandeId', authMiddleware, async (req, res) => {
     
     try {
         const requestCheck = await pool.query(
-            `SELECT utilisateur_id, justificatif_nom, justificatif_type, justificatif_data, justificatif_upload_le
+            `SELECT utilisateur_id, justificatif_nom, justificatif_data, justificatif_upload_le
              FROM demandes_conges 
              WHERE id = $1`,
             [demandeId]
@@ -592,7 +763,6 @@ router.get('/justificatifs/:demandeId', authMiddleware, async (req, res) => {
         res.json([{
             id: demandeId,
             nom_fichier: demande.justificatif_nom,
-            type_fichier: demande.justificatif_type,
             upload_le: demande.justificatif_upload_le
         }]);
     } catch (error) {
@@ -609,7 +779,7 @@ router.get('/download-justificatif/:demandeId', authMiddleware, async (req, res)
     
     try {
         const requestCheck = await pool.query(
-            `SELECT utilisateur_id, justificatif_nom, justificatif_type, justificatif_data
+            `SELECT utilisateur_id, justificatif_nom, justificatif_data
              FROM demandes_conges 
              WHERE id = $1`,
             [demandeId]
@@ -632,8 +802,18 @@ router.get('/download-justificatif/:demandeId', authMiddleware, async (req, res)
             return res.status(404).json({ message: 'Aucun justificatif trouvé' });
         }
         
-        res.setHeader('Content-Type', demande.justificatif_type);
-        res.setHeader('Content-Disposition', `attachment; filename="${demande.justificatif_nom}"`);
+        // Déterminer le type MIME à partir de l'extension du fichier
+        const fileName = demande.justificatif_nom || 'justificatif';
+        const ext = fileName.split('.').pop().toLowerCase();
+        let mimeType = 'application/octet-stream';
+        if (ext === 'pdf') mimeType = 'application/pdf';
+        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'doc') mimeType = 'application/msword';
+        else if (ext === 'docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         res.send(demande.justificatif_data);
     } catch (error) {
         console.error('Erreur download justificatif:', error);
@@ -641,7 +821,7 @@ router.get('/download-justificatif/:demandeId', authMiddleware, async (req, res)
     }
 });
 
-// ============ VALIDATION MANAGER (POUR LES DEMANDES D'EMPLOYÉS) ============
+// ============ VALIDATION MANAGER ============
 
 router.get('/team-pending', authMiddleware, async (req, res) => {
     try {

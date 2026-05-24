@@ -75,15 +75,22 @@ function CalendarView({ requests, onRequestUpdate }) {
         return { status: priorityStatus, requests: dayRequests };
     };
 
-    const getStatusLabel = (status) => {
-        switch(status) {
-            case 'approved': return 'Approuvé';
-            case 'pending_admin': return 'En attente validation admin';
-            case 'pending_manager': return 'En attente validation manager';
-            case 'rejected': return 'Refusé';
-            default: return status || 'Inconnu';
-        }
-    };
+    const getStatusLabel = (status, userRoles = []) => {
+    const isManager = userRoles && userRoles.includes('manager');
+    const isAdmin = userRoles && userRoles.includes('admin');
+    
+    switch(status) {
+        case 'approved': return 'Approuvé';
+        case 'pending_admin': return 'En attente validation admin';
+        case 'pending_manager': 
+            if (isManager || isAdmin) {
+                return 'En attente validation admin';
+            }
+            return 'En attente validation manager';
+        case 'rejected': return 'Refusé';
+        default: return status || 'Inconnu';
+    }
+};
 
     const getTypeDisplay = (req) => {
         if (req.request_type === 'permission') return 'Permission';

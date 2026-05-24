@@ -2,8 +2,9 @@
 const mailjet = require('node-mailjet');
 require('dotenv').config();
 
+// Utiliser les BONS noms de variables (API_SECRET, pas SECRET_KEY)
 const apiKey = process.env.MAILJET_API_KEY;
-const apiSecret = process.env.MAILJET_SECRET_KEY;
+const apiSecret = process.env.MAILJET_API_SECRET;  // ⚠️ Changé ici
 
 console.log('=== TEST MAILJET ===');
 console.log('API Key:', apiKey ? '✅ OK' : '❌ MANQUANTE');
@@ -13,6 +14,8 @@ console.log('');
 
 if (!apiKey || !apiSecret) {
     console.error('❌ Variables Mailjet manquantes!');
+    console.error('   MAILJET_API_KEY:', apiKey ? '✅' : '❌');
+    console.error('   MAILJET_API_SECRET:', apiSecret ? '✅' : '❌');
     process.exit(1);
 }
 
@@ -54,7 +57,7 @@ async function testEmail() {
             console.error('Status Code:', error.statusCode);
         }
         if (error.response && error.response.body) {
-            console.error('Détails:', error.response.body);
+            console.error('Détails:', JSON.stringify(error.response.body, null, 2));
         }
     }
 }

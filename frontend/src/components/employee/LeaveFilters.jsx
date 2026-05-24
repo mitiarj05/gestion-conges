@@ -27,6 +27,7 @@ function LeaveFilters({
                         <option value="pending_admin">En attente admin</option>
                         <option value="approved">Approuvé</option>
                         <option value="rejected">Refusé</option>
+                        <option value="cancelled">Annulé</option>
                     </select>
                 </div>
                 

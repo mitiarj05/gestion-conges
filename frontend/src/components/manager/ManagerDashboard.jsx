@@ -11,6 +11,7 @@ import PendingValidations from './PendingValidations';
 import TeamStatistics from './TeamStatistics';
 import TeamCalendar from './TeamCalendar';
 import LeaveRequest from '../employee/LeaveRequest';
+import ManagerMyRequests from './MyRequests';
 import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
 
@@ -221,7 +222,7 @@ function ManagerDashboard({ onLogout }) {
                         <span className="quick-action-icon">📅</span>
                         <span>Calendrier équipe</span>
                     </button>
-                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/statistics')}>
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/stats')}>
                         <span className="quick-action-icon">📊</span>
                         <span>Statistiques</span>
                     </button>
@@ -241,69 +242,48 @@ function ManagerDashboard({ onLogout }) {
 
     const currentPath = location.pathname;
 
+    // Le layout commun avec Navbar et Sidebar pour toutes les pages
+    const MainLayout = ({ children }) => (
+        <>
+            <Navbar user={user} role="manager" onLogout={onLogout} />
+            <div className="app-container">
+                <Sidebar role="manager" onLogout={onLogout} />
+                <main className="main-content">
+                    {children}
+                </main>
+            </div>
+            <Footer />
+            <ToastNotification toasts={toasts} removeToast={removeToast} />
+        </>
+    );
+
+    // Route pour Mes demandes - utilise le même layout
+    if (currentPath === '/dashboard/manager/my-requests') {
+        return <MainLayout><ManagerMyRequests /></MainLayout>;
+    }
+
     if (currentPath === '/dashboard/manager/new-request') {
-        return (
-            <>
-                <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container">
-                    <Sidebar role="manager" onLogout={onLogout} />
-                    <main className="main-content">
-                        <LeaveRequest onSuccess={handleRequestSuccess} />
-                    </main>
-                </div>
-                <Footer />
-                <ToastNotification toasts={toasts} removeToast={removeToast} />
-            </>
-        );
+        return <MainLayout><LeaveRequest onSuccess={handleRequestSuccess} /></MainLayout>;
     }
 
     if (currentPath === '/dashboard/manager/team-calendar' || currentPath.includes('/team-calendar')) {
-        return (
-            <>
-                <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><TeamCalendar /></main></div>
-                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
-            </>
-        );
+        return <MainLayout><TeamCalendar /></MainLayout>;
     }
 
     if (currentPath === '/dashboard/manager/team' || currentPath.includes('/team')) {
-        return (
-            <>
-                <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><TeamList teamMembers={teamMembers} onRefresh={refreshData} /></main></div>
-                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
-            </>
-        );
+        return <MainLayout><TeamList teamMembers={teamMembers} onRefresh={refreshData} /></MainLayout>;
     }
 
     if (currentPath.includes('/validations')) {
-        return (
-            <>
-                <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><PendingValidations requests={pendingRequests} onRefresh={refreshData} /></main></div>
-                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
-            </>
-        );
+        return <MainLayout><PendingValidations requests={pendingRequests} onRefresh={refreshData} /></MainLayout>;
     }
 
-    if (currentPath.includes('/statistics')) {
-        return (
-            <>
-                <Navbar user={user} role="manager" onLogout={onLogout} />
-                <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><TeamStatistics teamMembers={teamMembers} /></main></div>
-                <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
-            </>
-        );
+    if (currentPath.includes('/stats')) {
+        return <MainLayout><TeamStatistics teamMembers={teamMembers} /></MainLayout>;
     }
 
-    return (
-        <>
-            <Navbar user={user} role="manager" onLogout={onLogout} />
-            <div className="app-container"><Sidebar role="manager" onLogout={onLogout} /><main className="main-content"><DashboardHome /></main></div>
-            <Footer /><ToastNotification toasts={toasts} removeToast={removeToast} />
-        </>
-    );
+    // Page d'accueil par défaut
+    return <MainLayout><DashboardHome /></MainLayout>;
 }
 
 export default ManagerDashboard;

@@ -107,180 +107,182 @@ function Sidebar({ role, onLogout }) {
         );
     };
 
-    const getMenuItems = () => {
-        if (role === 'admin') {
-            return [
-                {
-                    path: '/dashboard/admin',
-                    label: 'Tableau de bord',
-                    key: 'dashboard',
-                    badge: notificationCounts.pendingAdminValidations,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <rect x="3" y="3" width="7" height="7"/>
-                            <rect x="14" y="3" width="7" height="7"/>
-                            <rect x="14" y="14" width="7" height="7"/>
-                            <rect x="3" y="14" width="7" height="7"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/admin/users',
-                    label: 'Utilisateurs',
-                    key: 'users',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                            <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/admin/payroll',
-                    label: 'Gestion de la paie',
-                    key: 'payroll',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M12 6v6l4 2"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/admin/calendar',
-                    label: 'Calendrier',
-                    key: 'calendar',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                            <line x1="16" y1="2" x2="16" y2="6"/>
-                            <line x1="8" y1="2" x2="8" y2="6"/>
-                            <line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/admin/logs',
-                    label: 'Historique',
-                    key: 'logs',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <line x1="16" y1="13" x2="8" y2="13"/>
-                            <line x1="16" y1="17" x2="8" y2="17"/>
-                            <polyline points="10 9 9 9 8 9"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/admin/settings',
-                    label: 'Paramètres',
-                    key: 'settings',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <circle cx="12" cy="12" r="3"/>
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H5.78a1.65 1.65 0 0 0-1.51 1 1.65 1.65 0 0 0 .33 1.82l.07.08A10 10 0 0 0 12 18a10 10 0 0 0 6.26-2.22z"/>
-                            <path d="M4.6 9a1.65 1.65 0 0 0-.33 1.82c.26.61.79 1 1.51 1h12.44c.72 0 1.25-.39 1.51-1a1.65 1.65 0 0 0-.33-1.82l-.07-.08A10 10 0 0 0 12 6a10 10 0 0 0-6.26 2.22z"/>
-                        </svg>
-                    )
-                }
-            ];
-        }
+    // ============ MENU POUR ADMIN ============
+    const getAdminMenuItems = () => {
+        return [
+            {
+                path: '/dashboard/admin',
+                label: 'Tableau de bord',
+                key: 'dashboard',
+                badge: notificationCounts.pendingAdminValidations,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/users',
+                label: 'Utilisateurs',
+                key: 'users',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/leave-requests',
+                label: 'Demandes',
+                key: 'leave-requests',
+                badge: notificationCounts.pendingAdminValidations,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M4 4v16h16V4H4z"/>
+                        <line x1="8" y1="9" x2="16" y2="9"/>
+                        <line x1="8" y1="13" x2="16" y2="13"/>
+                        <line x1="8" y1="17" x2="12" y2="17"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/payroll',
+                label: 'Gestion de la paie',
+                key: 'payroll',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 6v6l4 2"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/calendar',
+                label: 'Calendrier',
+                key: 'calendar',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/settings',
+                label: 'Paramètres',
+                key: 'settings',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H5.78a1.65 1.65 0 0 0-1.51 1 1.65 1.65 0 0 0 .33 1.82l.07.08A10 10 0 0 0 12 18a10 10 0 0 0 6.26-2.22z"/>
+                        <path d="M4.6 9a1.65 1.65 0 0 0-.33 1.82c.26.61.79 1 1.51 1h12.44c.72 0 1.25-.39 1.51-1a1.65 1.65 0 0 0-.33-1.82l-.07-.08A10 10 0 0 0 12 6a10 10 0 0 0-6.26 2.22z"/>
+                    </svg>
+                )
+            }
+        ];
+    };
 
-        if (role === 'manager') {
-            return [
-                {
-                    path: '/dashboard/manager',
-                    label: 'Tableau de bord',
-                    key: 'dashboard',
-                    badge: notificationCounts.pendingValidations,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <rect x="3" y="3" width="7" height="7"/>
-                            <rect x="14" y="3" width="7" height="7"/>
-                            <rect x="14" y="14" width="7" height="7"/>
-                            <rect x="3" y="14" width="7" height="7"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/manager/team',
-                    label: 'Mon équipe',
-                    key: 'team',
-                    badge: notificationCounts.teamCount || 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                            <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/manager/validations',
-                    label: 'Validations',
-                    key: 'validations',
-                    badge: notificationCounts.pendingValidations,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                            <polyline points="22 4 12 14.01 9 11.01"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/manager/statistics',
-                    label: 'Statistiques',
-                    key: 'statistics',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <line x1="18" y1="20" x2="18" y2="10"/>
-                            <line x1="12" y1="20" x2="12" y2="4"/>
-                            <line x1="6" y1="20" x2="6" y2="14"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/manager/team-calendar',
-                    label: 'Calendrier équipe',
-                    key: 'team-calendar',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                            <line x1="16" y1="2" x2="16" y2="6"/>
-                            <line x1="8" y1="2" x2="8" y2="6"/>
-                            <line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                    )
-                },
-                {
-                    path: '/dashboard/manager/new-request',
-                    label: 'Ma demande de congé',
-                    key: 'my-request',
-                    badge: 0,
-                    icon: (active) => (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <circle cx="12" cy="12" r="10"/>
-                            <line x1="12" y1="8" x2="12" y2="16"/>
-                            <line x1="8" y1="12" x2="16" y2="12"/>
-                        </svg>
-                    )
-                }
-            ];
-        }
+    // ============ MENU POUR MANAGER (avec Mes demandes ajouté) ============
+    const getManagerMenuItems = () => {
+        return [
+            {
+                path: '/dashboard/manager',
+                label: 'Tableau de bord',
+                key: 'dashboard',
+                badge: notificationCounts.pendingValidations,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/manager/my-requests',
+                label: 'Mes demandes',
+                key: 'my-requests',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M4 4v16h16V4H4z"/>
+                        <line x1="8" y1="9" x2="16" y2="9"/>
+                        <line x1="8" y1="13" x2="16" y2="13"/>
+                        <line x1="8" y1="17" x2="12" y2="17"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/manager/team',
+                label: 'Mon équipe',
+                key: 'team',
+                badge: notificationCounts.teamCount || 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/manager/validations',
+                label: 'Validations',
+                key: 'validations',
+                badge: notificationCounts.pendingValidations,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/manager/stats',
+                label: 'Statistiques',
+                key: 'stats',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/manager/team-calendar',
+                label: 'Calendrier équipe',
+                key: 'team-calendar',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                )
+            }
+        ];
+    };
 
-        // Employé
+    // ============ MENU POUR EMPLOYÉ ============
+    const getEmployeeMenuItems = () => {
         return [
             {
                 path: '/dashboard/employee',
@@ -390,6 +392,13 @@ function Sidebar({ role, onLogout }) {
                 )
             }
         ];
+    };
+
+    // Choisir le menu selon le rôle
+    const getMenuItems = () => {
+        if (role === 'admin') return getAdminMenuItems();
+        if (role === 'manager') return getManagerMenuItems();
+        return getEmployeeMenuItems();
     };
 
     const isActive = (path) => {

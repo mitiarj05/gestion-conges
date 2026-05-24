@@ -265,27 +265,36 @@ function EmployeeDashboard({ onLogout }) {
 
     const handleCloseEdit = () => { setEditingRequest(null); setShowEditModal(false); };
 
-    const getStatusLabel = (status, motif_refus) => {
-        let normalizedStatus = status;
-        if (!status || status === 'En attente' || status === 'en_attente') normalizedStatus = 'pending_manager';
-        
-        switch(normalizedStatus) {
-            case 'pending_manager': 
-                return <span className="status-badge status-badge-pending">En attente manager</span>;
-            case 'pending_admin': 
-                return <span className="status-badge status-badge-admin">En attente admin</span>;
-            case 'approved': 
-                return <span className="status-badge status-badge-approved">Approuvé</span>;
-            case 'rejected': 
-                return (<><span className="status-badge status-badge-rejected">Refusé</span>
-                        {motif_refus && <div className="rejection-reason">Motif : {motif_refus}</div>}
-                        </>);
-            case 'cancelled':
-                return <span className="status-badge status-badge-cancelled">Annulé</span>;
-            default: 
-                return <span className="status-badge status-badge-pending">En attente</span>;
-        }
-    };
+    const getStatusLabel = (status, motif_refus, userRoles = []) => {
+    let normalizedStatus = status;
+    if (!status || status === 'En attente' || status === 'en_attente') normalizedStatus = 'pending_manager';
+    
+    // Vérifier si l'utilisateur est manager ou admin
+    const isManager = userRoles && userRoles.includes('manager');
+    const isAdmin = userRoles && userRoles.includes('admin');
+    
+    switch(normalizedStatus) {
+        case 'pending_manager': 
+            // Pour un manager qui fait une demande, le statut est pending_admin directement
+            // Cette condition ne devrait pas s'afficher pour les managers
+            if (isManager || isAdmin) {
+                return <span className="status-badge status-badge-admin">En attente validation admin</span>;
+            }
+            return <span className="status-badge status-badge-pending">En attente validation manager</span>;
+        case 'pending_admin': 
+            return <span className="status-badge status-badge-admin">En attente validation admin</span>;
+        case 'approved': 
+            return <span className="status-badge status-badge-approved">Approuvé</span>;
+        case 'rejected': 
+            return (<><span className="status-badge status-badge-rejected">Refusé</span>
+                    {motif_refus && <div className="rejection-reason">Motif : {motif_refus}</div>}
+                    </>);
+        case 'cancelled':
+            return <span className="status-badge status-badge-cancelled">Annulé</span>;
+        default: 
+            return <span className="status-badge status-badge-pending">En attente</span>;
+    }
+};
 
     const handleRequestSuccess = () => { 
         refreshAllData(); 
@@ -424,33 +433,85 @@ function EmployeeDashboard({ onLogout }) {
                         Voir toutes →
                     </button>
                 </div>
-                <div className="table-wrapper">
-                    <table className="modern-table">
-                        <thead>
-                            <tr>
-                                <th>Dates</th>
-                                <th>Type</th>
-                                <th>Durée</th>
-                                <th>Statut</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {requests.slice(0, 3).map((req) => (
-                                <tr key={req.id}>
-                                    <td className="date-cell">{req.displayDates}</td>
-                                    <td>{req.type}</td>
-                                    <td>{req.displayDuration}</td>
-                                    <td>{getStatusLabel(req.status, req.motif_refus)}</td>
-                                </tr>
+                <div className="table-wrapper-modern">
+    <table className="modern-table full-width">
+        <thead>
+            <tr>
+                <th>Dates</th>
+                <th>Type</th>
+                <th>Durée</th>
+                <th>Motif</th>
+                <th>Statut</th>
+                <th>Justificatif</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {filteredRequests.map((req) => {
+                const isApproved = req.status === 'approved';
+                const startDate = new Date(req.start_date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const canCancelApproved = isApproved && startDate > today;
+                
+                return (
+                    <tr key={req.id}>
+                        <td className="date-cell">{req.displayDates}</td>
+                        <td>{req.type}</td>
+                        <td>{req.displayDuration}</td>
+                        <td>{req.motif || '-'}</td>
+                        <td>{getStatusLabel(req.status, req.motif_refus, user.roles)}</td>
+                        <td>
+                            {justificatifs[req.id]?.length > 0 ? (
+                                <span className="badge-success">Fichier(s)</span>
+                            ) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (
+                                <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
                             ))}
-                            {requests.length === 0 && (
-                                <tr>
-                                    <td colSpan="4" className="empty-state">Aucune demande</td>
-                                </tr>
+                        </td>
+                        <td>
+                            {req.status === 'pending_manager' && (
+                                <div className="action-buttons">
+                                    {req.request_type !== 'permission' && (
+                                        <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
+                                                <path d="M4 20h16"/>
+                                            </svg>
+                                        </button>
+                                    )}
+                                    <button className="action-btn delete" onClick={() => handleDeleteRequest(req)} title="Supprimer">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
+                                        </svg>
+                                    </button>
+                                </div>
                             )}
-                        </tbody>
-                    </table>
-                </div>
+                            {req.status === 'approved' && canCancelApproved && (
+                                <div className="action-buttons">
+                                    <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler le congé">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M18 6L6 18M6 6l12 12"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            )}
+                            {req.status === 'approved' && !canCancelApproved && (
+                                <span className="info-text">Non annulable (délai dépassé)</span>
+                            )}
+                            {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
+                            {(req.status === 'rejected' || req.status === 'cancelled') && <span className="info-text">Non modifiable</span>}
+                        </td>
+                    </tr>
+                );
+            })}
+            {filteredRequests.length === 0 && (
+                <tr>
+                    <td colSpan="7" className="empty-state">Aucune demande</td>
+                </tr>
+            )}
+        </tbody>
+    </table>
+</div>
             </div>
             
             {renderEditModal()}

@@ -64,6 +64,7 @@ export const leaveService = {
     getTeamAbsences: () => apiClient.get('/leaves/team-absences'),
     getAllAbsences: () => apiClient.get('/leaves/all-absences'),
     getTeamStats: () => apiClient.get('/leaves/team-stats'),
+    getManagerDashboardStats: () => apiClient.get('/leaves/manager-dashboard-stats'),
     getNotifications: () => apiClient.get('/leaves/notifications'),
     markNotificationRead: (id) => apiClient.put(`/leaves/notifications/${id}/read`),
     getJustificatifs: (demandeId) => apiClient.get(`/leaves/justificatifs/${demandeId}`),
