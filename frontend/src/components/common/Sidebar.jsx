@@ -12,7 +12,6 @@ function Sidebar({ role, onLogout }) {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
 
-    // État des notifications par menu
     const [notificationCounts, setNotificationCounts] = useState({
         pendingRequests: 0,
         pendingValidations: 0,
@@ -97,7 +96,6 @@ function Sidebar({ role, onLogout }) {
         }
     };
 
-    // Composant Badge - Cercle rouge
     const Badge = ({ count }) => {
         if (!count || count === 0) return null;
         const countStr = String(count);
@@ -266,9 +264,8 @@ function Sidebar({ role, onLogout }) {
                         </svg>
                     )
                 },
-                // NOUVEAU MENU - Faire une demande de congé pour manager
                 {
-                    path: '/dashboard/employee/new-request',
+                    path: '/dashboard/manager/new-request',
                     label: 'Ma demande de congé',
                     key: 'my-request',
                     badge: 0,
@@ -411,7 +408,6 @@ function Sidebar({ role, onLogout }) {
         }
     };
 
-    // Version mobile
     if (isMobile) {
         return (
             <aside className="sidebar" style={{ padding: '16px' }}>
@@ -492,7 +488,6 @@ function Sidebar({ role, onLogout }) {
         );
     }
 
-    // Version desktop avec réduction
     return (
         <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
             <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 16px 16px 16px' }}>

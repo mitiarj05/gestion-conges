@@ -10,6 +10,7 @@ import TeamList from './TeamList';
 import PendingValidations from './PendingValidations';
 import TeamStatistics from './TeamStatistics';
 import TeamCalendar from './TeamCalendar';
+import LeaveRequest from '../employee/LeaveRequest';
 import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
 
@@ -94,6 +95,12 @@ function ManagerDashboard({ onLogout }) {
     const refreshData = () => {
         fetchAllData();
         success('Données actualisées');
+    };
+
+    const handleRequestSuccess = () => {
+        refreshAllData();
+        success('Demande de congé envoyée !');
+        navigate('/dashboard/manager');
     };
 
     if (loading) {
@@ -198,8 +205,7 @@ function ManagerDashboard({ onLogout }) {
             <div className="quick-actions">
                 <h3>Actions rapides</h3>
                 <div className="quick-actions-grid">
-                    {/* NOUVEAU BOUTON - Faire une demande de congé pour manager */}
-                    <button className="quick-action-btn primary" onClick={() => navigate('/dashboard/employee/new-request')}>
+                    <button className="quick-action-btn primary" onClick={() => navigate('/dashboard/manager/new-request')}>
                         <span className="quick-action-icon">📝</span>
                         <span>Faire une demande de congé</span>
                     </button>
@@ -234,6 +240,22 @@ function ManagerDashboard({ onLogout }) {
     );
 
     const currentPath = location.pathname;
+
+    if (currentPath === '/dashboard/manager/new-request') {
+        return (
+            <>
+                <Navbar user={user} role="manager" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="manager" onLogout={onLogout} />
+                    <main className="main-content">
+                        <LeaveRequest onSuccess={handleRequestSuccess} />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
 
     if (currentPath === '/dashboard/manager/team-calendar' || currentPath.includes('/team-calendar')) {
         return (

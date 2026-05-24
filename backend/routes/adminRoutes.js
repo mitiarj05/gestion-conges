@@ -534,8 +534,14 @@ router.put('/final-approve/:id', async (req, res) => {
     const io = req.app.get('io');
     
     try {
+        // Récupérer la demande ET les rôles de l'utilisateur via une sous-requête
         const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id, u.roles
+            `SELECT dc.*, 
+                    u.nom, u.prenom, u.email, u.manager_id,
+                    (SELECT array_agg(DISTINCT r.nom) 
+                     FROM utilisateurs_roles ur 
+                     JOIN roles r ON ur.role_id = r.id 
+                     WHERE ur.utilisateur_id = u.id) as roles
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
@@ -581,7 +587,7 @@ router.put('/final-approve/:id', async (req, res) => {
             lien: '/dashboard/employee/requests'
         });
         
-        // EMAIL POUR LE DEMANDEUR (employé OU manager)
+        // EMAIL POUR LE DEMANDEUR
         try {
             if (estManager) {
                 await sendManagerApprovalEmail(
@@ -658,8 +664,14 @@ router.put('/final-reject/:id', async (req, res) => {
     const io = req.app.get('io');
     
     try {
+        // Récupérer la demande ET les rôles de l'utilisateur via une sous-requête
         const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id, u.roles
+            `SELECT dc.*, 
+                    u.nom, u.prenom, u.email, u.manager_id,
+                    (SELECT array_agg(DISTINCT r.nom) 
+                     FROM utilisateurs_roles ur 
+                     JOIN roles r ON ur.role_id = r.id 
+                     WHERE ur.utilisateur_id = u.id) as roles
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
@@ -695,7 +707,7 @@ router.put('/final-reject/:id', async (req, res) => {
             lien: '/dashboard/employee/requests'
         });
         
-        // EMAIL POUR LE DEMANDEUR (employé OU manager)
+        // EMAIL POUR LE DEMANDEUR
         try {
             if (estManager) {
                 await sendManagerRejectionEmail(
