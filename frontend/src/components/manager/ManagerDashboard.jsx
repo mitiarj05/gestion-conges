@@ -198,6 +198,11 @@ function ManagerDashboard({ onLogout }) {
             <div className="quick-actions">
                 <h3>Actions rapides</h3>
                 <div className="quick-actions-grid">
+                    {/* NOUVEAU BOUTON - Faire une demande de congé pour manager */}
+                    <button className="quick-action-btn primary" onClick={() => navigate('/dashboard/employee/new-request')}>
+                        <span className="quick-action-icon">📝</span>
+                        <span>Faire une demande de congé</span>
+                    </button>
                     <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/team')}>
                         <span className="quick-action-icon">👥</span>
                         <span>Gérer mon équipe</span>

@@ -1,3 +1,4 @@
+// backend/middleware/roleCheck.js
 const requireRoles = (allowedRoles) => {
     return (req, res, next) => {
         if (!req.user) {

@@ -6,7 +6,12 @@ const XLSX = require('xlsx');
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { requireRoles } = require('../middleware/roleCheck');
-const { sendAdminApprovalEmail, sendAdminRejectionEmail } = require('../utils/emailService');
+const { 
+    sendAdminApprovalEmail, 
+    sendAdminRejectionEmail,
+    sendManagerApprovalEmail,
+    sendManagerRejectionEmail
+} = require('../utils/emailService');
 
 router.use(authMiddleware);
 router.use(requireRoles(['admin']));
@@ -90,7 +95,6 @@ router.get('/stats-by-month', async (req, res) => {
 // ============ STATISTIQUES PAR TYPE ============
 router.get('/stats-by-type', async (req, res) => {
     try {
-        // Requête qui retourne TOUS les types même ceux sans données
         const result = await pool.query(`
             SELECT 
                 type_id,
@@ -111,7 +115,6 @@ router.get('/stats-by-type', async (req, res) => {
             ORDER BY type_id ASC
         `);
         
-        // Formater la réponse pour le graphique
         const formattedResult = result.rows.map(row => ({
             type: row.type_nom,
             total: parseInt(row.total) || 0
@@ -524,6 +527,7 @@ router.get('/pending-approvals', async (req, res) => {
     }
 });
 
+// ============ FINAL APPROVE (avec email pour manager) ============
 router.put('/final-approve/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
@@ -531,7 +535,7 @@ router.put('/final-approve/:id', async (req, res) => {
     
     try {
         const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
+            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id, u.roles
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
@@ -543,6 +547,8 @@ router.put('/final-approve/:id', async (req, res) => {
         }
         
         const demande = requestResult.rows[0];
+        const demandeurRoles = demande.roles || [];
+        const estManager = demandeurRoles.includes('manager');
         
         await pool.query(
             `UPDATE demandes_conges 
@@ -561,6 +567,7 @@ router.put('/final-approve/:id', async (req, res) => {
             );
         }
         
+        // Notification pour le demandeur
         await pool.query(
             `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
              VALUES ($1, 'approuve_final', 'Congé définitivement approuvé', 
@@ -574,6 +581,30 @@ router.put('/final-approve/:id', async (req, res) => {
             lien: '/dashboard/employee/requests'
         });
         
+        // EMAIL POUR LE DEMANDEUR (employé OU manager)
+        try {
+            if (estManager) {
+                await sendManagerApprovalEmail(
+                    demande.email,
+                    `${demande.prenom} ${demande.nom}`,
+                    `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.nombre_jours
+                );
+                console.log(`✅ Email d'approbation envoyé au manager ${demande.email}`);
+            } else {
+                await sendAdminApprovalEmail(
+                    demande.email,
+                    `${demande.prenom} ${demande.nom}`,
+                    `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.nombre_jours
+                );
+                console.log(`✅ Email d'approbation envoyé à l'employé ${demande.email}`);
+            }
+        } catch (emailError) {
+            console.error('Erreur envoi email approbation:', emailError);
+        }
+        
+        // Notification pour le manager (si la demande vient d'un employé)
         if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
@@ -589,19 +620,25 @@ router.put('/final-approve/:id', async (req, res) => {
             });
         }
         
-        try {
-            const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
-            if (employeEmailResult.rows.length > 0) {
-                const employe = employeEmailResult.rows[0];
-                await sendAdminApprovalEmail(
-                    employe.email,
-                    `${employe.prenom} ${demande.nom}`,
-                    `${demande.date_debut} au ${demande.date_fin}`,
-                    demande.nombre_jours
-                );
+        // Si le demandeur est manager, envoyer aussi une notification à son manager (si existant)
+        if (estManager) {
+            const managerOfManager = await pool.query(`SELECT manager_id, email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
+            const managerId = managerOfManager.rows[0]?.manager_id;
+            
+            if (managerId) {
+                const managerInfo = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [managerId]);
+                if (managerInfo.rows.length > 0) {
+                    const manager = managerInfo.rows[0];
+                    await sendManagerApprovalEmail(
+                        manager.email,
+                        `${manager.prenom}`,
+                        `Le manager ${demande.prenom} ${demande.nom}`,
+                        `${demande.date_debut} au ${demande.date_fin}`,
+                        demande.nombre_jours
+                    );
+                    console.log(`✅ Email d'approbation envoyé au manager du manager: ${manager.email}`);
+                }
             }
-        } catch (emailError) {
-            console.error('Erreur envoi email:', emailError);
         }
         
         res.json({ message: 'Demande définitivement approuvée' });
@@ -612,6 +649,7 @@ router.put('/final-approve/:id', async (req, res) => {
     }
 });
 
+// ============ FINAL REJECT (avec email pour manager) ============
 router.put('/final-reject/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
@@ -621,7 +659,7 @@ router.put('/final-reject/:id', async (req, res) => {
     
     try {
         const requestResult = await pool.query(
-            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id
+            `SELECT dc.*, u.nom, u.prenom, u.email, u.manager_id, u.roles
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              WHERE dc.id = $1 AND dc.statut = 'pending_admin'`,
@@ -633,6 +671,8 @@ router.put('/final-reject/:id', async (req, res) => {
         }
         
         const demande = requestResult.rows[0];
+        const demandeurRoles = demande.roles || [];
+        const estManager = demandeurRoles.includes('manager');
         
         await pool.query(
             `UPDATE demandes_conges 
@@ -641,6 +681,7 @@ router.put('/final-reject/:id', async (req, res) => {
             [adminId, motifFinal, requestId]
         );
         
+        // Notification pour le demandeur
         await pool.query(
             `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
              VALUES ($1, 'refus_admin', 'Demande de congé refusée', 
@@ -654,6 +695,30 @@ router.put('/final-reject/:id', async (req, res) => {
             lien: '/dashboard/employee/requests'
         });
         
+        // EMAIL POUR LE DEMANDEUR (employé OU manager)
+        try {
+            if (estManager) {
+                await sendManagerRejectionEmail(
+                    demande.email,
+                    `${demande.prenom} ${demande.nom}`,
+                    `${demande.date_debut} au ${demande.date_fin}`,
+                    motifFinal
+                );
+                console.log(`✅ Email de refus envoyé au manager ${demande.email}`);
+            } else {
+                await sendAdminRejectionEmail(
+                    demande.email,
+                    `${demande.prenom} ${demande.nom}`,
+                    `${demande.date_debut} au ${demande.date_fin}`,
+                    motifFinal
+                );
+                console.log(`✅ Email de refus envoyé à l'employé ${demande.email}`);
+            }
+        } catch (emailError) {
+            console.error('Erreur envoi email refus:', emailError);
+        }
+        
+        // Notification pour le manager (si la demande vient d'un employé)
         if (demande.manager_id) {
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
@@ -669,19 +734,24 @@ router.put('/final-reject/:id', async (req, res) => {
             });
         }
         
-        try {
-            const employeEmailResult = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
-            if (employeEmailResult.rows.length > 0) {
-                const employe = employeEmailResult.rows[0];
-                await sendAdminRejectionEmail(
-                    employe.email,
-                    `${employe.prenom} ${demande.nom}`,
-                    `${demande.date_debut} au ${demande.date_fin}`,
-                    motifFinal
-                );
+        // Si le demandeur est manager, envoyer aussi une notification à son manager (si existant)
+        if (estManager) {
+            const managerOfManager = await pool.query(`SELECT manager_id, email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
+            const managerId = managerOfManager.rows[0]?.manager_id;
+            
+            if (managerId) {
+                const managerInfo = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [managerId]);
+                if (managerInfo.rows.length > 0) {
+                    const manager = managerInfo.rows[0];
+                    await sendManagerRejectionEmail(
+                        manager.email,
+                        `${manager.prenom}`,
+                        `La demande du manager ${demande.prenom} ${demande.nom}`,
+                        motifFinal
+                    );
+                    console.log(`✅ Email de refus envoyé au manager du manager: ${manager.email}`);
+                }
             }
-        } catch (emailError) {
-            console.error('Erreur envoi email:', emailError);
         }
         
         res.json({ message: 'Demande définitivement refusée' });
@@ -763,10 +833,8 @@ router.get('/managers-list', async (req, res) => {
 // ============ NOTIFICATIONS ADMIN ============
 router.get('/notifications', async (req, res) => {
     try {
-        // Notifications pour admin : validations en attente, nouveaux utilisateurs, etc.
         const adminId = req.user.id;
         
-        // Demandes en attente de validation admin
         const pendingValidations = await pool.query(`
             SELECT 
                 'validation_requise' as type,
@@ -784,7 +852,6 @@ router.get('/notifications', async (req, res) => {
             LIMIT 20
         `);
         
-        // Notifications génériques admin
         const adminNotifications = await pool.query(`
             SELECT * FROM notifications 
             WHERE utilisateur_id = $1 OR (utilisateur_id IS NULL AND type IN ('admin_broadcast', 'system'))
@@ -792,7 +859,6 @@ router.get('/notifications', async (req, res) => {
             LIMIT 20
         `, [adminId]);
         
-        // Fusionner les notifications
         const allNotifications = [...pendingValidations.rows, ...adminNotifications.rows];
         allNotifications.sort((a, b) => new Date(b.cree_le) - new Date(a.cree_le));
         
