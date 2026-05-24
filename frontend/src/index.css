@@ -11797,3 +11797,228 @@ button:active,
     font-size: 10px;
     color: #6c757d;
 }
+/* ====================================================
+   VARIABLES CSS POUR MODE SOMBRE - GÉNÉRATION MASSIVE
+   ==================================================== */
+
+/* Définition des variables pour le mode clair */
+:root {
+    --info-bg: #e8f4fd;
+    --info-text: #1e40af;
+    --success-bg: #f0fdf4;
+    --success-text: #065f46;
+    --bg-input: #ffffff;
+    --bg-card: #ffffff;
+    --bg-tertiary: #f1f5f9;
+    --border-light: #e2e8f0;
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-tertiary: #64748b;
+    --warning-bg: #fff3cd;
+    --warning-text: #856404;
+}
+
+/* Redéfinition des variables pour le mode sombre */
+[data-theme="dark"] {
+    --info-bg: #1e3a8a;
+    --info-text: #93c5fd;
+    --success-bg: #064e3b;
+    --success-text: #6ee7b7;
+    --bg-input: #334155;
+    --bg-card: #1e293b;
+    --bg-tertiary: #334155;
+    --border-light: #475569;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-tertiary: #94a3b8;
+    --warning-bg: #78350f;
+    --warning-text: #fde68a;
+}
+
+/* Application des variables aux éléments de la modale */
+[data-theme="dark"] .info-box-massive {
+    background: var(--info-bg) !important;
+    color: var(--info-text) !important;
+}
+
+[data-theme="dark"] .info-box-massive strong {
+    color: var(--info-text) !important;
+}
+
+[data-theme="dark"] .info-box-massive span {
+    color: var(--info-text) !important;
+}
+
+[data-theme="dark"] .info-box-prime {
+    background: var(--success-bg) !important;
+    color: var(--success-text) !important;
+}
+
+[data-theme="dark"] .info-box-prime strong {
+    color: var(--success-text) !important;
+}
+
+[data-theme="dark"] .form-input {
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-light) !important;
+}
+
+[data-theme="dark"] .form-input::placeholder {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="dark"] .form-group label {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .info-text {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="dark"] .checkbox-label {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .employees-selection-list {
+    background: var(--bg-card) !important;
+    border-color: var(--border-light) !important;
+}
+
+[data-theme="dark"] .employees-selection-list label {
+    border-bottom-color: var(--border-light) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .employees-selection-list label strong {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .employees-selection-list span {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="dark"] .services-checkboxes label {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .btn-sm {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-light) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .btn-cancel {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-light) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .btn-cancel:hover {
+    background: var(--border-light) !important;
+}
+
+[data-theme="dark"] .stat-card-preview {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .stat-card-preview div:first-child {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .stat-card-preview div:last-child {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="dark"] .stat-card-preview.warning {
+    background: var(--warning-bg) !important;
+}
+
+[data-theme="dark"] .stat-card-preview.warning div:first-child {
+    color: var(--warning-text) !important;
+}
+
+[data-theme="dark"] .stat-card-preview.warning div:last-child {
+    color: var(--warning-text) !important;
+}
+
+[data-theme="dark"] .preview-section .info-box {
+    background: var(--warning-bg) !important;
+    color: var(--warning-text) !important;
+}
+
+[data-theme="dark"] .modern-table th {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border-light) !important;
+}
+
+[data-theme="dark"] .modern-table td {
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--border-light) !important;
+}
+
+[data-theme="dark"] .modern-table tr:hover td {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .stats-cards-grid .stat-card.small {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="dark"] .stats-cards-grid .stat-card.small .stat-value {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .stats-cards-grid .stat-card.small .stat-label {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="dark"] .stats-cards-grid .stat-card.small.warning .stat-value {
+    color: var(--warning-text) !important;
+}
+
+[data-theme="dark"] .stats-cards-grid .stat-card.small.warning .stat-label {
+    color: var(--warning-text) !important;
+}
+/* ====================================================
+   BOUTON ANNULER ROUGE UNIFORME
+   ==================================================== */
+
+.btn-cancel-danger {
+    background: #dc3545 !important;
+    color: white !important;
+    border: none !important;
+    padding: 10px 20px !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    font-size: 14px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    min-width: 100px !important;
+    height: 38px !important;
+}
+
+.btn-cancel-danger:hover {
+    background: #c82333 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3) !important;
+}
+
+.btn-cancel-danger:active {
+    transform: scale(0.96) !important;
+}
+
+/* Mode sombre pour le bouton annuler */
+[data-theme="dark"] .btn-cancel-danger {
+    background: #dc3545 !important;
+    color: white !important;
+}
+
+[data-theme="dark"] .btn-cancel-danger:hover {
+    background: #c82333 !important;
+}

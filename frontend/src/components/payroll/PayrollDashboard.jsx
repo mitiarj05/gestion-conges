@@ -4,6 +4,8 @@ import axios from 'axios';
 import { API_URL } from '../../config/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import Modal from '../common/Modal';
+import ToastNotification from '../notifications/ToastNotification';
 
 function PayrollDashboard() {
     const [bulletins, setBulletins] = useState([]);
@@ -12,21 +14,36 @@ function PayrollDashboard() {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [showMassGenerateModal, setShowMassGenerateModal] = useState(false);
     const [selectedBulletin, setSelectedBulletin] = useState(null);
     const [message, setMessage] = useState('');
+    const [toasts, setToasts] = useState([]);
     
+    // Filtres pour la liste des employés
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('all');
     const [filterService, setFilterService] = useState('all');
     const [services, setServices] = useState([]);
     
-    const [formData, setFormData] = useState({
-        utilisateur_id: '',
-        mois: new Date().getMonth() + 1,
-        annee: new Date().getFullYear(),
-        salaire_base: '',
-        prime: 0
-    });
+    // Filtres pour la génération massive
+    const [massGenerateFilters, setMassGenerateFilters] = useState({
+    mois: new Date().getMonth() + 1,
+    annee: new Date().getFullYear(),
+    prime_fixe: 0,
+    prime_pourcentage: 0,
+    services: [],
+    exclure_payes: true,
+    employes_selectionnes: [],
+    envoyer_email: true  // Par défaut true
+});
+    
+    // Aperçu avant génération massive
+    const [previewData, setPreviewData] = useState(null);
+    const [showPreviewModal, setShowPreviewModal] = useState(false);
+    
+    // Sélection manuelle des employés
+    const [selectAllMode, setSelectAllMode] = useState(false);
+    const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
 
     const getAuthHeaders = () => ({
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -35,11 +52,49 @@ function PayrollDashboard() {
     const moisNoms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
                       'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
+    const addToast = (message, type = 'info', duration = 5000) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type, duration }]);
+        setTimeout(() => removeToast(id), duration);
+    };
+
+    const removeToast = (id) => {
+        setToasts(prev => prev.filter(toast => toast.id !== id));
+    };
+
     useEffect(() => {
         fetchAllData();
     }, []);
 
     useEffect(() => {
+        filterEmployees();
+    }, [employees, searchTerm, filterRole, filterService]);
+
+    const fetchAllData = async () => {
+        setLoading(true);
+        try {
+            const [bulletinsRes, employeesRes, statsRes] = await Promise.all([
+                axios.get(`${API_URL}/payroll/tous-bulletins`, getAuthHeaders()),
+                axios.get(`${API_URL}/admin/employees-for-payroll`, getAuthHeaders()),
+                axios.get(`${API_URL}/payroll/stats`, getAuthHeaders())
+            ]);
+            
+            setBulletins(bulletinsRes.data);
+            setEmployees(employeesRes.data);
+            setFilteredEmployees(employeesRes.data);
+            setStats(statsRes.data);
+            
+            const uniqueServices = [...new Set(employeesRes.data.map(emp => emp.service).filter(s => s))];
+            setServices(uniqueServices);
+        } catch (error) {
+            console.error('Erreur chargement:', error);
+            addToast('Erreur lors du chargement des données', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const filterEmployees = () => {
         let filtered = [...employees];
         
         if (searchTerm && searchTerm.trim() !== '') {
@@ -68,44 +123,11 @@ function PayrollDashboard() {
         }
         
         setFilteredEmployees(filtered);
-    }, [employees, searchTerm, filterRole, filterService]);
-
-    const fetchAllData = async () => {
-        setLoading(true);
-        try {
-            const [bulletinsRes, employeesRes, statsRes] = await Promise.all([
-                axios.get(`${API_URL}/payroll/tous-bulletins`, getAuthHeaders()),
-                axios.get(`${API_URL}/admin/employees-for-payroll`, getAuthHeaders()),
-                axios.get(`${API_URL}/payroll/stats`, getAuthHeaders())
-            ]);
-            
-            setBulletins(bulletinsRes.data);
-            setEmployees(employeesRes.data);
-            setFilteredEmployees(employeesRes.data);
-            setStats(statsRes.data);
-            
-            const uniqueServices = [...new Set(employeesRes.data.map(emp => emp.service).filter(s => s))];
-            setServices(uniqueServices);
-        } catch (error) {
-            console.error('Erreur chargement:', error);
-        } finally {
-            setLoading(false);
-        }
     };
 
     const resetForm = () => {
-        setFormData({
-            utilisateur_id: '',
-            mois: new Date().getMonth() + 1,
-            annee: new Date().getFullYear(),
-            salaire_base: '',
-            prime: 0
-        });
         setSelectedBulletin(null);
         setMessage('');
-        setSearchTerm('');
-        setFilterRole('all');
-        setFilterService('all');
     };
 
     const resetFilters = () => {
@@ -125,6 +147,14 @@ function PayrollDashboard() {
             });
         }
     };
+
+    const [formData, setFormData] = useState({
+        utilisateur_id: '',
+        mois: new Date().getMonth() + 1,
+        annee: new Date().getFullYear(),
+        salaire_base: '',
+        prime: 0
+    });
 
     const handleGenererBulletin = async (e) => {
         e.preventDefault();
@@ -148,6 +178,7 @@ function PayrollDashboard() {
                 getAuthHeaders()
             );
             setMessage(response.data.message);
+            addToast(response.data.message, 'success');
             setTimeout(() => {
                 setShowModal(false);
                 resetForm();
@@ -155,37 +186,149 @@ function PayrollDashboard() {
             }, 1500);
         } catch (error) {
             console.error('Erreur génération:', error);
-            setMessage('Erreur: ' + (error.response?.data?.message || 'Erreur'));
+            const errorMsg = error.response?.data?.message || 'Erreur lors de la génération';
+            setMessage(errorMsg);
+            addToast(errorMsg, 'error');
         }
     };
 
-    const handleGenererTous = async () => {
-        if (!window.confirm(`Générer les bulletins pour tous les employés (${moisNoms[formData.mois - 1]} ${formData.annee}) ?\n\nChaque employé utilisera son propre salaire de base.`)) {
-            return;
+    // ============ APERÇU AVANT GÉNÉRATION MASSIVE ============
+    const handlePreviewMassGenerate = async () => {
+        const { mois, annee, prime_fixe, prime_pourcentage, services, exclure_payes, employes_selectionnes } = massGenerateFilters;
+        
+        // Filtrer les employés
+        let employesCibles = [...employees];
+        
+        // Filtrer par services
+        if (services && services.length > 0) {
+            employesCibles = employesCibles.filter(emp => services.includes(emp.service));
         }
-
-        try {
-            const response = await axios.post(
-                `${API_URL}/payroll/generer-bulletins-equipe`,
-                { 
-                    mois: parseInt(formData.mois), 
-                    annee: parseInt(formData.annee) 
-                },
-                getAuthHeaders()
+        
+        // Filtrer par sélection manuelle (si mode sélection actif)
+        if (selectAllMode === false && selectedEmployeeIds.length > 0) {
+            employesCibles = employesCibles.filter(emp => selectedEmployeeIds.includes(emp.id));
+        }
+        
+        const employesAvecBulletins = [];
+        let bulletinsExistants = 0;
+        let totalNet = 0;
+        let totalSalaireBase = 0;
+        let totalPrime = 0;
+        
+        for (const emp of employesCibles) {
+            // Vérifier si bulletin existe déjà
+            const existe = bulletins.some(b => 
+                b.utilisateur_id === emp.id && 
+                b.mois === mois && 
+                b.annee === annee
             );
             
-            let detailMessage = 'Détail des bulletins générés :\n\n';
-            if (response.data.details && response.data.details.length > 0) {
-                response.data.details.forEach(detail => {
-                    detailMessage += `• ${detail}\n`;
-                });
+            // Exclure les employés déjà payés si l'option est activée
+            if (exclure_payes && existe) {
+                bulletinsExistants++;
+                continue;
             }
-            alert(response.data.message + '\n\n' + detailMessage);
-            fetchAllData();
-        } catch (error) {
-            alert('Erreur: ' + (error.response?.data?.message || 'Erreur'));
+            
+            const salaireBase = emp.salaire_base || 500000;
+            const primeCalculee = parseFloat(prime_fixe) + (salaireBase * parseFloat(prime_pourcentage) / 100);
+            const netEstime = Math.round((salaireBase + primeCalculee) * 100) / 100;
+            
+            totalNet += netEstime;
+            totalSalaireBase += salaireBase;
+            totalPrime += primeCalculee;
+            
+            employesAvecBulletins.push({
+                ...emp,
+                salaire_base: salaireBase,
+                prime_calculee: Math.round(primeCalculee * 100) / 100,
+                net_estime: netEstime,
+                bulletin_existe: existe
+            });
         }
+        
+        // Statistiques par service
+        const statsParService = {};
+        employesAvecBulletins.forEach(emp => {
+            const service = emp.service || 'Sans service';
+            if (!statsParService[service]) {
+                statsParService[service] = { count: 0, totalNet: 0 };
+            }
+            statsParService[service].count++;
+            statsParService[service].totalNet += emp.net_estime;
+        });
+        
+        setPreviewData({
+            employes: employesAvecBulletins,
+            total_employes: employesAvecBulletins.length,
+            bulletins_existants: bulletinsExistants,
+            total_net: totalNet,
+            total_salaire_base: totalSalaireBase,
+            total_prime: totalPrime,
+            prime_moyenne: employesAvecBulletins.length > 0 ? totalPrime / employesAvecBulletins.length : 0,
+            stats_par_service: statsParService
+        });
+        
+        setShowPreviewModal(true);
     };
+
+    // ============ GÉNÉRATION MASSIVE ============
+    const handleMassGenerate = async () => {
+    if (!previewData || previewData.employes.length === 0) {
+        addToast('Aucun employé à générer', 'warning');
+        return;
+    }
+    
+    if (!window.confirm(`⚠️ Génération massive de bulletins\n\n` +
+        `📊 ${previewData.employes.length} bulletin(s) vont être générés\n` +
+        `💰 Total net estimé: ${previewData.total_net.toLocaleString()} Ar\n` +
+        `📧 ${massGenerateFilters.envoyer_email ? 'Les employés recevront une notification par email' : 'Aucun email ne sera envoyé'}\n\n` +
+        `Confirmez-vous cette opération ?`)) {
+        return;
+    }
+    
+    try {
+        const response = await axios.post(
+            `${API_URL}/payroll/generer-bulletins-equipe`,
+            { 
+                mois: massGenerateFilters.mois, 
+                annee: massGenerateFilters.annee,
+                envoyer_email: massGenerateFilters.envoyer_email
+            },
+            getAuthHeaders()
+        );
+        
+        let message = response.data.message;
+        if (response.data.emailSentCount > 0) {
+            message += `\n\n📧 ${response.data.emailSentCount} email(s) envoyé(s) aux employés.`;
+        }
+        if (response.data.emailErrors && response.data.emailErrors.length > 0) {
+            message += `\n⚠️ ${response.data.emailErrors.length} erreur(s) d'envoi d'email.`;
+        }
+        
+        alert(message);
+        
+        if (response.data.details && response.data.details.length > 0) {
+            console.log('Détails:', response.data.details);
+        }
+        
+        setShowMassGenerateModal(false);
+        setShowPreviewModal(false);
+        setPreviewData(null);
+        setSelectedEmployeeIds([]);
+        setSelectAllMode(true);
+        fetchAllData();
+        
+        if (response.data.successCount > 0) {
+            addToast(`✅ ${response.data.successCount} bulletin(s) généré(s) avec succès`, 'success');
+        }
+        if (response.data.emailSentCount > 0) {
+            addToast(`📧 ${response.data.emailSentCount} email(s) envoyé(s) aux employés`, 'success');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        addToast('Erreur lors de la génération massive', 'error');
+    }
+};
 
     const handleMarquerPaye = async (id) => {
         if (!window.confirm('Marquer ce bulletin comme payé ?')) return;
@@ -195,25 +338,24 @@ function PayrollDashboard() {
                 {},
                 getAuthHeaders()
             );
-            alert('Bulletin marqué comme payé');
+            addToast('Bulletin marqué comme payé', 'success');
             fetchAllData();
         } catch (error) {
-            alert('Erreur');
+            addToast('Erreur', 'error');
         }
     };
 
     const handleSupprimer = async (id) => {
         if (!window.confirm('Supprimer ce bulletin ? Cette action est irréversible.')) return;
-
         try {
             await axios.delete(
                 `${API_URL}/payroll/bulletin/${id}`,
                 getAuthHeaders()
             );
-            alert('Bulletin supprimé');
+            addToast('Bulletin supprimé', 'success');
             fetchAllData();
         } catch (error) {
-            alert('Erreur lors de la suppression');
+            addToast('Erreur lors de la suppression', 'error');
         }
     };
 
@@ -243,6 +385,7 @@ function PayrollDashboard() {
                 getAuthHeaders()
             );
             setMessage(response.data.message);
+            addToast(response.data.message, 'success');
             setTimeout(() => {
                 setShowModal(false);
                 setSelectedBulletin(null);
@@ -250,7 +393,9 @@ function PayrollDashboard() {
                 fetchAllData();
             }, 1500);
         } catch (error) {
-            setMessage('Erreur: ' + (error.response?.data?.message || 'Erreur'));
+            const errorMsg = error.response?.data?.message || 'Erreur';
+            setMessage(errorMsg);
+            addToast(errorMsg, 'error');
         }
     };
 
@@ -328,6 +473,34 @@ function PayrollDashboard() {
         return { icon: '👤', text: 'Employé', color: '#10b981' };
     };
 
+    const toggleServiceSelection = (service) => {
+        setMassGenerateFilters(prev => {
+            const newServices = prev.services.includes(service)
+                ? prev.services.filter(s => s !== service)
+                : [...prev.services, service];
+            return { ...prev, services: newServices };
+        });
+    };
+
+    const toggleEmployeeSelection = (employeeId) => {
+        setSelectedEmployeeIds(prev => 
+            prev.includes(employeeId)
+                ? prev.filter(id => id !== employeeId)
+                : [...prev, employeeId]
+        );
+        setSelectAllMode(false);
+    };
+
+    const selectAllEmployees = () => {
+        setSelectAllMode(true);
+        setSelectedEmployeeIds([]);
+    };
+
+    const deselectAllEmployees = () => {
+        setSelectAllMode(false);
+        setSelectedEmployeeIds([]);
+    };
+
     if (loading) {
         return (
             <div className="loading-container">
@@ -344,6 +517,8 @@ function PayrollDashboard() {
 
     return (
         <div className="payroll-dashboard">
+            <ToastNotification toasts={toasts} removeToast={removeToast} />
+            
             {/* En-tête */}
             <div className="dashboard-header">
                 <div className="dashboard-header-content">
@@ -360,7 +535,7 @@ function PayrollDashboard() {
                 </div>
             </div>
 
-            {/* Cartes statistiques modernes */}
+            {/* Cartes statistiques */}
             <div className="payroll-stats-grid">
                 <div className="payroll-stat-card">
                     <div className="payroll-stat-icon blue">
@@ -427,11 +602,14 @@ function PayrollDashboard() {
                     </svg>
                     Générer un bulletin
                 </button>
-                <button className="btn-secondary" onClick={handleGenererTous}>
+                <button className="btn-secondary" onClick={() => { setShowMassGenerateModal(true); setPreviewData(null); }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                     </svg>
-                    Générer pour tous ({moisNoms[formData.mois - 1]} {formData.annee})
+                    Génération massive
                 </button>
             </div>
 
@@ -547,185 +725,519 @@ function PayrollDashboard() {
                 </div>
             </div>
 
-            {/* Modal de génération/modification */}
-            {showModal && (
-                <div className="modal-overlay" onClick={(e) => {
-                    if (e.target === e.currentTarget) { setShowModal(false); resetForm(); }
-                }}>
-                    <div className="modal" style={{ maxWidth: '650px' }}>
-                        <div className="modal-header">
-                            <h3>{selectedBulletin ? 'Modifier le bulletin' : 'Générer un bulletin de paie'}</h3>
-                            <button className="modal-close" onClick={() => { setShowModal(false); resetForm(); }}>✖</button>
+            {/* MODAL GÉNÉRATION INDIVIDUELLE */}
+            <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title="📄 Générer un bulletin">
+                {message && (
+                    <div className={message.includes('succès') ? 'success-message' : 'error-message'}>
+                        {message}
+                    </div>
+                )}
+                <form onSubmit={selectedBulletin ? handleSaveModification : handleGenererBulletin}>
+                    <div className="form-group">
+                        <label>Employé *</label>
+                        <select
+                            className="form-input"
+                            value={formData.utilisateur_id}
+                            onChange={handleEmployeChange}
+                            required
+                            disabled={!!selectedBulletin}
+                        >
+                            <option value="">-- Sélectionner un employé --</option>
+                            {filteredEmployees.map(emp => {
+                                const role = getRoleDisplay(emp.roles);
+                                return (
+                                    <option key={emp.id} value={emp.id}>
+                                        {role.icon} {emp.prenom} {emp.nom} - {role.text}
+                                        {emp.service ? ` (${emp.service})` : ''}
+                                        {' - Salaire: '}{formatNumber(emp.salaire_base || 500000)} Ar
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
+
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label>Mois</label>
+                            <select
+                                className="form-input"
+                                value={formData.mois}
+                                onChange={(e) => setFormData({ ...formData, mois: parseInt(e.target.value) })}
+                            >
+                                {moisNoms.map((nom, index) => (
+                                    <option key={index + 1} value={index + 1}>{nom}</option>
+                                ))}
+                            </select>
                         </div>
+                        <div className="form-group">
+                            <label>Année</label>
+                            <input
+                                type="number"
+                                className="form-input"
+                                value={formData.annee}
+                                onChange={(e) => setFormData({ ...formData, annee: parseInt(e.target.value) })}
+                                min="2024"
+                                max="2030"
+                            />
+                        </div>
+                    </div>
 
-                        {message && (
-                            <div className={message.includes('succès') ? 'success-message' : 'error-message'}>
-                                {message}
+                    <div className="form-group">
+                        <label>Salaire de base (Ar) *</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={formData.salaire_base}
+                            onChange={(e) => setFormData({ ...formData, salaire_base: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="10000"
+                            required
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Prime (Ar) - Optionnel</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={formData.prime}
+                            onChange={(e) => setFormData({ ...formData, prime: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="10000"
+                        />
+                    </div>
+
+                    <div className="preview-box">
+                        <div className="preview-title">Aperçu</div>
+                        <div className="preview-content">
+                            <div className="preview-line">
+                                <span>Salaire brut :</span>
+                                <strong>{formatNumber(parseFloat(formData.salaire_base || 0) + parseFloat(formData.prime || 0))} Ar</strong>
                             </div>
-                        )}
+                            <div className="preview-line">
+                                <span>Prime :</span>
+                                <span>{formatNumber(formData.prime || 0)} Ar</span>
+                            </div>
+                            <div className="preview-line net">
+                                <span>Net estimé :</span>
+                                <strong style={{ color: '#10b981' }}>{formatNumber((parseFloat(formData.salaire_base) || 0) + (parseFloat(formData.prime) || 0))} Ar</strong>
+                            </div>
+                        </div>
+                        <div className="preview-note">* Les retenues pour absences seront calculées automatiquement</div>
+                    </div>
 
-                        <form onSubmit={selectedBulletin ? handleSaveModification : handleGenererBulletin}>
-                            {!selectedBulletin && (
-                                <>
-                                    <div className="filters-section">
-                                        <div className="filter-row">
-                                            <div className="filter-field">
-                                                <label>Rechercher</label>
-                                                <input
-                                                    type="text"
-                                                    className="form-input"
-                                                    placeholder="Nom, prénom ou email..."
-                                                    value={searchTerm}
-                                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                                />
-                                            </div>
-                                            <div className="filter-field">
-                                                <label>Rôle</label>
-                                                <select
-                                                    className="form-input"
-                                                    value={filterRole}
-                                                    onChange={(e) => setFilterRole(e.target.value)}
-                                                >
-                                                    <option value="all">Tous les rôles</option>
-                                                    <option value="employe">Employés</option>
-                                                    <option value="manager">Managers</option>
-                                                </select>
-                                            </div>
-                                            {services.length > 0 && (
-                                                <div className="filter-field">
-                                                    <label>Service</label>
-                                                    <select
-                                                        className="form-input"
-                                                        value={filterService}
-                                                        onChange={(e) => setFilterService(e.target.value)}
-                                                    >
-                                                        <option value="all">Tous les services</option>
-                                                        {services.map(s => (
-                                                            <option key={s} value={s}>{s}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            )}
-                                            <div className="filter-field">
-                                                <label>&nbsp;</label>
-                                                <button type="button" className="btn-reset" onClick={resetFilters}>
-                                                    Réinitialiser
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="filter-info">
-                                            {filteredEmployees.length} employé(s) trouvé(s) sur {employees.length}
-                                        </div>
-                                    </div>
+                    <div className="form-actions">
+                        <button type="submit" className="btn-primary">
+                            {selectedBulletin ? 'Enregistrer' : 'Générer le bulletin'}
+                        </button>
+                        <button type="button" className="btn-secondary" onClick={() => { setShowModal(false); resetForm(); }}>
+                            Annuler
+                        </button>
+                    </div>
+                </form>
+            </Modal>
 
-                                    <div className="form-group">
-                                        <label>Employé *</label>
-                                        <select
-                                            className="form-input"
-                                            value={formData.utilisateur_id}
-                                            onChange={handleEmployeChange}
-                                            required
-                                            size="5"
-                                            style={{ height: 'auto', minHeight: '150px' }}
-                                        >
-                                            <option value="">-- Sélectionner un employé --</option>
-                                            {filteredEmployees.map(emp => {
-                                                const role = getRoleDisplay(emp.roles);
-                                                return (
-                                                    <option key={emp.id} value={emp.id} style={{ padding: '8px' }}>
-                                                        {role.icon} {emp.prenom} {emp.nom} - {role.text}
-                                                        {emp.service ? ` (${emp.service})` : ''}
-                                                        {' - Salaire: '}{formatNumber(emp.salaire_base || 500000)} Ar
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
-                                    </div>
-                                </>
-                            )}
+             {/* MODAL GÉNÉRATION INDIVIDUELLE - Avec bouton Annuler rouge */}
+            <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title="📄 Générer un bulletin">
+                {message && (
+                    <div className={message.includes('succès') ? 'success-message' : 'error-message'}>
+                        {message}
+                    </div>
+                )}
+                <form onSubmit={selectedBulletin ? handleSaveModification : handleGenererBulletin}>
+                    <div className="form-group">
+                        <label>Employé *</label>
+                        <select
+                            className="form-input"
+                            value={formData.utilisateur_id}
+                            onChange={handleEmployeChange}
+                            required
+                            disabled={!!selectedBulletin}
+                        >
+                            <option value="">-- Sélectionner un employé --</option>
+                            {filteredEmployees.map(emp => {
+                                const role = getRoleDisplay(emp.roles);
+                                return (
+                                    <option key={emp.id} value={emp.id}>
+                                        {role.icon} {emp.prenom} {emp.nom} - {role.text}
+                                        {emp.service ? ` (${emp.service})` : ''}
+                                        {' - Salaire: '}{formatNumber(emp.salaire_base || 500000)} Ar
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
 
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Mois</label>
-                                    <select
-                                        className="form-input"
-                                        value={formData.mois}
-                                        onChange={(e) => setFormData({ ...formData, mois: parseInt(e.target.value) })}
-                                    >
-                                        {moisNoms.map((nom, index) => (
-                                            <option key={index + 1} value={index + 1}>{nom}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>Année</label>
-                                    <input
-                                        type="number"
-                                        className="form-input"
-                                        value={formData.annee}
-                                        onChange={(e) => setFormData({ ...formData, annee: parseInt(e.target.value) })}
-                                        min="2024"
-                                        max="2030"
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label>Mois</label>
+                            <select
+                                className="form-input"
+                                value={formData.mois}
+                                onChange={(e) => setFormData({ ...formData, mois: parseInt(e.target.value) })}
+                            >
+                                {moisNoms.map((nom, index) => (
+                                    <option key={index + 1} value={index + 1}>{nom}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Année</label>
+                            <input
+                                type="number"
+                                className="form-input"
+                                value={formData.annee}
+                                onChange={(e) => setFormData({ ...formData, annee: parseInt(e.target.value) })}
+                                min="2024"
+                                max="2030"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Salaire de base (Ar) *</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={formData.salaire_base}
+                            onChange={(e) => setFormData({ ...formData, salaire_base: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="10000"
+                            required
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Prime (Ar) - Optionnel</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={formData.prime}
+                            onChange={(e) => setFormData({ ...formData, prime: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="10000"
+                        />
+                    </div>
+
+                    <div className="preview-box">
+                        <div className="preview-title">Aperçu</div>
+                        <div className="preview-content">
+                            <div className="preview-line">
+                                <span>Salaire brut :</span>
+                                <strong>{formatNumber(parseFloat(formData.salaire_base || 0) + parseFloat(formData.prime || 0))} Ar</strong>
+                            </div>
+                            <div className="preview-line">
+                                <span>Prime :</span>
+                                <span>{formatNumber(formData.prime || 0)} Ar</span>
+                            </div>
+                            <div className="preview-line net">
+                                <span>Net estimé :</span>
+                                <strong style={{ color: '#10b981' }}>{formatNumber((parseFloat(formData.salaire_base) || 0) + (parseFloat(formData.prime) || 0))} Ar</strong>
+                            </div>
+                        </div>
+                        <div className="preview-note">* Les retenues pour absences seront calculées automatiquement</div>
+                    </div>
+
+                    <div className="form-actions" style={{ display: 'flex', gap: '12px', marginTop: '24px', justifyContent: 'flex-end' }}>
+                        <button type="submit" className="btn-primary">
+                            {selectedBulletin ? 'Enregistrer' : 'Générer le bulletin'}
+                        </button>
+                        <button type="button" className="btn-cancel-danger" onClick={() => { setShowModal(false); resetForm(); }} style={{ 
+                            background: '#dc3545', 
+                            color: 'white', 
+                            border: 'none',
+                            padding: '10px 20px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontWeight: '500',
+                            transition: 'all 0.2s ease'
+                        }} onMouseEnter={(e) => e.target.style.background = '#c82333'} onMouseLeave={(e) => e.target.style.background = '#dc3545'}>
+                            Annuler
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* MODAL GÉNÉRATION MASSIVE - Avec bouton Annuler rouge */}
+            <Modal isOpen={showMassGenerateModal} onClose={() => { setShowMassGenerateModal(false); setPreviewData(null); }} title="🚀 Génération massive de bulletins">
+                <div className="mass-generate-form">
+                    <div className="info-box-massive" style={{ 
+                        background: 'var(--info-bg, #e8f4fd)', 
+                        color: 'var(--info-text, #1e40af)',
+                        marginBottom: '20px', 
+                        padding: '16px', 
+                        borderRadius: '12px',
+                        borderLeft: '4px solid #3b82f6'
+                    }}>
+                        <strong style={{ color: 'var(--info-text, #1e40af)' }}>ℹ️ Information :</strong><br/>
+                        <span style={{ color: 'var(--info-text, #1e40af)' }}>Cette fonction va générer des bulletins pour les employés sélectionnés.
+                        Vous pouvez filtrer par service, exclure les déjà payés, ou sélectionner manuellement.</span>
+                    </div>
+                    
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label style={{ color: 'var(--text-secondary, #475569)' }}>Mois</label>
+                            <select 
+                                className="form-input" 
+                                value={massGenerateFilters.mois} 
+                                onChange={(e) => setMassGenerateFilters({...massGenerateFilters, mois: parseInt(e.target.value)})}
+                                style={{ background: 'var(--bg-input, white)', color: 'var(--text-primary, #1e293b)', borderColor: 'var(--border-light, #e2e8f0)' }}
+                            >
+                                {moisNoms.map((mois, idx) => (
+                                    <option key={idx} value={idx + 1}>{mois}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label style={{ color: 'var(--text-secondary, #475569)' }}>Année</label>
+                            <input 
+                                type="number" 
+                                className="form-input" 
+                                value={massGenerateFilters.annee} 
+                                onChange={(e) => setMassGenerateFilters({...massGenerateFilters, annee: parseInt(e.target.value)})}
+                                style={{ background: 'var(--bg-input, white)', color: 'var(--text-primary, #1e293b)', borderColor: 'var(--border-light, #e2e8f0)' }}
+                            />
+                        </div>
+                    </div>
+                    
+                    <div className="info-box-prime" style={{ 
+                        background: 'var(--success-bg, #f0fdf4)', 
+                        color: 'var(--success-text, #065f46)',
+                        marginBottom: '20px', 
+                        padding: '16px', 
+                        borderRadius: '12px',
+                        borderLeft: '4px solid #10b981'
+                    }}>
+                        <strong style={{ color: 'var(--success-text, #065f46)' }}>💰 Options de prime :</strong>
+                    </div>
+                    
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label style={{ color: 'var(--text-secondary, #475569)' }}>Prime fixe (Ar)</label>
+                            <input 
+                                type="number" 
+                                className="form-input" 
+                                value={massGenerateFilters.prime_fixe} 
+                                onChange={(e) => setMassGenerateFilters({...massGenerateFilters, prime_fixe: parseInt(e.target.value) || 0})}
+                                placeholder="Ex: 50000"
+                                style={{ background: 'var(--bg-input, white)', color: 'var(--text-primary, #1e293b)', borderColor: 'var(--border-light, #e2e8f0)' }}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label style={{ color: 'var(--text-secondary, #475569)' }}>Prime en % du salaire</label>
+                            <input 
+                                type="number" 
+                                className="form-input" 
+                                value={massGenerateFilters.prime_pourcentage} 
+                                onChange={(e) => setMassGenerateFilters({...massGenerateFilters, prime_pourcentage: parseInt(e.target.value) || 0})}
+                                placeholder="Ex: 5 pour 5%"
+                                style={{ background: 'var(--bg-input, white)', color: 'var(--text-primary, #1e293b)', borderColor: 'var(--border-light, #e2e8f0)' }}
+                            />
+                            <small className="info-text" style={{ color: 'var(--text-tertiary, #64748b)' }}>Calculé sur le salaire de base</small>
+                        </div>
+                    </div>
+                    
+                    {/* Filtres par service */}
+                    {services.length > 0 && (
+                        <div className="form-group">
+                            <label style={{ color: 'var(--text-secondary, #475569)' }}>🏢 Filtrer par service</label>
+                            <div className="services-checkboxes" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
+                                {services.map(service => (
+                                    <label key={service} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary, #475569)' }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={massGenerateFilters.services.includes(service)}
+                                            onChange={() => toggleServiceSelection(service)}
+                                        />
+                                        {service}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="form-group">
+                        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-secondary, #475569)' }}>
+                            <input 
+                                type="checkbox" 
+                                checked={massGenerateFilters.exclure_payes} 
+                                onChange={(e) => setMassGenerateFilters({...massGenerateFilters, exclure_payes: e.target.checked})}
+                            />
+                            <span>Exclure les employés ayant déjà un bulletin pour cette période</span>
+                        </label>
+                    </div>
+                    
+                    <div className="form-group">
+                        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-secondary, #475569)' }}>
+                            <input 
+                                type="checkbox" 
+                                checked={massGenerateFilters.envoyer_email} 
+                                onChange={(e) => setMassGenerateFilters({...massGenerateFilters, envoyer_email: e.target.checked})}
+                            />
+                            <span>Envoyer une notification email aux employés</span>
+                        </label>
+                    </div>
+                    
+                    {/* Sélection manuelle des employés */}
+                    <div className="form-group">
+                        <label style={{ color: 'var(--text-secondary, #475569)' }}>👥 Sélection manuelle des employés</label>
+                        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                            <button type="button" className="btn-sm" onClick={selectAllEmployees} style={{ 
+                                background: 'var(--bg-tertiary, #f1f5f9)', 
+                                border: '1px solid var(--border-light, #e2e8f0)', 
+                                padding: '4px 12px', 
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                color: 'var(--text-secondary, #475569)'
+                            }}>
+                                Tout sélectionner
+                            </button>
+                            <button type="button" className="btn-sm" onClick={deselectAllEmployees} style={{ 
+                                background: 'var(--bg-tertiary, #f1f5f9)', 
+                                border: '1px solid var(--border-light, #e2e8f0)', 
+                                padding: '4px 12px', 
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                color: 'var(--text-secondary, #475569)'
+                            }}>
+                                Tout désélectionner
+                            </button>
+                        </div>
+                        <div className="employees-selection-list" style={{ 
+                            maxHeight: '200px', 
+                            overflowY: 'auto', 
+                            border: '1px solid var(--border-light, #e2e8f0)', 
+                            borderRadius: '8px', 
+                            padding: '8px',
+                            background: 'var(--bg-card, white)'
+                        }}>
+                            {filteredEmployees.map(emp => (
+                                <label key={emp.id} style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px', 
+                                    padding: '6px 8px', 
+                                    cursor: 'pointer', 
+                                    borderBottom: '1px solid var(--border-light, #f1f5f9)',
+                                    color: 'var(--text-secondary, #475569)'
+                                }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectAllMode ? true : selectedEmployeeIds.includes(emp.id)}
+                                        onChange={() => toggleEmployeeSelection(emp.id)}
+                                        disabled={selectAllMode}
                                     />
-                                </div>
-                            </div>
-
-                            <div className="form-group">
-                                <label>Salaire de base (Ar) *</label>
-                                <input
-                                    type="number"
-                                    className="form-input"
-                                    value={formData.salaire_base}
-                                    onChange={(e) => setFormData({ ...formData, salaire_base: parseFloat(e.target.value) || 0 })}
-                                    min="0"
-                                    step="10000"
-                                    required
-                                />
-                            </div>
-
-                            <div className="form-group">
-                                <label>Prime (Ar) - Optionnel</label>
-                                <input
-                                    type="number"
-                                    className="form-input"
-                                    value={formData.prime}
-                                    onChange={(e) => setFormData({ ...formData, prime: parseFloat(e.target.value) || 0 })}
-                                    min="0"
-                                    step="10000"
-                                />
-                            </div>
-
-                            <div className="preview-box">
-                                <div className="preview-title">Aperçu</div>
-                                <div className="preview-content">
-                                    <div className="preview-line">
-                                        <span>Salaire brut :</span>
-                                        <strong>{formatNumber(parseFloat(formData.salaire_base || 0) + parseFloat(formData.prime || 0))} Ar</strong>
-                                    </div>
-                                    <div className="preview-line">
-                                        <span>Prime :</span>
-                                        <span>{formatNumber(formData.prime || 0)} Ar</span>
-                                    </div>
-                                    <div className="preview-line net">
-                                        <span>Net estimé :</span>
-                                        <strong style={{ color: '#10b981' }}>{formatNumber((parseFloat(formData.salaire_base) || 0) + (parseFloat(formData.prime) || 0))} Ar</strong>
-                                    </div>
-                                </div>
-                                <div className="preview-note">* Les retenues pour absences seront calculées automatiquement</div>
-                            </div>
-
-                            <div className="btn-group" style={{ marginTop: '20px' }}>
-                                <button type="submit" className="btn-primary">
-                                    {selectedBulletin ? 'Enregistrer' : 'Générer le bulletin'}
-                                </button>
-                                <button type="button" className="btn-secondary" onClick={() => { setShowModal(false); resetForm(); }}>
-                                    Annuler
-                                </button>
-                            </div>
-                        </form>
+                                    <span><strong style={{ color: 'var(--text-primary, #1e293b)' }}>{emp.prenom} {emp.nom}</strong></span>
+                                    <span style={{ color: 'var(--text-tertiary, #94a3b8)' }}>{emp.service || 'Sans service'}</span>
+                                    <span style={{ marginLeft: 'auto', fontWeight: '500', color: 'var(--text-secondary, #475569)' }}>{formatNumber(emp.salaire_base || 500000)} Ar</span>
+                                </label>
+                            ))}
+                        </div>
+                        <small className="info-text" style={{ color: 'var(--text-tertiary, #64748b)' }}>Si "Tout sélectionner" est actif, tous les employés (après filtres) seront inclus</small>
+                    </div>
+                    
+                    <div className="form-actions" style={{ justifyContent: 'space-between', marginTop: '20px', display: 'flex', gap: '12px' }}>
+                        <button type="button" className="btn-secondary" onClick={handlePreviewMassGenerate}>
+                            👁️ Aperçu avant génération
+                        </button>
+                        <div>
+                            <button type="button" className="btn-cancel-danger" onClick={() => { setShowMassGenerateModal(false); setPreviewData(null); }} style={{ 
+                                background: '#dc3545', 
+                                color: 'white', 
+                                border: 'none',
+                                padding: '8px 20px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontWeight: '500',
+                                transition: 'all 0.2s ease'
+                            }} onMouseEnter={(e) => e.target.style.background = '#c82333'} onMouseLeave={(e) => e.target.style.background = '#dc3545'}>
+                                Annuler
+                            </button>
+                        </div>
                     </div>
                 </div>
-            )}
+            </Modal>
+
+            {/* MODAL APERÇU AVANT GÉNÉRATION */}
+            <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} title="📊 Aperçu de la génération massive">
+                {previewData && (
+                    <div className="preview-section">
+                        <div className="stats-cards-grid" style={{ marginBottom: '16px', gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                            <div className="stat-card small" style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
+                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#4f46e5' }}>{previewData.total_employes}</div>
+                                <div className="stat-label" style={{ fontSize: '12px', color: '#64748b' }}>Nouveaux bulletins</div>
+                            </div>
+                            <div className="stat-card small warning" style={{ background: '#fff3cd', padding: '12px', borderRadius: '12px' }}>
+                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#856404' }}>{previewData.bulletins_existants}</div>
+                                <div className="stat-label" style={{ fontSize: '12px', color: '#856404' }}>Déjà existants</div>
+                            </div>
+                            <div className="stat-card small" style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
+                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>{previewData.total_net.toLocaleString()} Ar</div>
+                                <div className="stat-label" style={{ fontSize: '12px', color: '#64748b' }}>Total net estimé</div>
+                            </div>
+                            <div className="stat-card small" style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
+                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#f59e0b' }}>{Math.round(previewData.prime_moyenne).toLocaleString()} Ar</div>
+                                <div className="stat-label" style={{ fontSize: '12px', color: '#64748b' }}>Prime moyenne</div>
+                            </div>
+                        </div>
+                        
+                        {/* Statistiques par service */}
+                        {Object.keys(previewData.stats_par_service).length > 0 && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>📊 Par service :</h4>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                                    {Object.entries(previewData.stats_par_service).map(([service, data]) => (
+                                        <div key={service} style={{ background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px' }}>
+                                            <strong>{service}</strong>: {data.count} employé(s) - {data.totalNet.toLocaleString()} Ar
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Liste des employés */}
+                        {previewData.employes.length > 0 ? (
+                            <div className="table-wrapper" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                <table className="modern-table compact" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                                            <th style={{ padding: '8px', textAlign: 'left' }}>Employé</th>
+                                            <th style={{ padding: '8px', textAlign: 'left' }}>Service</th>
+                                            <th style={{ padding: '8px', textAlign: 'right' }}>Salaire base</th>
+                                            <th style={{ padding: '8px', textAlign: 'right' }}>Prime</th>
+                                            <th style={{ padding: '8px', textAlign: 'right' }}>Net estimé</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {previewData.employes.map(emp => (
+                                            <tr key={emp.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                <td style={{ padding: '8px' }}><strong>{emp.prenom} {emp.nom}</strong></td>
+                                                <td style={{ padding: '8px' }}>{emp.service || '-'}</td>
+                                                <td style={{ padding: '8px', textAlign: 'right' }}>{emp.salaire_base.toLocaleString()} Ar</td>
+                                                <td style={{ padding: '8px', textAlign: 'right' }}>{Math.round(emp.prime_calculee).toLocaleString()} Ar</td>
+                                                <td style={{ padding: '8px', textAlign: 'right' }}><strong>{emp.net_estime.toLocaleString()} Ar</strong></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="info-box" style={{ background: '#fff3cd', marginTop: '16px' }}>
+                                Aucun employé à générer pour la période sélectionnée.
+                            </div>
+                        )}
+                        
+                        <div className="form-actions" style={{ marginTop: '20px', justifyContent: 'flex-end' }}>
+                            <button type="button" className="btn-cancel" onClick={() => setShowPreviewModal(false)}>
+                                Retour
+                            </button>
+                            <button type="button" className="btn-submit" onClick={handleMassGenerate} disabled={previewData.employes.length === 0}>
+                                Confirmer la génération ({previewData.employes.length} bulletins)
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 }
