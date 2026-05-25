@@ -883,11 +883,41 @@ router.get('/notifications', async (req, res) => {
 
 router.put('/notifications/:id/read', async (req, res) => {
     try {
-        await pool.query(`UPDATE notifications SET est_lu = true WHERE id = $1 AND utilisateur_id = $2`, 
-            [req.params.id, req.user.id]);
-        res.json({ message: 'Notification lue' });
+        const notificationId = req.params.id;
+        const adminId = req.user.id;
+        
+        console.log(`📝 Admin - Marquage notification ${notificationId} comme lue pour l'admin ${adminId}`);
+        
+        const checkResult = await pool.query(
+            `SELECT id, est_lu FROM notifications WHERE id = $1 AND utilisateur_id = $2`,
+            [notificationId, adminId]
+        );
+        
+        if (checkResult.rows.length === 0) {
+            return res.json({ message: 'Notification marquée comme lue (virtuelle)' });
+        }
+        
+        if (checkResult.rows[0].est_lu) {
+            return res.json({ message: 'Notification déjà lue' });
+        }
+        
+        const result = await pool.query(
+            `UPDATE notifications SET est_lu = true, date_lu = NOW() 
+             WHERE id = $1 AND utilisateur_id = $2 
+             RETURNING id, est_lu`,
+            [notificationId, adminId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Notification non trouvée' });
+        }
+        
+        console.log(`✅ Admin - Notification ${notificationId} marquée comme lue`);
+        
+        res.json({ message: 'Notification marquée comme lue', notification: result.rows[0] });
     } catch (error) {
-        res.status(500).json({ message: 'Erreur serveur' });
+        console.error('Erreur mark as read admin:', error);
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
     }
 });
 

@@ -934,8 +934,9 @@ router.put('/manager-approve/:id', authMiddleware, async (req, res) => {
         await pool.query(
             `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
              VALUES ($1, 'pre_approuve', 'Demande pré-approuvée', 
-                     $2, '/dashboard/employee/requests', NOW())`,
-            [demande.utilisateur_id, `Votre demande de congé a été validée par votre manager.`]
+                     'Votre demande de congé a été validée par votre manager.', 
+                     '/dashboard/employee/requests', NOW())`,
+            [demande.utilisateur_id]
         );
         
         try {
@@ -1025,8 +1026,9 @@ router.put('/manager-reject/:id', authMiddleware, async (req, res) => {
         await pool.query(
             `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
              VALUES ($1, 'refus_manager', 'Demande de congé refusée', 
-                     $2, '/dashboard/employee/requests', NOW())`,
-            [demande.utilisateur_id, `Votre demande de congé a été refusée par votre manager. Motif : ${motifFinal}`]
+                     'Votre demande de congé a été refusée par votre manager. Motif : ${motifFinal}', 
+                     '/dashboard/employee/requests', NOW())`,
+            [demande.utilisateur_id]
         );
         
         try {
@@ -1320,72 +1322,84 @@ router.get('/notifications', authMiddleware, async (req, res) => {
         
         let notifications = [];
         
+        // 1. Notifications personnelles de l'utilisateur
         const personalNotifs = await pool.query(
-            `SELECT * FROM notifications 
+            `SELECT id, type, titre, message, lien, cree_le, est_lu
+             FROM notifications 
              WHERE utilisateur_id = $1 
              ORDER BY cree_le DESC 
-             LIMIT 30`,
+             LIMIT 50`,
             [userId]
         );
+        
         notifications.push(...personalNotifs.rows);
         
-        if (isManager) {
-            const teamNotifs = await pool.query(`
+        // 2. Pour le manager : créer des notifications pour les demandes en attente (si elles n'existent pas déjà)
+        if (isManager && !isAdmin) {
+            const teamPendingRequests = await pool.query(`
                 SELECT 
-                    n.*,
-                    'team' as source
-                FROM notifications n
-                JOIN users u ON n.utilisateur_id = u.id
-                WHERE u.manager_id = $1
-                ORDER BY n.cree_le DESC
-                LIMIT 20
-            `, [userId]);
-            notifications.push(...teamNotifs.rows);
-            
-            const pendingManagerNotifs = await pool.query(`
-                SELECT 
-                    'demande_attente' as type,
-                    'Nouvelle demande à valider' as titre,
-                    CONCAT(u.prenom, ' ', u.nom, ' a fait une demande de congé') as message,
-                    '/dashboard/manager/validations' as lien,
+                    dc.id as request_id,
                     dc.cree_le,
-                    false as est_lu
+                    u.prenom, 
+                    u.nom,
+                    CASE WHEN dc.type_conge_id = 1 THEN 'congés payés' ELSE 'congé sans solde' END as type_name,
+                    TO_CHAR(dc.date_debut, 'DD/MM/YYYY') as date_debut,
+                    TO_CHAR(dc.date_fin, 'DD/MM/YYYY') as date_fin
                 FROM demandes_conges dc
                 JOIN users u ON dc.utilisateur_id = u.id
                 WHERE u.manager_id = $1 AND dc.statut = 'pending_manager'
                 ORDER BY dc.cree_le DESC
             `, [userId]);
-            notifications.push(...pendingManagerNotifs.rows);
+            
+            for (const req of teamPendingRequests.rows) {
+                const existingNotif = await pool.query(`
+                    SELECT id, est_lu FROM notifications 
+                    WHERE utilisateur_id = $1 AND type = 'demande_attente' AND message LIKE $2
+                    ORDER BY cree_le DESC LIMIT 1
+                `, [userId, `%${req.prenom}%${req.nom}%`]);
+                
+                if (existingNotif.rows.length > 0) {
+                    notifications.push({
+                        id: existingNotif.rows[0].id,
+                        type: 'demande_attente',
+                        titre: 'Nouvelle demande à valider',
+                        message: `${req.prenom} ${req.nom} a fait une demande de ${req.type_name} du ${req.date_debut} au ${req.date_fin}`,
+                        lien: '/dashboard/manager/validations',
+                        cree_le: req.cree_le,
+                        est_lu: existingNotif.rows[0].est_lu
+                    });
+                } else {
+                    const message = `${req.prenom} ${req.nom} a fait une demande de ${req.type_name} du ${req.date_debut} au ${req.date_fin}`;
+                    const insertResult = await pool.query(`
+                        INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le, est_lu)
+                        VALUES ($1, 'demande_attente', 'Nouvelle demande à valider', $2, '/dashboard/manager/validations', $3, false)
+                        RETURNING id, est_lu
+                    `, [userId, message, req.cree_le]);
+                    
+                    notifications.push({
+                        id: insertResult.rows[0].id,
+                        type: 'demande_attente',
+                        titre: 'Nouvelle demande à valider',
+                        message: message,
+                        lien: '/dashboard/manager/validations',
+                        cree_le: req.cree_le,
+                        est_lu: insertResult.rows[0].est_lu
+                    });
+                }
+            }
         }
         
-        if (isAdmin) {
-            const adminNotifs = await pool.query(`
-                SELECT 
-                    'system' as type,
-                    'Information système' as titre,
-                    message,
-                    lien,
-                    cree_le,
-                    false as est_lu
-                FROM notifications
-                WHERE utilisateur_id IS NULL AND type IN ('admin_broadcast', 'system')
-                ORDER BY cree_le DESC
-                LIMIT 10
-            `);
-            notifications.push(...adminNotifs.rows);
-        }
-        
+        // Filtrer les doublons par id
         const uniqueNotifs = [];
         const seenIds = new Set();
         for (const notif of notifications) {
-            if (notif.id && !seenIds.has(notif.id)) {
+            if (!seenIds.has(notif.id)) {
                 seenIds.add(notif.id);
-                uniqueNotifs.push(notif);
-            } else if (!notif.id) {
                 uniqueNotifs.push(notif);
             }
         }
         
+        // Trier par date décroissante
         uniqueNotifs.sort((a, b) => new Date(b.cree_le) - new Date(a.cree_le));
         
         res.json(uniqueNotifs.slice(0, 30));
@@ -1395,12 +1409,63 @@ router.get('/notifications', authMiddleware, async (req, res) => {
     }
 });
 
+// ============ MARQUER UNE NOTIFICATION COMME LUE ============
 router.put('/notifications/:id/read', authMiddleware, async (req, res) => {
     try {
-        await pool.query(`UPDATE notifications SET est_lu = true WHERE id = $1 AND utilisateur_id = $2`, 
-            [req.params.id, req.user.id]);
-        res.json({ message: 'Notification lue' });
+        const notificationId = req.params.id;
+        const userId = req.user.id;
+        
+        console.log(`📝 [BACKEND] Marquage notification ${notificationId} comme lue pour l'utilisateur ${userId}`);
+        
+        const result = await pool.query(
+            `UPDATE notifications 
+             SET est_lu = true, date_lu = NOW() 
+             WHERE id = $1 AND utilisateur_id = $2 
+             RETURNING id, est_lu, date_lu`,
+            [notificationId, userId]
+        );
+        
+        if (result.rows.length === 0) {
+            console.log(`⚠️ [BACKEND] Notification ${notificationId} non trouvée`);
+            return res.status(404).json({ message: 'Notification non trouvée' });
+        }
+        
+        console.log(`✅ [BACKEND] Notification ${notificationId} marquée comme lue`);
+        
+        res.json({ 
+            message: 'Notification marquée comme lue', 
+            notification: result.rows[0] 
+        });
     } catch (error) {
+        console.error('❌ [BACKEND] Erreur mark as read:', error);
+        res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+    }
+});
+
+// ============ NETTOYER LES NOTIFICATIONS OBSOLÈTES ============
+router.delete('/cleanup-notifications', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        const result = await pool.query(`
+            DELETE FROM notifications n
+            WHERE n.utilisateur_id = $1 
+              AND n.type = 'demande_attente'
+              AND NOT EXISTS (
+                  SELECT 1 FROM demandes_conges dc
+                  JOIN users u ON dc.utilisateur_id = u.id
+                  WHERE u.manager_id = $1 
+                    AND dc.statut = 'pending_manager'
+                    AND n.message LIKE CONCAT('%', u.prenom, '%')
+              )
+            RETURNING id
+        `, [userId]);
+        
+        console.log(`🗑️ Nettoyage: ${result.rows.length} notifications obsolètes supprimées`);
+        
+        res.json({ message: `${result.rows.length} notifications nettoyées` });
+    } catch (error) {
+        console.error('Erreur cleanup notifications:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });

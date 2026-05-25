@@ -39,35 +39,49 @@ function Login({ onLogin }) {
     }, []);
 
     const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+        e.preventDefault();
+        setLoading(true);
+        setError('');
 
-    try {
-        const response = await authService.login(email, password);
-        const { token, user } = response.data;
-        
-        localStorage.setItem('token', token);
-        localStorage.setItem('user', JSON.stringify(user));
-        
-        if (rememberMe) {
-            localStorage.setItem('savedEmail', email);
-        } else {
-            localStorage.removeItem('savedEmail');
+        try {
+            const response = await authService.login(email, password);
+            const { token, user } = response.data;
+            
+            // Stocker le token
+            localStorage.setItem('token', token);
+            
+            // Stocker l'utilisateur COMPLET avec photo_url
+            localStorage.setItem('user', JSON.stringify({
+                id: user.id,
+                nom: user.nom,
+                prenom: user.prenom,
+                email: user.email,
+                roles: user.roles,
+                photo_url: user.photo_url || null  // Important : inclure photo_url
+            }));
+            
+            if (rememberMe) {
+                localStorage.setItem('savedEmail', email);
+            } else {
+                localStorage.removeItem('savedEmail');
+            }
+            
+            if (onLogin) onLogin();
+
+            // Déclencher un événement pour mettre à jour les composants
+            window.dispatchEvent(new Event('profileUpdated'));
+
+            const roles = user.roles || [];
+            if (roles.includes('admin')) navigate('/dashboard/admin', { replace: true });
+            else if (roles.includes('manager')) navigate('/dashboard/manager', { replace: true });
+            else navigate('/dashboard/employee', { replace: true });
+        } catch (err) {
+            setError(err.response?.data?.message || 'Email ou mot de passe incorrect');
+        } finally {
+            setLoading(false);
         }
-        
-        if (onLogin) onLogin();
+    };
 
-        const roles = user.roles || [];
-        if (roles.includes('admin')) navigate('/dashboard/admin', { replace: true });
-        else if (roles.includes('manager')) navigate('/dashboard/manager', { replace: true });
-        else navigate('/dashboard/employee', { replace: true });
-    } catch (err) {
-        setError(err.response?.data?.message || 'Email ou mot de passe incorrect');
-    } finally {
-        setLoading(false);
-    }
-};
     return (
         <div className="login-pro-container">
             {/* Section gauche - Branding RH/Congés */}

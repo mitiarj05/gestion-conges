@@ -22,6 +22,36 @@ function Sidebar({ role, onLogout }) {
         teamCount: 0
     });
 
+    // État pour suivre les pages visitées (persistant dans localStorage)
+    const [visitedPages, setVisitedPages] = useState({
+        dashboard: false,
+        validations: false,
+        leave_requests: false,
+        lastCounts: {
+            dashboard: 0,
+            validations: 0,
+            leave_requests: 0
+        }
+    });
+
+    // Charger les pages visitées depuis localStorage au démarrage
+    useEffect(() => {
+        const savedVisited = localStorage.getItem('sidebar_visited_pages');
+        if (savedVisited) {
+            try {
+                const parsed = JSON.parse(savedVisited);
+                setVisitedPages(prev => ({ ...prev, ...parsed }));
+            } catch (e) {
+                console.error('Erreur chargement visited pages:', e);
+            }
+        }
+    }, []);
+
+    // Sauvegarder les pages visitées dans localStorage
+    const saveVisitedPages = (newVisited) => {
+        localStorage.setItem('sidebar_visited_pages', JSON.stringify(newVisited));
+    };
+
     // Fonction pour obtenir l'URL complète de la photo
     const getFullPhotoUrl = (photoUrl) => {
         if (!photoUrl) return null;
@@ -33,16 +63,44 @@ function Sidebar({ role, onLogout }) {
     // Fonction pour mettre à jour l'utilisateur depuis le localStorage
     const updateUserFromStorage = () => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        console.log('👤 Sidebar - Utilisateur chargé:', storedUser);
         setUser(storedUser);
         
         if (storedUser.photo_url) {
             const fullUrl = getFullPhotoUrl(storedUser.photo_url);
-            console.log('📸 Sidebar - Photo URL:', fullUrl);
             setPhotoPreview(fullUrl);
         } else {
-            console.log('📸 Sidebar - Pas de photo_url');
             setPhotoPreview(null);
+        }
+    };
+
+    // Marquer une page comme visitée
+    const markPageAsVisited = (pageKey) => {
+        if (!visitedPages[pageKey]) {
+            const newVisited = { ...visitedPages, [pageKey]: true };
+            setVisitedPages(newVisited);
+            saveVisitedPages(newVisited);
+        }
+    };
+
+    // Vérifier si le badge doit être affiché
+    const shouldShowBadge = (pageKey, count) => {
+        if (!count || count === 0) return false;
+        // Si la page a été visitée et que le compteur n'a pas augmenté depuis, ne pas afficher
+        if (visitedPages[pageKey] && visitedPages.lastCounts && count <= visitedPages.lastCounts[pageKey]) {
+            return false;
+        }
+        return true;
+    };
+
+    // Mettre à jour le dernier compteur connu pour une page
+    const updateLastCount = (pageKey, count) => {
+        if (visitedPages.lastCounts[pageKey] !== count) {
+            const newVisited = {
+                ...visitedPages,
+                lastCounts: { ...visitedPages.lastCounts, [pageKey]: count }
+            };
+            setVisitedPages(newVisited);
+            saveVisitedPages(newVisited);
         }
     };
 
@@ -56,7 +114,6 @@ function Sidebar({ role, onLogout }) {
         
         // Écouter l'événement personnalisé profileUpdated
         const handleProfileUpdated = () => {
-            console.log('🔄 Sidebar - Événement profileUpdated reçu, mise à jour...');
             updateUserFromStorage();
         };
         
@@ -85,6 +142,40 @@ function Sidebar({ role, onLogout }) {
         };
     }, [role]);
 
+    // Surveiller le changement de chemin pour marquer les pages visitées
+    useEffect(() => {
+        // Pour Manager - Page Validations
+        if (currentPath.includes('/manager/validations')) {
+            markPageAsVisited('validations');
+            updateLastCount('validations', notificationCounts.pendingValidations);
+        }
+        // Pour Manager - Tableau de bord
+        if (currentPath === '/dashboard/manager' || currentPath === '/dashboard/manager/') {
+            markPageAsVisited('dashboard');
+            updateLastCount('dashboard', notificationCounts.pendingValidations);
+        }
+        // Pour Admin - Page Demandes
+        if (currentPath.includes('/leave-requests')) {
+            markPageAsVisited('leave_requests');
+            updateLastCount('leave_requests', notificationCounts.pendingAdminValidations);
+        }
+        // Pour Admin - Tableau de bord
+        if (currentPath === '/dashboard/admin' || currentPath === '/dashboard/admin/') {
+            markPageAsVisited('dashboard');
+            updateLastCount('dashboard', notificationCounts.pendingAdminValidations);
+        }
+        // Pour Employé - Page Mes demandes
+        if (currentPath.includes('/employee/requests')) {
+            markPageAsVisited('leave_requests');
+            updateLastCount('leave_requests', notificationCounts.pendingRequests);
+        }
+        // Pour Employé - Tableau de bord
+        if (currentPath === '/dashboard/employee' || currentPath === '/dashboard/employee/') {
+            markPageAsVisited('dashboard');
+            updateLastCount('dashboard', notificationCounts.pendingRequests);
+        }
+    }, [currentPath, notificationCounts]);
+
     const fetchNotificationCounts = async () => {
         try {
             const token = localStorage.getItem('token');
@@ -102,14 +193,16 @@ function Sidebar({ role, onLogout }) {
                 const pendingRes = await axios.get(`${API_URL}/admin/pending-approvals`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                counts.pendingAdminValidations = pendingRes.data.length;
-                counts.pendingValidations = pendingRes.data.length;
+                const newCount = pendingRes.data.length;
+                counts.pendingAdminValidations = newCount;
+                counts.pendingValidations = newCount;
 
             } else if (role === 'manager') {
                 const pendingRes = await axios.get(`${API_URL}/leaves/team-pending`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                counts.pendingValidations = pendingRes.data.length;
+                const newCount = pendingRes.data.length;
+                counts.pendingValidations = newCount;
 
                 const teamRes = await axios.get(`${API_URL}/users/my-team`, {
                     headers: { Authorization: `Bearer ${token}` }
@@ -142,13 +235,43 @@ function Sidebar({ role, onLogout }) {
         }
     };
 
-    const Badge = ({ count }) => {
-        if (!count || count === 0) return null;
-        const countStr = String(count);
+    const Badge = ({ count, pageKey, roleType }) => {
+        // Déterminer quel compteur utiliser
+        let currentCount = count;
+        let lastCountKey = pageKey;
+        
+        if (roleType === 'admin' && pageKey === 'dashboard') {
+            currentCount = notificationCounts.pendingAdminValidations;
+            lastCountKey = 'dashboard';
+        } else if (roleType === 'admin' && pageKey === 'leave_requests') {
+            currentCount = notificationCounts.pendingAdminValidations;
+            lastCountKey = 'leave_requests';
+        } else if (roleType === 'manager' && pageKey === 'dashboard') {
+            currentCount = notificationCounts.pendingValidations;
+            lastCountKey = 'dashboard';
+        } else if (roleType === 'manager' && pageKey === 'validations') {
+            currentCount = notificationCounts.pendingValidations;
+            lastCountKey = 'validations';
+        } else if (roleType === 'employee' && pageKey === 'dashboard') {
+            currentCount = notificationCounts.pendingRequests;
+            lastCountKey = 'dashboard';
+        } else if (roleType === 'employee' && pageKey === 'leave_requests') {
+            currentCount = notificationCounts.pendingRequests;
+            lastCountKey = 'leave_requests';
+        }
+        
+        if (!currentCount || currentCount === 0) return null;
+        
+        // Si la page a été visitée et que le compteur n'a pas augmenté, ne pas afficher
+        if (visitedPages[pageKey] && visitedPages.lastCounts && currentCount <= visitedPages.lastCounts[lastCountKey]) {
+            return null;
+        }
+        
+        const countStr = String(currentCount);
         const badgeClass = countStr.length === 1 ? 'single-digit' : (countStr.length === 2 ? 'two-digits' : 'three-digits');
         return (
             <span className={`sidebar-badge ${badgeClass}`}>
-                {count > 99 ? '99+' : count}
+                {currentCount > 99 ? '99+' : currentCount}
             </span>
         );
     };
@@ -171,9 +294,7 @@ function Sidebar({ role, onLogout }) {
                         border: '2px solid #667eea'
                     }}
                     onError={(e) => {
-                        console.error('❌ Erreur chargement photo sidebar:', photoPreview);
                         e.target.style.display = 'none';
-                        // Afficher les initiales en cas d'erreur
                         const parent = e.target.parentElement;
                         if (parent) {
                             const initials = document.createElement('div');
@@ -205,14 +326,16 @@ function Sidebar({ role, onLogout }) {
         );
     };
 
-    // ============ MENU POUR ADMIN (à garder identique) ============
+    // ============ MENU POUR ADMIN ============
     const getAdminMenuItems = () => {
         return [
             {
                 path: '/dashboard/admin',
                 label: 'Tableau de bord',
                 key: 'dashboard',
+                pageKey: 'dashboard',
                 badge: notificationCounts.pendingAdminValidations,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="3" width="7" height="7"/>
@@ -226,7 +349,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/admin/profile',
                 label: 'Mon profil',
                 key: 'profile',
+                pageKey: null,
                 badge: 0,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -238,7 +363,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/admin/users',
                 label: 'Utilisateurs',
                 key: 'users',
+                pageKey: null,
                 badge: 0,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -252,7 +379,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/admin/leave-requests',
                 label: 'Demandes',
                 key: 'leave-requests',
+                pageKey: 'leave_requests',
                 badge: notificationCounts.pendingAdminValidations,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M4 4v16h16V4H4z"/>
@@ -266,7 +395,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/admin/statistics',
                 label: 'Statistiques',
                 key: 'statistics',
+                pageKey: null,
                 badge: 0,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <line x1="18" y1="20" x2="18" y2="10"/>
@@ -279,7 +410,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/admin/payroll',
                 label: 'Gestion de la paie',
                 key: 'payroll',
+                pageKey: null,
                 badge: 0,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <circle cx="12" cy="12" r="10"/>
@@ -291,7 +424,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/admin/calendar',
                 label: 'Calendrier',
                 key: 'calendar',
+                pageKey: null,
                 badge: 0,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -305,7 +440,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/admin/settings',
                 label: 'Paramètres',
                 key: 'settings',
+                pageKey: null,
                 badge: 0,
+                roleType: 'admin',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <circle cx="12" cy="12" r="3"/>
@@ -317,14 +454,16 @@ function Sidebar({ role, onLogout }) {
         ];
     };
 
-    // ============ MENU POUR MANAGER (à garder identique) ============
+    // ============ MENU POUR MANAGER ============
     const getManagerMenuItems = () => {
         return [
             {
                 path: '/dashboard/manager',
                 label: 'Tableau de bord',
                 key: 'dashboard',
+                pageKey: 'dashboard',
                 badge: notificationCounts.pendingValidations,
+                roleType: 'manager',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="3" width="7" height="7"/>
@@ -338,7 +477,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/manager/profile',
                 label: 'Mon profil',
                 key: 'profile',
+                pageKey: null,
                 badge: 0,
+                roleType: 'manager',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -350,7 +491,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/manager/my-requests',
                 label: 'Mes demandes',
                 key: 'my-requests',
+                pageKey: null,
                 badge: 0,
+                roleType: 'manager',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M4 4v16h16V4H4z"/>
@@ -364,7 +507,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/manager/team',
                 label: 'Mon équipe',
                 key: 'team',
+                pageKey: null,
                 badge: notificationCounts.teamCount || 0,
+                roleType: 'manager',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -378,7 +523,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/manager/validations',
                 label: 'Validations',
                 key: 'validations',
+                pageKey: 'validations',
                 badge: notificationCounts.pendingValidations,
+                roleType: 'manager',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
@@ -390,7 +537,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/manager/stats',
                 label: 'Statistiques',
                 key: 'stats',
+                pageKey: null,
                 badge: 0,
+                roleType: 'manager',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <line x1="18" y1="20" x2="18" y2="10"/>
@@ -403,7 +552,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/manager/team-calendar',
                 label: 'Calendrier équipe',
                 key: 'team-calendar',
+                pageKey: null,
                 badge: 0,
+                roleType: 'manager',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -416,14 +567,16 @@ function Sidebar({ role, onLogout }) {
         ];
     };
 
-    // ============ MENU POUR EMPLOYÉ (à garder identique) ============
+    // ============ MENU POUR EMPLOYÉ ============
     const getEmployeeMenuItems = () => {
         return [
             {
                 path: '/dashboard/employee',
                 label: 'Tableau de bord',
                 key: 'dashboard',
+                pageKey: 'dashboard',
                 badge: notificationCounts.pendingRequests,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="3" width="7" height="7"/>
@@ -437,7 +590,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/profile',
                 label: 'Mon profil',
                 key: 'profile',
+                pageKey: null,
                 badge: 0,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -449,7 +604,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/balance',
                 label: 'Mon solde',
                 key: 'balance',
+                pageKey: null,
                 badge: 0,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <circle cx="12" cy="12" r="10"/>
@@ -461,7 +618,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/requests',
                 label: 'Mes demandes',
                 key: 'requests',
+                pageKey: 'leave_requests',
                 badge: notificationCounts.pendingRequests,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M4 4v16h16V4H4z"/>
@@ -475,7 +634,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/new-request',
                 label: 'Nouvelle demande',
                 key: 'new-request',
+                pageKey: null,
                 badge: 0,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <circle cx="12" cy="12" r="10"/>
@@ -488,7 +649,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/calendar',
                 label: 'Calendrier',
                 key: 'calendar',
+                pageKey: null,
                 badge: 0,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -502,7 +665,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/statistics',
                 label: 'Statistiques',
                 key: 'statistics',
+                pageKey: null,
                 badge: 0,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <line x1="18" y1="20" x2="18" y2="10"/>
@@ -515,7 +680,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/payroll',
                 label: 'Mes bulletins',
                 key: 'payroll',
+                pageKey: null,
                 badge: 0,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -530,7 +697,9 @@ function Sidebar({ role, onLogout }) {
                 path: '/dashboard/employee/manager-profile',
                 label: 'Mon manager',
                 key: 'manager-profile',
+                pageKey: null,
                 badge: 0,
+                roleType: 'employee',
                 icon: (active) => (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -615,7 +784,7 @@ function Sidebar({ role, onLogout }) {
                                 >
                                     <span className="menu-icon">{item.icon(active)}</span>
                                     <span style={{ flex: 1 }}>{item.label}</span>
-                                    <Badge count={item.badge} />
+                                    <Badge count={item.badge} pageKey={item.pageKey} roleType={item.roleType} />
                                 </Link>
                             );
                         })}
@@ -699,7 +868,7 @@ function Sidebar({ role, onLogout }) {
                         >
                             <span className="menu-icon">{item.icon(active)}</span>
                             {!isCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}
-                            {!isCollapsed && <Badge count={item.badge} />}
+                            {!isCollapsed && <Badge count={item.badge} pageKey={item.pageKey} roleType={item.roleType} />}
                         </Link>
                     );
                 })}
