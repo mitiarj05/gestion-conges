@@ -1,5 +1,6 @@
 // frontend/src/components/notifications/ToastNotification.jsx
-import React from 'react';
+import React, { useEffect } from 'react';
+
 
 function ToastNotification({ toasts, removeToast }) {
     const getIcon = (type) => {

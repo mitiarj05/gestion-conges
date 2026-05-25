@@ -1,5 +1,5 @@
 // frontend/src/components/payroll/PayrollDashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; 
 import axios from 'axios';
 import { API_URL } from '../../config/api';
 import jsPDF from 'jspdf';
@@ -18,31 +18,28 @@ function PayrollDashboard() {
     const [selectedBulletin, setSelectedBulletin] = useState(null);
     const [message, setMessage] = useState('');
     const [toasts, setToasts] = useState([]);
+
+    const toastIdCounter = useRef(0);
     
-    // Filtres pour la liste des employés
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('all');
     const [filterService, setFilterService] = useState('all');
     const [services, setServices] = useState([]);
     
-    // Filtres pour la génération massive
     const [massGenerateFilters, setMassGenerateFilters] = useState({
-    mois: new Date().getMonth() + 1,
-    annee: new Date().getFullYear(),
-    prime_fixe: 0,
-    prime_pourcentage: 0,
-    services: [],
-    exclure_payes: true,
-    employes_selectionnes: [],
-    envoyer_email: true  // Par défaut true
-});
+        mois: new Date().getMonth() + 1,
+        annee: new Date().getFullYear(),
+        prime_fixe: 0,
+        prime_pourcentage: 0,
+        services: [],
+        exclure_payes: true,
+        employes_selectionnes: [],
+        envoyer_email: true
+    });
     
-    // Aperçu avant génération massive
     const [previewData, setPreviewData] = useState(null);
     const [showPreviewModal, setShowPreviewModal] = useState(false);
-    
-    // Sélection manuelle des employés
-    const [selectAllMode, setSelectAllMode] = useState(false);
+    const [selectAllMode, setSelectAllMode] = useState(true);
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
 
     const getAuthHeaders = () => ({
@@ -53,9 +50,11 @@ function PayrollDashboard() {
                       'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
     const addToast = (message, type = 'info', duration = 5000) => {
-        const id = Date.now();
+        const id = ++toastIdCounter.current;
         setToasts(prev => [...prev, { id, message, type, duration }]);
-        setTimeout(() => removeToast(id), duration);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(toast => toast.id !== id));
+        }, duration);
     };
 
     const removeToast = (id) => {
@@ -193,142 +192,312 @@ function PayrollDashboard() {
     };
 
     // ============ APERÇU AVANT GÉNÉRATION MASSIVE ============
-    const handlePreviewMassGenerate = async () => {
-        const { mois, annee, prime_fixe, prime_pourcentage, services, exclure_payes, employes_selectionnes } = massGenerateFilters;
+const handlePreviewMassGenerate = async () => {
+    console.log('=== DÉBUT APERÇU GÉNÉRATION MASSIVE ===');
+    console.log('Filtres actuels:', massGenerateFilters);
+    
+    const { mois, annee, prime_fixe, prime_pourcentage, services, exclure_payes } = massGenerateFilters;
+    
+    console.log(`Paramètres primes reçus:`);
+    console.log(`  - prime_fixe (string): ${prime_fixe}`);
+    console.log(`  - prime_pourcentage (string): ${prime_pourcentage}`);
+    
+    // Filtrer les employés
+    let employesCibles = [...employees];
+    
+    // Filtrer par services
+    if (services && services.length > 0) {
+        employesCibles = employesCibles.filter(emp => services.includes(emp.service));
+        console.log(`Filtre par services: ${services.join(', ')} -> ${employesCibles.length} employés restants`);
+    }
+    
+    // Filtrer par sélection manuelle (si mode sélection actif)
+    if (selectAllMode === false && selectedEmployeeIds.length > 0) {
+        employesCibles = employesCibles.filter(emp => selectedEmployeeIds.includes(emp.id));
+        console.log(`Filtre par sélection manuelle: ${selectedEmployeeIds.length} IDs -> ${employesCibles.length} employés restants`);
+    }
+    
+    const employesAvecBulletins = [];
+    let bulletinsExistants = 0;
+    let totalNet = 0;
+    let totalSalaireBase = 0;
+    let totalPrime = 0;
+    
+    const primeFixe = parseFloat(prime_fixe) || 0;
+    const primePourcentage = parseFloat(prime_pourcentage) || 0;
+    
+    console.log(`Paramètres primes après parseFloat:`);
+    console.log(`  - primeFixe: ${primeFixe} Ar`);
+    console.log(`  - primePourcentage: ${primePourcentage}%`);
+    console.log(`========================================`);
+    
+    for (const emp of employesCibles) {
+        // Vérifier si bulletin existe déjà
+        const existe = bulletins.some(b => 
+            b.utilisateur_id === emp.id && 
+            b.mois === mois && 
+            b.annee === annee
+        );
         
-        // Filtrer les employés
-        let employesCibles = [...employees];
-        
-        // Filtrer par services
-        if (services && services.length > 0) {
-            employesCibles = employesCibles.filter(emp => services.includes(emp.service));
+        // Exclure les employés déjà payés si l'option est activée
+        if (exclure_payes && existe) {
+            bulletinsExistants++;
+            console.log(`⚠️ ${emp.prenom} ${emp.nom}: Bulletin déjà existant pour ${mois}/${annee}, ignoré`);
+            continue;
         }
         
-        // Filtrer par sélection manuelle (si mode sélection actif)
-        if (selectAllMode === false && selectedEmployeeIds.length > 0) {
-            employesCibles = employesCibles.filter(emp => selectedEmployeeIds.includes(emp.id));
-        }
+        // Convertir le salaire base en nombre (CORRECTION ICI)
+        const salaireBase = parseFloat(emp.salaire_base) || 500000;
         
-        const employesAvecBulletins = [];
-        let bulletinsExistants = 0;
-        let totalNet = 0;
-        let totalSalaireBase = 0;
-        let totalPrime = 0;
+        // Calcul de la prime: fixe + pourcentage du salaire
+        const primeCalculee = primeFixe + (salaireBase * primePourcentage / 100);
         
-        for (const emp of employesCibles) {
-            // Vérifier si bulletin existe déjà
-            const existe = bulletins.some(b => 
-                b.utilisateur_id === emp.id && 
-                b.mois === mois && 
-                b.annee === annee
-            );
+        // Calcul du salaire brut = salaire base + prime
+        const salaireBrut = salaireBase + primeCalculee;
+        
+        console.log(`📊 Calcul pour ${emp.prenom} ${emp.nom}:`);
+        console.log(`   - Salaire base: ${salaireBase.toFixed(2)} Ar`);
+        console.log(`   - Prime: ${primeCalculee.toFixed(2)} Ar (${primeFixe} + ${salaireBase} * ${primePourcentage}%)`);
+        console.log(`   - Salaire brut: ${salaireBrut.toFixed(2)} Ar`);
+        
+        // Récupérer les absences pour ce mois (simplifié pour l'aperçu)
+        let joursAbsence = 0;
+        let retenueAbsence = 0;
+        
+        try {
+            const absencesResponse = await axios.get(`${API_URL}/leaves/all-absences`, getAuthHeaders());
+            const absencesData = absencesResponse.data;
             
-            // Exclure les employés déjà payés si l'option est activée
-            if (exclure_payes && existe) {
-                bulletinsExistants++;
-                continue;
-            }
-            
-            const salaireBase = emp.salaire_base || 500000;
-            const primeCalculee = parseFloat(prime_fixe) + (salaireBase * parseFloat(prime_pourcentage) / 100);
-            const netEstime = Math.round((salaireBase + primeCalculee) * 100) / 100;
-            
-            totalNet += netEstime;
-            totalSalaireBase += salaireBase;
-            totalPrime += primeCalculee;
-            
-            employesAvecBulletins.push({
-                ...emp,
-                salaire_base: salaireBase,
-                prime_calculee: Math.round(primeCalculee * 100) / 100,
-                net_estime: netEstime,
-                bulletin_existe: existe
+            const absencesEmploye = absencesData.filter(absence => {
+                const startDate = new Date(absence.date_debut);
+                return (absence.user_id === emp.id || absence.utilisateur_id === emp.id) && 
+                       startDate.getMonth() + 1 === mois && 
+                       startDate.getFullYear() === annee &&
+                       absence.statut === 'approved' &&
+                       absence.type_name === 'Congé sans solde';
             });
+            
+            joursAbsence = absencesEmploye.reduce((total, a) => {
+                const start = new Date(a.date_debut);
+                const end = new Date(a.date_fin);
+                const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+                return total + days;
+            }, 0);
+            
+            if (joursAbsence > 0) {
+                const joursOuvres = 22;
+                const tauxJournalier = salaireBase / joursOuvres;
+                retenueAbsence = Math.round(tauxJournalier * joursAbsence * 100) / 100;
+                console.log(`   - Absences: ${joursAbsence} jours, Retenue: ${retenueAbsence} Ar`);
+            }
+        } catch (e) {
+            console.error('Erreur récupération absences:', e);
         }
         
-        // Statistiques par service
-        const statsParService = {};
-        employesAvecBulletins.forEach(emp => {
-            const service = emp.service || 'Sans service';
-            if (!statsParService[service]) {
-                statsParService[service] = { count: 0, totalNet: 0 };
-            }
-            statsParService[service].count++;
-            statsParService[service].totalNet += emp.net_estime;
-        });
+        // Net estimé = Salaire brut - retenue absence
+        const netEstime = Math.round((salaireBrut - retenueAbsence) * 100) / 100;
         
-        setPreviewData({
-            employes: employesAvecBulletins,
-            total_employes: employesAvecBulletins.length,
-            bulletins_existants: bulletinsExistants,
-            total_net: totalNet,
-            total_salaire_base: totalSalaireBase,
-            total_prime: totalPrime,
-            prime_moyenne: employesAvecBulletins.length > 0 ? totalPrime / employesAvecBulletins.length : 0,
-            stats_par_service: statsParService
-        });
+        totalNet += netEstime;
+        totalSalaireBase += salaireBase;
+        totalPrime += primeCalculee;
         
-        setShowPreviewModal(true);
-    };
+        console.log(`   - NET estimé: ${netEstime.toFixed(2)} Ar`);
+        
+        employesAvecBulletins.push({
+            ...emp,
+            salaire_base: salaireBase,
+            prime_fixe: primeFixe,
+            prime_pourcentage: primePourcentage,
+            prime_calculee: Math.round(primeCalculee * 100) / 100,
+            salaire_brut: Math.round(salaireBrut * 100) / 100,
+            jours_absence: joursAbsence,
+            retenue_absence: retenueAbsence,
+            net_estime: netEstime,
+            bulletin_existe: existe
+        });
+    }
+    
+    // Statistiques par service
+    const statsParService = {};
+    employesAvecBulletins.forEach(emp => {
+        const service = emp.service || 'Sans service';
+        if (!statsParService[service]) {
+            statsParService[service] = { count: 0, totalNet: 0, totalPrime: 0 };
+        }
+        statsParService[service].count++;
+        statsParService[service].totalNet += emp.net_estime;
+        statsParService[service].totalPrime += emp.prime_calculee;
+    });
+    
+    console.log(`=== RÉSUMÉ APERÇU ===`);
+    console.log(`Nouveaux bulletins: ${employesAvecBulletins.length}`);
+    console.log(`Bulletins existants ignorés: ${bulletinsExistants}`);
+    console.log(`Total net estimé: ${totalNet.toLocaleString()} Ar`);
+    console.log(`Prime moyenne: ${employesAvecBulletins.length > 0 ? (totalPrime / employesAvecBulletins.length).toLocaleString() : 0} Ar`);
+    console.log(`========================================`);
+    
+    setPreviewData({
+        employes: employesAvecBulletins,
+        total_employes: employesAvecBulletins.length,
+        bulletins_existants: bulletinsExistants,
+        total_net: totalNet,
+        total_salaire_base: totalSalaireBase,
+        total_prime: totalPrime,
+        prime_moyenne: employesAvecBulletins.length > 0 ? totalPrime / employesAvecBulletins.length : 0,
+        stats_par_service: statsParService,
+        prime_fixe: primeFixe,
+        prime_pourcentage: primePourcentage
+    });
+    
+    setShowPreviewModal(true);
+};
 
     // ============ GÉNÉRATION MASSIVE ============
     const handleMassGenerate = async () => {
-    if (!previewData || previewData.employes.length === 0) {
-        addToast('Aucun employé à générer', 'warning');
-        return;
-    }
-    
-    if (!window.confirm(`⚠️ Génération massive de bulletins\n\n` +
-        `📊 ${previewData.employes.length} bulletin(s) vont être générés\n` +
-        `💰 Total net estimé: ${previewData.total_net.toLocaleString()} Ar\n` +
-        `📧 ${massGenerateFilters.envoyer_email ? 'Les employés recevront une notification par email' : 'Aucun email ne sera envoyé'}\n\n` +
-        `Confirmez-vous cette opération ?`)) {
-        return;
-    }
-    
-    try {
-        const response = await axios.post(
-            `${API_URL}/payroll/generer-bulletins-equipe`,
-            { 
+        console.log('=== DÉBUT GÉNÉRATION MASSIVE (CONFIRMATION) ===');
+        console.log('Données preview:', previewData);
+        console.log('Filtres actuels:', massGenerateFilters);
+        
+        if (!previewData || previewData.employes.length === 0) {
+            addToast('Aucun employé à générer', 'warning');
+            return;
+        }
+        
+        // Récupérer les IDs des employés sélectionnés
+        let employesIds = [];
+        
+        if (selectAllMode === false && selectedEmployeeIds.length > 0) {
+            employesIds = selectedEmployeeIds;
+            console.log(`Mode sélection manuelle: ${employesIds.length} IDs sélectionnés`);
+        } else if (selectAllMode === true) {
+            employesIds = [];
+            console.log(`Mode "Tout sélectionner": actif, envoi tableau vide pour que backend prenne tous les employés filtrés`);
+        } else {
+            employesIds = previewData.employes.map(emp => emp.id);
+            console.log(`Mode normal: ${employesIds.length} IDs extraits du preview`);
+        }
+        
+        // Récupérer les valeurs de prime
+        const primeFixe = parseFloat(massGenerateFilters.prime_fixe) || 0;
+        const primePourcentage = parseFloat(massGenerateFilters.prime_pourcentage) || 0;
+        
+        console.log(`Valeurs primes envoyées au backend:`);
+        console.log(`  - prime_fixe: ${primeFixe} Ar`);
+        console.log(`  - prime_pourcentage: ${primePourcentage}%`);
+        console.log(`  - envoyer_email: ${massGenerateFilters.envoyer_email}`);
+        
+        // Calculer la prime moyenne pour l'affichage dans la confirmation
+        let primeMoyenne = 0;
+        if (previewData.employes.length > 0) {
+            let totalPrime = 0;
+            for (const emp of previewData.employes) {
+                totalPrime += emp.prime_calculee || (primeFixe + (emp.salaire_base * primePourcentage / 100));
+            }
+            primeMoyenne = totalPrime / previewData.employes.length;
+        }
+        
+        if (!window.confirm(`⚠️ Génération massive de bulletins\n\n` +
+            `📊 ${previewData.employes.length} bulletin(s) vont être générés\n` +
+            `💰 Total net estimé: ${previewData.total_net.toLocaleString()} Ar\n` +
+            `💵 Prime: ${primeMoyenne.toLocaleString()} Ar (moyenne)\n` +
+            `📧 ${massGenerateFilters.envoyer_email ? 'Les employés recevront une notification par email' : 'Aucun email ne sera envoyé'}\n\n` +
+            `Confirmez-vous cette opération ?`)) {
+            console.log('❌ Génération annulée par l\'utilisateur');
+            return;
+        }
+        
+        try {
+            console.log('📡 Envoi de la requête au backend...');
+            const requestBody = { 
                 mois: massGenerateFilters.mois, 
                 annee: massGenerateFilters.annee,
+                employes_ids: employesIds,
+                prime_fixe: primeFixe,
+                prime_pourcentage: primePourcentage,
                 envoyer_email: massGenerateFilters.envoyer_email
-            },
-            getAuthHeaders()
-        );
-        
-        let message = response.data.message;
-        if (response.data.emailSentCount > 0) {
-            message += `\n\n📧 ${response.data.emailSentCount} email(s) envoyé(s) aux employés.`;
+            };
+            console.log('Corps de la requête:', requestBody);
+            
+            const response = await axios.post(
+                `${API_URL}/payroll/generer-bulletins-equipe`,
+                requestBody,
+                getAuthHeaders()
+            );
+            
+            console.log('📥 Réponse du backend:', response.data);
+            
+            let message = response.data.message;
+            if (response.data.emailSentCount > 0) {
+                message += `\n\n📧 ${response.data.emailSentCount} email(s) envoyé(s) aux employés.`;
+            }
+            if (response.data.emailErrors && response.data.emailErrors.length > 0) {
+                message += `\n⚠️ ${response.data.emailErrors.length} erreur(s) d'envoi d'email.`;
+            }
+            
+            alert(message);
+            
+            if (response.data.details && response.data.details.length > 0) {
+                console.log('Détails détaillés:', response.data.details);
+            }
+            
+            if (response.data.debug) {
+                console.log('Debug info:', response.data.debug);
+            }
+            
+            setShowMassGenerateModal(false);
+            setShowPreviewModal(false);
+            setPreviewData(null);
+            setSelectedEmployeeIds([]);
+            setSelectAllMode(true);
+            fetchAllData();
+            
+            if (response.data.successCount > 0) {
+                addToast(`✅ ${response.data.successCount} bulletin(s) généré(s) avec succès`, 'success');
+            }
+            if (response.data.emailSentCount > 0) {
+                addToast(`📧 ${response.data.emailSentCount} email(s) envoyé(s) aux employés`, 'success');
+            }
+        } catch (error) {
+            console.error('❌ Erreur lors de la génération massive:', error);
+            console.error('Détails de l\'erreur:', error.response?.data);
+            addToast('Erreur lors de la génération massive: ' + (error.response?.data?.message || error.message), 'error');
         }
-        if (response.data.emailErrors && response.data.emailErrors.length > 0) {
-            message += `\n⚠️ ${response.data.emailErrors.length} erreur(s) d'envoi d'email.`;
+    };
+
+    // ============ RECALCULER BULLETINS EXISTANTS ============
+    const handleRecalculerBulletins = async () => {
+        const mois = massGenerateFilters.mois;
+        const annee = massGenerateFilters.annee;
+        const primeFixe = parseFloat(massGenerateFilters.prime_fixe) || 0;
+        const primePourcentage = parseFloat(massGenerateFilters.prime_pourcentage) || 0;
+
+        console.log('=== RECALCUL BULLETINS ===');
+        console.log(`Mois: ${mois}, Année: ${annee}`);
+        console.log(`Prime fixe: ${primeFixe} Ar`);
+        console.log(`Prime pourcentage: ${primePourcentage}%`);
+
+        if (primeFixe === 0 && primePourcentage === 0) {
+            addToast("⚠️ Veuillez saisir une prime fixe ou un pourcentage avant de recalculer", "warning");
+            return;
         }
-        
-        alert(message);
-        
-        if (response.data.details && response.data.details.length > 0) {
-            console.log('Détails:', response.data.details);
+
+        const moisNom = moisNoms[mois - 1];
+        if (!window.confirm("🔄 Recalculer les bulletins de " + moisNom + " " + annee + " ?\n\nPrime fixe : " + primeFixe.toLocaleString() + " Ar\nPrime % : " + primePourcentage + "%\n\nCeci va mettre à jour les bulletins déjà générés pour cette période.")) return;
+
+        try {
+            const response = await axios.put(
+                `${API_URL}/payroll/recalculer-bulletins`,
+                { mois, annee, prime_fixe: primeFixe, prime_pourcentage: primePourcentage },
+                getAuthHeaders()
+            );
+            console.log('Réponse recalcul:', response.data);
+            addToast(response.data.message, "success");
+            fetchAllData();
+        } catch (error) {
+            console.error('Erreur recalcul:', error);
+            addToast("Erreur lors du recalcul", "error");
         }
-        
-        setShowMassGenerateModal(false);
-        setShowPreviewModal(false);
-        setPreviewData(null);
-        setSelectedEmployeeIds([]);
-        setSelectAllMode(true);
-        fetchAllData();
-        
-        if (response.data.successCount > 0) {
-            addToast(`✅ ${response.data.successCount} bulletin(s) généré(s) avec succès`, 'success');
-        }
-        if (response.data.emailSentCount > 0) {
-            addToast(`📧 ${response.data.emailSentCount} email(s) envoyé(s) aux employés`, 'success');
-        }
-    } catch (error) {
-        console.error('Erreur:', error);
-        addToast('Erreur lors de la génération massive', 'error');
-    }
-};
+    };
 
     const handleMarquerPaye = async (id) => {
         if (!window.confirm('Marquer ce bulletin comme payé ?')) return;
@@ -519,7 +688,6 @@ function PayrollDashboard() {
         <div className="payroll-dashboard">
             <ToastNotification toasts={toasts} removeToast={removeToast} />
             
-            {/* En-tête */}
             <div className="dashboard-header">
                 <div className="dashboard-header-content">
                     <h1 className="dashboard-title">Gestion de la Paie</h1>
@@ -535,7 +703,6 @@ function PayrollDashboard() {
                 </div>
             </div>
 
-            {/* Cartes statistiques */}
             <div className="payroll-stats-grid">
                 <div className="payroll-stat-card">
                     <div className="payroll-stat-icon blue">
@@ -594,7 +761,6 @@ function PayrollDashboard() {
                 </div>
             </div>
 
-            {/* Actions */}
             <div className="payroll-actions">
                 <button className="btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -613,7 +779,7 @@ function PayrollDashboard() {
                 </button>
             </div>
 
-            {/* Liste des bulletins */}
+            {/* Liste des bulletins - (le reste du JSX reste inchangé) */}
             <div className="payroll-table-container">
                 <div className="table-header">
                     <h3>Bulletins de paie</h3>
@@ -826,118 +992,6 @@ function PayrollDashboard() {
                         <div className="preview-note">* Les retenues pour absences seront calculées automatiquement</div>
                     </div>
 
-                    <div className="form-actions">
-                        <button type="submit" className="btn-primary">
-                            {selectedBulletin ? 'Enregistrer' : 'Générer le bulletin'}
-                        </button>
-                        <button type="button" className="btn-secondary" onClick={() => { setShowModal(false); resetForm(); }}>
-                            Annuler
-                        </button>
-                    </div>
-                </form>
-            </Modal>
-
-             {/* MODAL GÉNÉRATION INDIVIDUELLE - Avec bouton Annuler rouge */}
-            <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title="📄 Générer un bulletin">
-                {message && (
-                    <div className={message.includes('succès') ? 'success-message' : 'error-message'}>
-                        {message}
-                    </div>
-                )}
-                <form onSubmit={selectedBulletin ? handleSaveModification : handleGenererBulletin}>
-                    <div className="form-group">
-                        <label>Employé *</label>
-                        <select
-                            className="form-input"
-                            value={formData.utilisateur_id}
-                            onChange={handleEmployeChange}
-                            required
-                            disabled={!!selectedBulletin}
-                        >
-                            <option value="">-- Sélectionner un employé --</option>
-                            {filteredEmployees.map(emp => {
-                                const role = getRoleDisplay(emp.roles);
-                                return (
-                                    <option key={emp.id} value={emp.id}>
-                                        {role.icon} {emp.prenom} {emp.nom} - {role.text}
-                                        {emp.service ? ` (${emp.service})` : ''}
-                                        {' - Salaire: '}{formatNumber(emp.salaire_base || 500000)} Ar
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </div>
-
-                    <div className="form-row">
-                        <div className="form-group">
-                            <label>Mois</label>
-                            <select
-                                className="form-input"
-                                value={formData.mois}
-                                onChange={(e) => setFormData({ ...formData, mois: parseInt(e.target.value) })}
-                            >
-                                {moisNoms.map((nom, index) => (
-                                    <option key={index + 1} value={index + 1}>{nom}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="form-group">
-                            <label>Année</label>
-                            <input
-                                type="number"
-                                className="form-input"
-                                value={formData.annee}
-                                onChange={(e) => setFormData({ ...formData, annee: parseInt(e.target.value) })}
-                                min="2024"
-                                max="2030"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="form-group">
-                        <label>Salaire de base (Ar) *</label>
-                        <input
-                            type="number"
-                            className="form-input"
-                            value={formData.salaire_base}
-                            onChange={(e) => setFormData({ ...formData, salaire_base: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            step="10000"
-                            required
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label>Prime (Ar) - Optionnel</label>
-                        <input
-                            type="number"
-                            className="form-input"
-                            value={formData.prime}
-                            onChange={(e) => setFormData({ ...formData, prime: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            step="10000"
-                        />
-                    </div>
-
-                    <div className="preview-box">
-                        <div className="preview-title">Aperçu</div>
-                        <div className="preview-content">
-                            <div className="preview-line">
-                                <span>Salaire brut :</span>
-                                <strong>{formatNumber(parseFloat(formData.salaire_base || 0) + parseFloat(formData.prime || 0))} Ar</strong>
-                            </div>
-                            <div className="preview-line">
-                                <span>Prime :</span>
-                                <span>{formatNumber(formData.prime || 0)} Ar</span>
-                            </div>
-                            <div className="preview-line net">
-                                <span>Net estimé :</span>
-                                <strong style={{ color: '#10b981' }}>{formatNumber((parseFloat(formData.salaire_base) || 0) + (parseFloat(formData.prime) || 0))} Ar</strong>
-                            </div>
-                        </div>
-                        <div className="preview-note">* Les retenues pour absences seront calculées automatiquement</div>
-                    </div>
-
                     <div className="form-actions" style={{ display: 'flex', gap: '12px', marginTop: '24px', justifyContent: 'flex-end' }}>
                         <button type="submit" className="btn-primary">
                             {selectedBulletin ? 'Enregistrer' : 'Générer le bulletin'}
@@ -958,7 +1012,7 @@ function PayrollDashboard() {
                 </form>
             </Modal>
 
-            {/* MODAL GÉNÉRATION MASSIVE - Avec bouton Annuler rouge */}
+            {/* MODAL GÉNÉRATION MASSIVE */}
             <Modal isOpen={showMassGenerateModal} onClose={() => { setShowMassGenerateModal(false); setPreviewData(null); }} title="🚀 Génération massive de bulletins">
                 <div className="mass-generate-form">
                     <div className="info-box-massive" style={{ 
@@ -1037,7 +1091,6 @@ function PayrollDashboard() {
                         </div>
                     </div>
                     
-                    {/* Filtres par service */}
                     {services.length > 0 && (
                         <div className="form-group">
                             <label style={{ color: 'var(--text-secondary, #475569)' }}>🏢 Filtrer par service</label>
@@ -1078,7 +1131,6 @@ function PayrollDashboard() {
                         </label>
                     </div>
                     
-                    {/* Sélection manuelle des employés */}
                     <div className="form-group">
                         <label style={{ color: 'var(--text-secondary, #475569)' }}>👥 Sélection manuelle des employés</label>
                         <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
@@ -1137,9 +1189,23 @@ function PayrollDashboard() {
                     </div>
                     
                     <div className="form-actions" style={{ justifyContent: 'space-between', marginTop: '20px', display: 'flex', gap: '12px' }}>
-                        <button type="button" className="btn-secondary" onClick={handlePreviewMassGenerate}>
-                            👁️ Aperçu avant génération
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button type="button" className="btn-secondary" onClick={handlePreviewMassGenerate}>
+                                👁️ Aperçu avant génération
+                            </button>
+                            <button type="button" onClick={handleRecalculerBulletins} style={{
+                                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 16px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontWeight: '500',
+                                fontSize: '14px'
+                            }}>
+                                🔄 Recalculer existants
+                            </button>
+                        </div>
                         <div>
                             <button type="button" className="btn-cancel-danger" onClick={() => { setShowMassGenerateModal(false); setPreviewData(null); }} style={{ 
                                 background: '#dc3545', 
@@ -1162,32 +1228,37 @@ function PayrollDashboard() {
             <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} title="📊 Aperçu de la génération massive">
                 {previewData && (
                     <div className="preview-section">
-                        <div className="stats-cards-grid" style={{ marginBottom: '16px', gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                            <div className="stat-card small" style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
-                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#4f46e5' }}>{previewData.total_employes}</div>
-                                <div className="stat-label" style={{ fontSize: '12px', color: '#64748b' }}>Nouveaux bulletins</div>
+                        <div className="stats-cards-grid" style={{ marginBottom: '16px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                            <div className="stat-card-preview" style={{ background: 'var(--bg-tertiary, #f8fafc)', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--primary-500, #4f46e5)' }}>{previewData.total_employes}</div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-tertiary, #64748b)' }}>Nouveaux bulletins</div>
                             </div>
-                            <div className="stat-card small warning" style={{ background: '#fff3cd', padding: '12px', borderRadius: '12px' }}>
-                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#856404' }}>{previewData.bulletins_existants}</div>
-                                <div className="stat-label" style={{ fontSize: '12px', color: '#856404' }}>Déjà existants</div>
+                            <div className="stat-card-preview warning" style={{ background: 'var(--warning-bg, #fff3cd)', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--warning-text, #856404)' }}>{previewData.bulletins_existants}</div>
+                                <div style={{ fontSize: '12px', color: 'var(--warning-text, #856404)' }}>Déjà existants</div>
                             </div>
-                            <div className="stat-card small" style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
-                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>{previewData.total_net.toLocaleString()} Ar</div>
-                                <div className="stat-label" style={{ fontSize: '12px', color: '#64748b' }}>Total net estimé</div>
+                            <div className="stat-card-preview" style={{ background: 'var(--bg-tertiary, #f8fafc)', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--success-500, #10b981)' }}>{previewData.total_net.toLocaleString()} Ar</div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-tertiary, #64748b)' }}>Total net estimé</div>
                             </div>
-                            <div className="stat-card small" style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
-                                <div className="stat-value" style={{ fontSize: '24px', fontWeight: 'bold', color: '#f59e0b' }}>{Math.round(previewData.prime_moyenne).toLocaleString()} Ar</div>
-                                <div className="stat-label" style={{ fontSize: '12px', color: '#64748b' }}>Prime moyenne</div>
+                            <div className="stat-card-preview" style={{ background: 'var(--bg-tertiary, #f8fafc)', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--warning-500, #f59e0b)' }}>{Math.round(previewData.prime_moyenne).toLocaleString()} Ar</div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-tertiary, #64748b)' }}>Prime moyenne</div>
                             </div>
                         </div>
                         
-                        {/* Statistiques par service */}
+                        <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-tertiary, #f1f5f9)', borderRadius: '12px' }}>
+                            <strong style={{ color: 'var(--text-primary, #1e293b)' }}>💰 Paramètres de prime appliqués :</strong><br/>
+                            <span style={{ color: 'var(--text-secondary, #475569)' }}>Prime fixe : {previewData.prime_fixe.toLocaleString()} Ar</span><br/>
+                            <span style={{ color: 'var(--text-secondary, #475569)' }}>Prime en % : {previewData.prime_pourcentage}% du salaire de base</span>
+                        </div>
+                        
                         {Object.keys(previewData.stats_par_service).length > 0 && (
                             <div style={{ marginBottom: '16px' }}>
-                                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>📊 Par service :</h4>
+                                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: 'var(--text-primary, #1e293b)' }}>📊 Par service :</h4>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                                     {Object.entries(previewData.stats_par_service).map(([service, data]) => (
-                                        <div key={service} style={{ background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px' }}>
+                                        <div key={service} style={{ background: 'var(--bg-tertiary, #f1f5f9)', padding: '8px 12px', borderRadius: '8px', color: 'var(--text-secondary, #475569)' }}>
                                             <strong>{service}</strong>: {data.count} employé(s) - {data.totalNet.toLocaleString()} Ar
                                         </div>
                                     ))}
@@ -1195,44 +1266,67 @@ function PayrollDashboard() {
                             </div>
                         )}
                         
-                        {/* Liste des employés */}
                         {previewData.employes.length > 0 ? (
                             <div className="table-wrapper" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                                 <table className="modern-table compact" style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
-                                            <th style={{ padding: '8px', textAlign: 'left' }}>Employé</th>
-                                            <th style={{ padding: '8px', textAlign: 'left' }}>Service</th>
-                                            <th style={{ padding: '8px', textAlign: 'right' }}>Salaire base</th>
-                                            <th style={{ padding: '8px', textAlign: 'right' }}>Prime</th>
-                                            <th style={{ padding: '8px', textAlign: 'right' }}>Net estimé</th>
+                                        <tr style={{ background: 'var(--bg-table-header, #f8fafc)', position: 'sticky', top: 0, borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                            <th style={{ padding: '8px', textAlign: 'left', color: 'var(--text-secondary, #475569)' }}>Employé</th>
+                                            <th style={{ padding: '8px', textAlign: 'left', color: 'var(--text-secondary, #475569)' }}>Service</th>
+                                            <th style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>Salaire base</th>
+                                            <th style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>Prime</th>
+                                            <th style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>Salaire brut</th>
+                                            <th style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>Absences</th>
+                                            <th style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>Net estimé</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {previewData.employes.map(emp => (
-                                            <tr key={emp.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                <td style={{ padding: '8px' }}><strong>{emp.prenom} {emp.nom}</strong></td>
-                                                <td style={{ padding: '8px' }}>{emp.service || '-'}</td>
-                                                <td style={{ padding: '8px', textAlign: 'right' }}>{emp.salaire_base.toLocaleString()} Ar</td>
-                                                <td style={{ padding: '8px', textAlign: 'right' }}>{Math.round(emp.prime_calculee).toLocaleString()} Ar</td>
-                                                <td style={{ padding: '8px', textAlign: 'right' }}><strong>{emp.net_estime.toLocaleString()} Ar</strong></td>
+                                            <tr key={emp.id} style={{ borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                                <td style={{ padding: '8px', color: 'var(--text-primary, #1e293b)' }}><strong>{emp.prenom} {emp.nom}</strong></td>
+                                                <td style={{ padding: '8px', color: 'var(--text-secondary, #475569)' }}>{emp.service || '-'}</td>
+                                                <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>{emp.salaire_base.toLocaleString()} Ar</td>
+                                                <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>{Math.round(emp.prime_calculee).toLocaleString()} Ar</td>
+                                                <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>{Math.round(emp.salaire_brut).toLocaleString()} Ar</td>
+                                                <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary, #475569)' }}>
+                                                    {emp.jours_absence > 0 ? `${emp.jours_absence}j (-${Math.round(emp.retenue_absence).toLocaleString()} Ar)` : '-'}
+                                                </td>
+                                                <td style={{ padding: '8px', textAlign: 'right' }}>
+                                                    <strong style={{ color: 'var(--success-500, #10b981)' }}>{emp.net_estime.toLocaleString()} Ar</strong>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
                         ) : (
-                            <div className="info-box" style={{ background: '#fff3cd', marginTop: '16px' }}>
+                            <div className="info-box" style={{ background: 'var(--warning-bg, #fff3cd)', marginTop: '16px', padding: '16px', borderRadius: '12px', color: 'var(--warning-text, #856404)' }}>
                                 Aucun employé à générer pour la période sélectionnée.
                             </div>
                         )}
                         
-                        <div className="form-actions" style={{ marginTop: '20px', justifyContent: 'flex-end' }}>
-                            <button type="button" className="btn-cancel" onClick={() => setShowPreviewModal(false)}>
+                        <div className="form-actions" style={{ marginTop: '20px', justifyContent: 'flex-end', display: 'flex', gap: '12px' }}>
+                            <button type="button" className="btn-cancel" onClick={() => setShowPreviewModal(false)} style={{ 
+                                background: 'var(--bg-tertiary, #f1f5f9)', 
+                                border: '1px solid var(--border-light, #e2e8f0)', 
+                                color: 'var(--text-secondary, #475569)',
+                                padding: '8px 20px',
+                                borderRadius: '8px',
+                                cursor: 'pointer'
+                            }}>
                                 Retour
                             </button>
-                            <button type="button" className="btn-submit" onClick={handleMassGenerate} disabled={previewData.employes.length === 0}>
-                                Confirmer la génération ({previewData.employes.length} bulletins)
+                            <button type="button" className="btn-submit" onClick={handleMassGenerate} disabled={previewData.employes.length === 0} style={{
+                                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 20px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontWeight: '500',
+                                opacity: previewData.employes.length === 0 ? 0.6 : 1
+                            }}>
+                                Confirmer la génération ({previewData.employes.length} bulletin(s))
                             </button>
                         </div>
                     </div>
