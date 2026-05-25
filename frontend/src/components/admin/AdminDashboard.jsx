@@ -12,6 +12,9 @@ import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
 import PayrollDashboard from '../payroll/PayrollDashboard';
 import GlobalCalendar from './GlobalCalendar';
+import LeaveRequests from './LeaveRequests';
+import AdminStatistics from './AdminStatistics';
+import Profile from '../common/Profile';
 
 function AdminDashboard({ onLogout }) {
     const [user, setUser] = useState({});
@@ -68,45 +71,45 @@ function AdminDashboard({ onLogout }) {
     });
 
     useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-    setUser(storedUser);
-    if (storedUser.id) {
-        const socketUrl = getSocketUrl();
-        const newSocket = io(socketUrl, {
-            transports: ['websocket', 'polling'],
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
-            timeout: 10000
-        });
-        
-        newSocket.on('connect', () => {
-            console.log('Socket.IO admin connecté');
-            newSocket.emit('join', storedUser.id);
-            if (storedUser.roles?.includes('admin')) {
-                newSocket.emit('join_admin');
-            }
-        });
-        
-        newSocket.on('connect_error', (error) => {
-            console.warn('Socket.IO admin erreur:', error.message);
-        });
-        
-        newSocket.on('new_notification', (notification) => {
-            setRealtimeNotifications(prev => [notification, ...prev]);
-            success(notification.titre);
-            setTimeout(() => setRealtimeNotifications(prev => prev.slice(0, 5)), 10000);
-        });
-        
-        setSocket(newSocket);
-        
-        return () => {
-            if (newSocket) {
-                newSocket.disconnect();
-                newSocket.close();
-            }
-        };
-    }
-}, []);
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        setUser(storedUser);
+        if (storedUser.id) {
+            const socketUrl = getSocketUrl();
+            const newSocket = io(socketUrl, {
+                transports: ['websocket', 'polling'],
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+                timeout: 10000
+            });
+            
+            newSocket.on('connect', () => {
+                console.log('Socket.IO admin connecté');
+                newSocket.emit('join', storedUser.id);
+                if (storedUser.roles?.includes('admin')) {
+                    newSocket.emit('join_admin');
+                }
+            });
+            
+            newSocket.on('connect_error', (error) => {
+                console.warn('Socket.IO admin erreur:', error.message);
+            });
+            
+            newSocket.on('new_notification', (notification) => {
+                setRealtimeNotifications(prev => [notification, ...prev]);
+                success(notification.titre);
+                setTimeout(() => setRealtimeNotifications(prev => prev.slice(0, 5)), 10000);
+            });
+            
+            setSocket(newSocket);
+            
+            return () => {
+                if (newSocket) {
+                    newSocket.disconnect();
+                    newSocket.close();
+                }
+            };
+        }
+    }, []);
 
     useEffect(() => {
         fetchAllData();
@@ -468,6 +471,28 @@ function AdminDashboard({ onLogout }) {
 
     const currentPath = location.pathname;
 
+    // Page Mon profil
+    if (currentPath.includes('/profile')) {
+        return (
+            <>
+                <Navbar user={user} role="admin" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="admin" onLogout={onLogout} />
+                    <main className="main-content">
+                        <Profile user={user} role="admin" onLogout={onLogout} onProfileUpdate={(updatedUser) => {
+                            setUser(updatedUser);
+                            const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+                            localStorage.setItem('user', JSON.stringify({ ...storedUser, ...updatedUser }));
+                        }} />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // Page Paiement
     if (currentPath.includes('/payroll')) {
         return (
             <>
@@ -484,6 +509,7 @@ function AdminDashboard({ onLogout }) {
         );
     }
 
+    // Page Calendrier global
     if (currentPath.includes('/calendar')) {
         return (
             <>
@@ -500,6 +526,41 @@ function AdminDashboard({ onLogout }) {
         );
     }
 
+    // Page Demandes (nouvelle page dédiée)
+    if (currentPath.includes('/leave-requests')) {
+        return (
+            <>
+                <Navbar user={user} role="admin" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="admin" onLogout={onLogout} />
+                    <main className="main-content">
+                        <LeaveRequests />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // Page Statistiques (nouvelle page dédiée)
+    if (currentPath.includes('/statistics')) {
+        return (
+            <>
+                <Navbar user={user} role="admin" onLogout={onLogout} />
+                <div className="app-container">
+                    <Sidebar role="admin" onLogout={onLogout} />
+                    <main className="main-content">
+                        <AdminStatistics />
+                    </main>
+                </div>
+                <Footer />
+                <ToastNotification toasts={toasts} removeToast={removeToast} />
+            </>
+        );
+    }
+
+    // Page Gestion des utilisateurs
     if (currentPath.includes('/users')) {
         return (
             <>
@@ -663,6 +724,7 @@ function AdminDashboard({ onLogout }) {
         );
     }
 
+    // Page Paramètres
     if (currentPath.includes('/settings')) {
         return (
             <>
@@ -710,6 +772,7 @@ function AdminDashboard({ onLogout }) {
         );
     }
 
+    // Page Logs
     if (currentPath.includes('/logs')) {
         return (
             <>
@@ -954,6 +1017,10 @@ function AdminDashboard({ onLogout }) {
                     <div className="quick-actions">
                         <h3>Actions rapides</h3>
                         <div className="quick-actions-grid">
+                            <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/profile')}>
+                                <span className="quick-action-icon">👤</span>
+                                <span>Mon profil</span>
+                            </button>
                             <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/users')}>
                                 <span className="quick-action-icon">👥</span>
                                 <span>Gérer utilisateurs</span>
@@ -965,6 +1032,10 @@ function AdminDashboard({ onLogout }) {
                             <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/calendar')}>
                                 <span className="quick-action-icon">📅</span>
                                 <span>Calendrier général</span>
+                            </button>
+                            <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/statistics')}>
+                                <span className="quick-action-icon">📊</span>
+                                <span>Statistiques</span>
                             </button>
                             <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/settings')}>
                                 <span className="quick-action-icon">⚙️</span>

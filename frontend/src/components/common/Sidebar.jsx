@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { API_URL } from '../../config/api';
+import { API_URL, getBaseUrl } from '../../config/api';
 
 function Sidebar({ role, onLogout }) {
     const location = useLocation();
@@ -11,15 +11,58 @@ function Sidebar({ role, onLogout }) {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [user, setUser] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(null);
 
     const [notificationCounts, setNotificationCounts] = useState({
         pendingRequests: 0,
         pendingValidations: 0,
         pendingAdminValidations: 0,
-        unreadNotifications: 0
+        unreadNotifications: 0,
+        teamCount: 0
     });
 
+    // Fonction pour obtenir l'URL complète de la photo
+    const getFullPhotoUrl = (photoUrl) => {
+        if (!photoUrl) return null;
+        if (photoUrl.startsWith('http')) return photoUrl;
+        const baseUrl = getBaseUrl();
+        return `${baseUrl}${photoUrl}`;
+    };
+
+    // Fonction pour mettre à jour l'utilisateur depuis le localStorage
+    const updateUserFromStorage = () => {
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        console.log('👤 Sidebar - Utilisateur chargé:', storedUser);
+        setUser(storedUser);
+        
+        if (storedUser.photo_url) {
+            const fullUrl = getFullPhotoUrl(storedUser.photo_url);
+            console.log('📸 Sidebar - Photo URL:', fullUrl);
+            setPhotoPreview(fullUrl);
+        } else {
+            console.log('📸 Sidebar - Pas de photo_url');
+            setPhotoPreview(null);
+        }
+    };
+
     useEffect(() => {
+        updateUserFromStorage();
+        
+        // Écouter les changements dans localStorage
+        const handleStorageChange = () => {
+            updateUserFromStorage();
+        };
+        
+        // Écouter l'événement personnalisé profileUpdated
+        const handleProfileUpdated = () => {
+            console.log('🔄 Sidebar - Événement profileUpdated reçu, mise à jour...');
+            updateUserFromStorage();
+        };
+        
+        window.addEventListener('storage', handleStorageChange);
+        window.addEventListener('profileUpdated', handleProfileUpdated);
+        
         const handleResize = () => {
             const mobile = window.innerWidth <= 1024;
             setIsMobile(mobile);
@@ -36,6 +79,8 @@ function Sidebar({ role, onLogout }) {
         const interval = setInterval(fetchNotificationCounts, 30000);
         return () => {
             window.removeEventListener('resize', handleResize);
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('profileUpdated', handleProfileUpdated);
             clearInterval(interval);
         };
     }, [role]);
@@ -49,7 +94,8 @@ function Sidebar({ role, onLogout }) {
                 pendingRequests: 0,
                 pendingValidations: 0,
                 pendingAdminValidations: 0,
-                unreadNotifications: 0
+                unreadNotifications: 0,
+                teamCount: 0
             };
 
             if (role === 'admin') {
@@ -107,7 +153,59 @@ function Sidebar({ role, onLogout }) {
         );
     };
 
-    // ============ MENU POUR ADMIN ============
+    // Composant Avatar pour le sidebar
+    const SidebarAvatar = () => {
+        const avatarSize = isCollapsed ? 32 : 40;
+        
+        if (photoPreview) {
+            return (
+                <img 
+                    src={photoPreview} 
+                    alt="Avatar" 
+                    className="sidebar-avatar"
+                    style={{
+                        width: `${avatarSize}px`,
+                        height: `${avatarSize}px`,
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: '2px solid #667eea'
+                    }}
+                    onError={(e) => {
+                        console.error('❌ Erreur chargement photo sidebar:', photoPreview);
+                        e.target.style.display = 'none';
+                        // Afficher les initiales en cas d'erreur
+                        const parent = e.target.parentElement;
+                        if (parent) {
+                            const initials = document.createElement('div');
+                            initials.className = 'sidebar-avatar-placeholder';
+                            initials.style.cssText = `width: ${avatarSize}px; height: ${avatarSize}px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: ${avatarSize * 0.4}px;`;
+                            initials.textContent = `${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}`;
+                            parent.appendChild(initials);
+                        }
+                    }}
+                />
+            );
+        }
+        
+        return (
+            <div className="sidebar-avatar-placeholder" style={{
+                width: `${avatarSize}px`,
+                height: `${avatarSize}px`,
+                background: '#667eea',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: `${avatarSize * 0.4}px`
+            }}>
+                {user?.prenom?.charAt(0) || ''}{user?.nom?.charAt(0) || ''}
+            </div>
+        );
+    };
+
+    // ============ MENU POUR ADMIN (à garder identique) ============
     const getAdminMenuItems = () => {
         return [
             {
@@ -121,6 +219,18 @@ function Sidebar({ role, onLogout }) {
                         <rect x="14" y="3" width="7" height="7"/>
                         <rect x="14" y="14" width="7" height="7"/>
                         <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/profile',
+                label: 'Mon profil',
+                key: 'profile',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
                     </svg>
                 )
             },
@@ -149,6 +259,19 @@ function Sidebar({ role, onLogout }) {
                         <line x1="8" y1="9" x2="16" y2="9"/>
                         <line x1="8" y1="13" x2="16" y2="13"/>
                         <line x1="8" y1="17" x2="12" y2="17"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/statistics',
+                label: 'Statistiques',
+                key: 'statistics',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
                     </svg>
                 )
             },
@@ -194,7 +317,7 @@ function Sidebar({ role, onLogout }) {
         ];
     };
 
-    // ============ MENU POUR MANAGER (avec Mes demandes ajouté) ============
+    // ============ MENU POUR MANAGER (à garder identique) ============
     const getManagerMenuItems = () => {
         return [
             {
@@ -208,6 +331,18 @@ function Sidebar({ role, onLogout }) {
                         <rect x="14" y="3" width="7" height="7"/>
                         <rect x="14" y="14" width="7" height="7"/>
                         <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/manager/profile',
+                label: 'Mon profil',
+                key: 'profile',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
                     </svg>
                 )
             },
@@ -281,7 +416,7 @@ function Sidebar({ role, onLogout }) {
         ];
     };
 
-    // ============ MENU POUR EMPLOYÉ ============
+    // ============ MENU POUR EMPLOYÉ (à garder identique) ============
     const getEmployeeMenuItems = () => {
         return [
             {
@@ -295,6 +430,18 @@ function Sidebar({ role, onLogout }) {
                         <rect x="14" y="3" width="7" height="7"/>
                         <rect x="14" y="14" width="7" height="7"/>
                         <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/employee/profile',
+                label: 'Mon profil',
+                key: 'profile',
+                badge: 0,
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
                     </svg>
                 )
             },
@@ -438,6 +585,14 @@ function Sidebar({ role, onLogout }) {
                 </button>
                 {isOpen && (
                     <nav style={{ marginTop: '16px' }}>
+                        {/* Avatar utilisateur dans le menu mobile */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', marginBottom: '12px', borderBottom: '1px solid #e2e8f0' }}>
+                            <SidebarAvatar />
+                            <div>
+                                <div style={{ fontWeight: '600', color: '#1e293b' }}>{user?.prenom} {user?.nom}</div>
+                                <div style={{ fontSize: '12px', color: '#64748b' }}>{role === 'admin' ? 'Administrateur' : role === 'manager' ? 'Manager' : 'Employé'}</div>
+                            </div>
+                        </div>
                         {getMenuItems().map(item => {
                             const active = isActive(item.path);
                             return (
@@ -499,7 +654,7 @@ function Sidebar({ role, onLogout }) {
 
     return (
         <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
-            <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 16px 16px 16px' }}>
+            <div className="sidebar-header" style={{ display: 'flex', justifyContent: isCollapsed ? 'center' : 'flex-end', padding: isCollapsed ? '0 8px 16px 8px' : '0 16px 16px 16px' }}>
                 <button
                     onClick={toggleSidebar}
                     className="collapse-btn"
@@ -517,6 +672,21 @@ function Sidebar({ role, onLogout }) {
                     {isCollapsed ? '→' : '←'}
                 </button>
             </div>
+            {/* Avatar utilisateur en haut du sidebar */}
+            {!isCollapsed && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 16px 20px 16px', borderBottom: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                    <SidebarAvatar />
+                    <div>
+                        <div style={{ fontWeight: '600', color: '#1e293b' }}>{user?.prenom} {user?.nom}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>{role === 'admin' ? 'Administrateur' : role === 'manager' ? 'Manager' : 'Employé'}</div>
+                    </div>
+                </div>
+            )}
+            {isCollapsed && (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 20px 0' }}>
+                    <SidebarAvatar />
+                </div>
+            )}
             <nav>
                 {getMenuItems().map(item => {
                     const active = isActive(item.path);

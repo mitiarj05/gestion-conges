@@ -14,6 +14,7 @@ import LeaveRequest from '../employee/LeaveRequest';
 import ManagerMyRequests from './MyRequests';
 import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
+import Profile from '../common/Profile';
 
 function ManagerDashboard({ onLogout }) {
     const [user, setUser] = useState({});
@@ -206,6 +207,10 @@ function ManagerDashboard({ onLogout }) {
             <div className="quick-actions">
                 <h3>Actions rapides</h3>
                 <div className="quick-actions-grid">
+                    <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/profile')}>
+                        <span className="quick-action-icon">👤</span>
+                        <span>Mon profil</span>
+                    </button>
                     <button className="quick-action-btn primary" onClick={() => navigate('/dashboard/manager/new-request')}>
                         <span className="quick-action-icon">📝</span>
                         <span>Faire une demande de congé</span>
@@ -256,6 +261,19 @@ function ManagerDashboard({ onLogout }) {
             <ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );
+
+    // Page Mon profil
+    if (currentPath === '/dashboard/manager/profile') {
+        return (
+            <MainLayout>
+                <Profile user={user} role="manager" onLogout={onLogout} onProfileUpdate={(updatedUser) => {
+                    setUser(updatedUser);
+                    const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+                    localStorage.setItem('user', JSON.stringify({ ...storedUser, ...updatedUser }));
+                }} />
+            </MainLayout>
+        );
+    }
 
     // Route pour Mes demandes - utilise le même layout
     if (currentPath === '/dashboard/manager/my-requests') {

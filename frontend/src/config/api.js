@@ -41,3 +41,8 @@ export const getSocketUrl = () => {
     }
     return 'http://localhost:5000';
 };
+
+// Fonction pour obtenir l'URL de base (sans /api) pour les fichiers statiques
+export const getBaseUrl = () => {
+    return API_URL.replace('/api', '');
+};

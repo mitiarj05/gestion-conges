@@ -30,7 +30,7 @@ function DashboardRouter({ onLogout }) {
         );
     }
 
-    // Routes pour manager - Toutes les routes sont gérées par ManagerDashboard
+    // Routes pour manager
     if (isManager && !isAdmin) {
         return (
             <Routes>

@@ -3,13 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from './ThemeToggle';
 import axios from 'axios';
-import { API_URL } from '../../config/api';
+import { API_URL, getBaseUrl } from '../../config/api';
 
 function Navbar({ user, role, onLogout }) {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     const [showNotifications, setShowNotifications] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [photoPreview, setPhotoPreview] = useState(null);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -24,30 +25,37 @@ function Navbar({ user, role, onLogout }) {
         return () => clearInterval(interval);
     }, [role]);
 
-    const fetchNotifications = async () => {
-    try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        let endpoint = '';
-        if (role === 'admin') {
-            endpoint = `${API_URL}/admin/notifications`;
-        } else {
-            endpoint = `${API_URL}/leaves/notifications`;
+    useEffect(() => {
+        // Charger la photo de profil
+        if (user?.photo_url) {
+            const baseUrl = getBaseUrl();
+            setPhotoPreview(`${baseUrl}${user.photo_url}`);
         }
+    }, [user]);
 
-        const response = await axios.get(endpoint, {
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: 10000  // Ajouter un timeout
-        });
-        setNotifications(response.data);
-        setUnreadCount(response.data.filter(n => !n.est_lu).length);
-    } catch (error) {
-        console.error('Erreur chargement notifications:', error.message);
-        // Ne pas bloquer l'application
-        setNotifications([]);
-    }
-};
+    const fetchNotifications = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            let endpoint = '';
+            if (role === 'admin') {
+                endpoint = `${API_URL}/admin/notifications`;
+            } else {
+                endpoint = `${API_URL}/leaves/notifications`;
+            }
+
+            const response = await axios.get(endpoint, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 10000
+            });
+            setNotifications(response.data);
+            setUnreadCount(response.data.filter(n => !n.est_lu).length);
+        } catch (error) {
+            console.error('Erreur chargement notifications:', error.message);
+            setNotifications([]);
+        }
+    };
 
     const markAsRead = async (id) => {
         try {
@@ -121,6 +129,47 @@ function Navbar({ user, role, onLogout }) {
                 if (role === 'manager') return '/dashboard/manager';
                 return '/dashboard/employee';
         }
+    };
+
+    // Composant Avatar pour la navbar
+    const NavbarAvatar = () => {
+        if (photoPreview) {
+            return (
+                <img 
+                    src={photoPreview} 
+                    alt="Avatar" 
+                    className="navbar-avatar"
+                    style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: '2px solid #667eea'
+                    }}
+                    onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.innerHTML = `<div class="navbar-avatar-placeholder" style="width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}</div>`;
+                    }}
+                />
+            );
+        }
+        
+        return (
+            <div className="navbar-avatar-placeholder" style={{
+                width: '32px',
+                height: '32px',
+                background: '#667eea',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '12px'
+            }}>
+                {user?.prenom?.charAt(0) || ''}{user?.nom?.charAt(0) || ''}
+            </div>
+        );
     };
 
     return (
@@ -201,6 +250,8 @@ function Navbar({ user, role, onLogout }) {
                 <span className="role-badge">
                     {getRoleLabel()}
                 </span>
+                {/* Avatar utilisateur dans la navbar */}
+                <NavbarAvatar />
                 {!isMobile && (
                     <span className="user-name">
                         {user?.prenom || ''} {user?.nom || ''}
