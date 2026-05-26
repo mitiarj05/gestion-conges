@@ -1,61 +1,87 @@
 // frontend/src/components/common/Modal.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 function Modal({ isOpen, onClose, title, children }) {
     const [mounted, setMounted] = useState(false);
-    const modalRootRef = useRef(null);
+    const modalContainerRef = useRef(null);
+    const isClosingRef = useRef(false);
 
-    // Créer le conteneur de modale au montage
+    // Création du conteneur de modale au montage (une seule fois)
     useEffect(() => {
-        // Vérifier si le conteneur existe déjà
-        let existingRoot = document.getElementById('modal-root');
+        console.log('🔧 [Modal] Montage du composant');
         
-        if (!existingRoot) {
-            const div = document.createElement('div');
-            div.id = 'modal-root';
-            document.body.appendChild(div);
-            modalRootRef.current = div;
+        let container = document.getElementById('react-modal-root');
+        
+        if (!container) {
+            console.log('📁 [Modal] Création du conteneur #react-modal-root');
+            container = document.createElement('div');
+            container.id = 'react-modal-root';
+            document.body.appendChild(container);
         } else {
-            modalRootRef.current = existingRoot;
+            console.log('📁 [Modal] Conteneur existant trouvé');
         }
         
+        modalContainerRef.current = container;
         setMounted(true);
         
         return () => {
-            // Ne pas supprimer le conteneur pour éviter les erreurs
-            // Le conteneur reste dans le DOM
-            modalRootRef.current = null;
+            console.log('🗑️ [Modal] Nettoyage - ne pas supprimer le conteneur');
+            // NE PAS supprimer le conteneur ici pour éviter les erreurs
+            modalContainerRef.current = null;
         };
     }, []);
 
-    // Gérer la fermeture avec la touche Escape
+    // Gestion de la fermeture par Escape
     useEffect(() => {
         const handleEscape = (e) => {
-            if (e.key === 'Escape' && isOpen && onClose) {
+            if (e.key === 'Escape' && isOpen && onClose && !isClosingRef.current) {
+                console.log('🔑 [Modal] Fermeture par touche Escape');
+                isClosingRef.current = true;
                 onClose();
+                setTimeout(() => {
+                    isClosingRef.current = false;
+                }, 100);
             }
         };
         
         if (isOpen) {
+            console.log('👁️ [Modal] Modale ouverte, ajout des listeners');
             document.addEventListener('keydown', handleEscape);
-            // Empêcher le scroll du body uniquement si la modale est ouverte
             document.body.style.overflow = 'hidden';
         }
         
         return () => {
+            if (isOpen) {
+                console.log('👁️ [Modal] Modale fermée, nettoyage des listeners');
+            }
             document.removeEventListener('keydown', handleEscape);
             document.body.style.overflow = '';
         };
     }, [isOpen, onClose]);
 
-    // Ne pas rendre la modale si elle n'est pas ouverte ou si on n'est pas monté
-    if (!isOpen || !mounted) return null;
+    // Ne pas rendre si pas ouvert ou pas monté
+    if (!isOpen || !mounted) {
+        return null;
+    }
+
+    console.log('🎨 [Modal] Rendu du contenu de la modale');
+
+    const handleOverlayClick = (e) => {
+        if (e.target === e.currentTarget && !isClosingRef.current) {
+            console.log('🖱️ [Modal] Clic sur l\'overlay, fermeture');
+            isClosingRef.current = true;
+            onClose();
+            setTimeout(() => {
+                isClosingRef.current = false;
+            }, 100);
+        }
+    };
 
     const modalContent = (
         <div 
             className="modal-overlay" 
-            onClick={onClose}
+            onClick={handleOverlayClick}
             style={{
                 position: 'fixed',
                 top: 0,
@@ -66,7 +92,7 @@ function Modal({ isOpen, onClose, title, children }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                zIndex: 1000,
+                zIndex: 9999,
                 backdropFilter: 'blur(4px)'
             }}
         >
@@ -76,7 +102,8 @@ function Modal({ isOpen, onClose, title, children }) {
                 style={{
                     backgroundColor: 'var(--bg-card, white)',
                     borderRadius: '16px',
-                    maxWidth: '90vw',
+                    width: '90%',
+                    maxWidth: '600px',
                     maxHeight: '90vh',
                     overflow: 'auto',
                     boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)'
@@ -89,34 +116,56 @@ function Modal({ isOpen, onClose, title, children }) {
                         justifyContent: 'space-between',
                         alignItems: 'center',
                         padding: '20px 24px',
-                        borderBottom: '1px solid var(--border-light, #e2e8f0)'
+                        borderBottom: '1px solid var(--border-light, #e2e8f0)',
+                        backgroundColor: 'var(--bg-card, white)',
+                        borderTopLeftRadius: '16px',
+                        borderTopRightRadius: '16px'
                     }}
                 >
-                    <h3 style={{ margin: 0, color: 'var(--text-primary, #1e293b)' }}>{title}</h3>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: 'var(--text-primary, #1e293b)' }}>
+                        {title}
+                    </h3>
                     <button 
                         className="modal-close" 
-                        onClick={onClose}
+                        onClick={() => {
+                            console.log('❌ [Modal] Clic sur le bouton fermer');
+                            if (!isClosingRef.current) {
+                                isClosingRef.current = true;
+                                onClose();
+                                setTimeout(() => {
+                                    isClosingRef.current = false;
+                                }, 100);
+                            }
+                        }}
                         style={{
                             background: 'none',
                             border: 'none',
-                            fontSize: '24px',
+                            fontSize: '20px',
                             cursor: 'pointer',
                             color: 'var(--text-secondary, #64748b)',
                             padding: '4px 8px',
                             borderRadius: '8px',
-                            transition: 'all 0.2s ease'
+                            transition: 'all 0.2s ease',
+                            lineHeight: 1
                         }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = 'var(--bg-hover, #f1f5f9)'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--bg-hover, #f1f5f9)';
+                            e.currentTarget.style.color = 'var(--text-primary, #1e293b)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                            e.currentTarget.style.color = 'var(--text-secondary, #64748b)';
+                        }}
                     >
-                        ✖
+                        ✕
                     </button>
                 </div>
                 <div 
                     className="modal-body"
                     style={{
                         padding: '24px',
-                        color: 'var(--text-primary, #1e293b)'
+                        color: 'var(--text-primary, #1e293b)',
+                        backgroundColor: 'var(--bg-card, white)'
                     }}
                 >
                     {children}
@@ -125,14 +174,15 @@ function Modal({ isOpen, onClose, title, children }) {
         </div>
     );
 
-    // Utiliser createPortal avec le conteneur existant
-    const targetNode = modalRootRef.current || document.body;
+    // Utiliser un conteneur stable
+    const container = modalContainerRef.current || document.body;
     
     try {
-        return createPortal(modalContent, targetNode);
+        console.log('📦 [Modal] Portal vers le conteneur:', container.id || 'body');
+        return createPortal(modalContent, container);
     } catch (error) {
-        console.error('Erreur lors du rendu de la modale:', error);
-        // Fallback: rendre directement sans portal
+        console.error('❌ [Modal] Erreur createPortal:', error);
+        // Fallback: rendre directement
         return modalContent;
     }
 }
