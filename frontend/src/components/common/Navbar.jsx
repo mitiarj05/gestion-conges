@@ -5,6 +5,8 @@ import ThemeToggle from './ThemeToggle';
 import axios from 'axios';
 import { API_URL, getBaseUrl } from '../../config/api';
 
+console.log('📁 [Navbar] Chargement du module');
+
 function Navbar({ user, role, onLogout }) {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     const [showNotifications, setShowNotifications] = useState(false);
@@ -12,107 +14,160 @@ function Navbar({ user, role, onLogout }) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [photoPreview, setPhotoPreview] = useState(null);
     const navigate = useNavigate();
+    
+    // Ref pour suivre si le composant est monté
     const isMounted = useRef(true);
+    // Ref pour les timeouts
+    const fetchTimeoutRef = useRef(null);
+    const intervalRef = useRef(null);
+
+    console.log(`🔧 [Navbar] Initialisation - role: ${role}`);
 
     useEffect(() => {
+        console.log('📦 [Navbar] Montage');
         isMounted.current = true;
-        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        
+        const handleResize = () => {
+            if (isMounted.current) {
+                setIsMobile(window.innerWidth <= 768);
+            }
+        };
+        
         window.addEventListener('resize', handleResize);
         
+        // Nettoyage
         return () => {
+            console.log('🗑️ [Navbar] Démontage - nettoyage des timers');
             isMounted.current = false;
+            if (fetchTimeoutRef.current) {
+                clearTimeout(fetchTimeoutRef.current);
+            }
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
             window.removeEventListener('resize', handleResize);
         };
     }, []);
 
+    // Gestion des notifications avec démontage sécurisé
     useEffect(() => {
-        fetchNotifications();
-        const interval = setInterval(fetchNotifications, 30000);
-        return () => clearInterval(interval);
+        // Fonction de fetch sécurisée
+        const safeFetchNotifications = async () => {
+            if (!isMounted.current) {
+                console.log('⚠️ [Navbar] Composant démonté, fetch annulé');
+                return;
+            }
+            
+            try {
+                const token = localStorage.getItem('token');
+                if (!token || !isMounted.current) return;
+
+                let endpoint = '';
+                if (role === 'admin') {
+                    endpoint = `${API_URL}/admin/notifications`;
+                } else {
+                    endpoint = `${API_URL}/leaves/notifications`;
+                }
+
+                console.log(`📡 [Navbar] Fetch notifications: ${endpoint}`);
+                
+                const response = await axios.get(endpoint, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    timeout: 10000
+                });
+                
+                if (!isMounted.current) {
+                    console.log('⚠️ [Navbar] Composant démonté après fetch');
+                    return;
+                }
+                
+                let filteredNotifications = response.data;
+                
+                if (role === 'employee') {
+                    filteredNotifications = response.data.filter(n => 
+                        n.type === 'approuve_final' || 
+                        n.type === 'refus_admin' || 
+                        n.type === 'pre_approuve' ||
+                        n.type === 'refus_manager' ||
+                        n.type === 'annulation_confirme' ||
+                        n.type === 'annulation_conge' ||
+                        n.type === 'bulletin_paie' ||
+                        n.type === 'demande_recue' ||
+                        n.type === 'team_added'
+                    );
+                } else if (role === 'manager') {
+                    filteredNotifications = response.data.filter(n => 
+                        n.type === 'demande_attente' ||
+                        n.type === 'ma_demande_attente' ||
+                        n.type === 'approuve_final' ||
+                        n.type === 'refus_admin' ||
+                        n.type === 'pre_approuve' ||
+                        n.type === 'refus_manager' ||
+                        n.type === 'annulation_confirme' ||
+                        n.type === 'annulation_conge' ||
+                        n.type === 'bulletin_paie' ||
+                        n.type === 'demande_modifiee' ||
+                        n.type === 'validation_requise'
+                    );
+                } else if (role === 'admin') {
+                    filteredNotifications = response.data;
+                }
+                
+                if (!isMounted.current) return;
+                
+                const notificationsWithId = filteredNotifications.map((notif, index) => {
+                    if (!notif.id) {
+                        return { ...notif, id: `temp_${notif.type}_${index}_${Date.now()}` };
+                    }
+                    return notif;
+                });
+                
+                setNotifications(notificationsWithId);
+                setUnreadCount(notificationsWithId.filter(n => !n.est_lu).length);
+            } catch (error) {
+                console.error('Erreur chargement notifications:', error.message);
+                if (isMounted.current) {
+                    setNotifications([]);
+                    setUnreadCount(0);
+                }
+            }
+        };
+
+        // Lancer le fetch initial
+        safeFetchNotifications();
+        
+        // Configurer l'intervalle
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+        }
+        intervalRef.current = setInterval(() => {
+            if (isMounted.current) {
+                safeFetchNotifications();
+            }
+        }, 30000);
+        
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        };
     }, [role]);
 
+    // Gestion de la photo
     useEffect(() => {
-        if (user?.photo_url) {
+        if (user?.photo_url && isMounted.current) {
             const baseUrl = getBaseUrl();
             setPhotoPreview(`${baseUrl}${user.photo_url}`);
         }
     }, [user]);
 
-    const fetchNotifications = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token || !isMounted.current) return;
-
-            let endpoint = '';
-            if (role === 'admin') {
-                endpoint = `${API_URL}/admin/notifications`;
-            } else {
-                endpoint = `${API_URL}/leaves/notifications`;
-            }
-
-            const response = await axios.get(endpoint, {
-                headers: { Authorization: `Bearer ${token}` },
-                timeout: 10000
-            });
-            
-            if (!isMounted.current) return;
-            
-            let filteredNotifications = response.data;
-            
-            if (role === 'employee') {
-                filteredNotifications = response.data.filter(n => 
-                    n.type === 'approuve_final' || 
-                    n.type === 'refus_admin' || 
-                    n.type === 'pre_approuve' ||
-                    n.type === 'refus_manager' ||
-                    n.type === 'annulation_confirme' ||
-                    n.type === 'annulation_conge' ||
-                    n.type === 'bulletin_paie' ||
-                    n.type === 'demande_recue' ||
-                    n.type === 'team_added'
-                );
-            } else if (role === 'manager') {
-                filteredNotifications = response.data.filter(n => 
-                    n.type === 'demande_attente' ||
-                    n.type === 'ma_demande_attente' ||
-                    n.type === 'approuve_final' ||
-                    n.type === 'refus_admin' ||
-                    n.type === 'pre_approuve' ||
-                    n.type === 'refus_manager' ||
-                    n.type === 'annulation_confirme' ||
-                    n.type === 'annulation_conge' ||
-                    n.type === 'bulletin_paie' ||
-                    n.type === 'demande_modifiee' ||
-                    n.type === 'validation_requise'
-                );
-            } else if (role === 'admin') {
-                filteredNotifications = response.data;
-            }
-            
-            if (!isMounted.current) return;
-            
-            const notificationsWithId = filteredNotifications.map((notif, index) => {
-                if (!notif.id) {
-                    return { ...notif, id: `temp_${notif.type}_${index}_${Date.now()}` };
-                }
-                return notif;
-            });
-            
-            setNotifications(notificationsWithId);
-            setUnreadCount(notificationsWithId.filter(n => !n.est_lu).length);
-        } catch (error) {
-            console.error('Erreur chargement notifications:', error.message);
-            if (isMounted.current) {
-                setNotifications([]);
-                setUnreadCount(0);
-            }
-        }
-    };
-
     const markAsRead = async (id, event) => {
         if (event) {
             event.stopPropagation();
         }
+        
+        if (!isMounted.current) return;
         
         if (typeof id === 'string' && id.startsWith('temp_')) {
             setNotifications(prev => 
@@ -124,6 +179,7 @@ function Navbar({ user, role, onLogout }) {
             return;
         }
         
+        // Optimistic update
         setNotifications(prev => 
             prev.map(notif => 
                 notif.id === id ? { ...notif, est_lu: true } : notif
@@ -145,10 +201,21 @@ function Navbar({ user, role, onLogout }) {
             
         } catch (error) {
             console.error(`❌ Erreur lors du marquage comme lu:`, error);
+            // Revert si nécessaire
+            if (isMounted.current) {
+                setNotifications(prev => 
+                    prev.map(notif => 
+                        notif.id === id ? { ...notif, est_lu: false } : notif
+                    )
+                );
+                setUnreadCount(prev => prev + 1);
+            }
         }
     };
 
     const markAllAsRead = async () => {
+        if (!isMounted.current) return;
+        
         const realIds = notifications.filter(n => !n.est_lu && n.id && !String(n.id).startsWith('temp_')).map(n => n.id);
         
         setNotifications(prev => 
@@ -173,6 +240,8 @@ function Navbar({ user, role, onLogout }) {
     };
 
     const handleNotificationClick = (notif) => {
+        if (!isMounted.current) return;
+        
         if (notif.id && !notif.est_lu && !String(notif.id).startsWith('temp_')) {
             markAsRead(notif.id);
         }
@@ -244,7 +313,14 @@ function Navbar({ user, role, onLogout }) {
                     }}
                     onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = `<div class="navbar-avatar-placeholder" style="width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}</div>`;
+                        const parent = e.target.parentElement;
+                        if (parent) {
+                            const placeholder = document.createElement('div');
+                            placeholder.className = 'navbar-avatar-placeholder';
+                            placeholder.style.cssText = `width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;`;
+                            placeholder.textContent = `${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}`;
+                            parent.appendChild(placeholder);
+                        }
                     }}
                 />
             );

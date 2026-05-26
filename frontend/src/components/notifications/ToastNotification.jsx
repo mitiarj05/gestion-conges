@@ -1,18 +1,22 @@
 // frontend/src/components/notifications/ToastNotification.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+
+console.log('📁 [ToastNotification] Chargement du module');
 
 function ToastNotification({ toasts, removeToast }) {
     const [isMounted, setIsMounted] = useState(false);
+    const isMountedRef = useRef(true);
 
     console.log(`🔧 [ToastNotification] Rendu - ${toasts.length} toasts`);
 
     useEffect(() => {
-        console.log(`📦 [ToastNotification] Montage du composant`);
+        console.log('📦 [ToastNotification] Montage du composant');
+        isMountedRef.current = true;
         setIsMounted(true);
         
         // Ajouter les styles d'animation si nécessaire
         if (!document.querySelector('#toast-animation-style')) {
-            console.log(`🎨 [ToastNotification] Ajout des styles CSS`);
+            console.log('🎨 [ToastNotification] Ajout des styles CSS');
             const style = document.createElement('style');
             style.id = 'toast-animation-style';
             style.textContent = `
@@ -45,8 +49,10 @@ function ToastNotification({ toasts, removeToast }) {
         }
         
         return () => {
-            console.log(`🗑️ [ToastNotification] Démontage du composant`);
+            console.log('🗑️ [ToastNotification] Démontage du composant');
+            isMountedRef.current = false;
             setIsMounted(false);
+            // NE PAS supprimer les styles pour éviter les erreurs
         };
     }, []);
 
@@ -68,8 +74,8 @@ function ToastNotification({ toasts, removeToast }) {
         }
     };
 
+    // Ne pas rendre si pas monté ou pas de toasts
     if (!isMounted || toasts.length === 0) {
-        console.log(`⏭️ [ToastNotification] Rendu ignoré - isMounted: ${isMounted}, toasts: ${toasts.length}`);
         return null;
     }
 
@@ -121,7 +127,9 @@ function ToastNotification({ toasts, removeToast }) {
                             className="toast-close" 
                             onClick={() => {
                                 console.log(`❌ [ToastNotification] Fermeture du toast ${toast.id}`);
-                                removeToast(toast.id);
+                                if (removeToast && isMountedRef.current) {
+                                    removeToast(toast.id);
+                                }
                             }}
                             style={{
                                 background: 'none',
