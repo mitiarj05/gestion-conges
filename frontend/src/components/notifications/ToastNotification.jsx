@@ -1,32 +1,37 @@
 // frontend/src/components/notifications/ToastNotification.jsx
-import React, { useEffect, useState, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect, useState } from 'react';
 
 function ToastNotification({ toasts, removeToast }) {
     const [mounted, setMounted] = useState(false);
-    const toastRootRef = useRef(null);
 
     useEffect(() => {
-        console.log('🔧 [Toast] Montage du composant');
-        
-        let container = document.getElementById('toast-root');
-        
-        if (!container) {
-            console.log('📁 [Toast] Création du conteneur #toast-root');
-            container = document.createElement('div');
-            container.id = 'toast-root';
-            document.body.appendChild(container);
-        } else {
-            console.log('📁 [Toast] Conteneur existant trouvé');
-        }
-        
-        toastRootRef.current = container;
         setMounted(true);
         
+        // Ajouter les styles d'animation si nécessaire
+        if (!document.querySelector('#toast-animation-style')) {
+            const style = document.createElement('style');
+            style.id = 'toast-animation-style';
+            style.textContent = `
+                @keyframes toastSlideIn {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+                @keyframes toastProgress {
+                    from { width: 100%; }
+                    to { width: 0%; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
         return () => {
-            console.log('🗑️ [Toast] Nettoyage - ne pas supprimer le conteneur');
-            // NE PAS supprimer le conteneur
-            toastRootRef.current = null;
+            setMounted(false);
         };
     }, []);
 
@@ -48,21 +53,20 @@ function ToastNotification({ toasts, removeToast }) {
         }
     };
 
-    if (!mounted) return null;
+    if (!mounted || toasts.length === 0) return null;
 
-    if (toasts.length === 0) return null;
-
-    const toastContent = (
+    return (
         <div 
             className="toast-container"
             style={{
                 position: 'fixed',
-                bottom: '20px',
-                right: '20px',
-                zIndex: 10000,
+                bottom: '24px',
+                right: '24px',
+                zIndex: 10001,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px'
+                gap: '12px',
+                maxWidth: '380px'
             }}
         >
             {toasts.map(toast => (
@@ -71,15 +75,10 @@ function ToastNotification({ toasts, removeToast }) {
                     className={`toast-notification toast-${toast.type}`}
                     style={{
                         backgroundColor: getBackgroundColor(toast.type),
-                        color: 'white',
                         borderRadius: '12px',
-                        padding: '12px 16px',
-                        minWidth: '280px',
-                        maxWidth: '400px',
-                        boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                        animation: 'slideInRight 0.3s ease-out',
-                        position: 'relative',
-                        overflow: 'hidden'
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                        overflow: 'hidden',
+                        animation: 'toastSlideIn 0.3s ease'
                     }}
                 >
                     <div 
@@ -87,13 +86,15 @@ function ToastNotification({ toasts, removeToast }) {
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '12px'
+                            padding: '12px 16px',
+                            gap: '12px',
+                            color: 'white'
                         }}
                     >
-                        <span className="toast-icon" style={{ fontSize: '20px' }}>
+                        <span className="toast-icon" style={{ fontSize: '18px' }}>
                             {getIcon(toast.type)}
                         </span>
-                        <span className="toast-message" style={{ flex: 1, fontSize: '14px' }}>
+                        <span className="toast-message" style={{ flex: 1, fontSize: '14px', fontWeight: '500' }}>
                             {toast.message}
                         </span>
                         <button 
@@ -103,11 +104,11 @@ function ToastNotification({ toasts, removeToast }) {
                                 background: 'none',
                                 border: 'none',
                                 color: 'white',
+                                fontSize: '14px',
                                 cursor: 'pointer',
-                                fontSize: '16px',
                                 padding: '4px',
-                                borderRadius: '4px',
-                                opacity: 0.7
+                                opacity: 0.7,
+                                transition: 'opacity 0.2s'
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                             onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
@@ -118,12 +119,8 @@ function ToastNotification({ toasts, removeToast }) {
                     <div 
                         className="toast-progress"
                         style={{
-                            position: 'absolute',
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
                             height: '3px',
-                            backgroundColor: 'rgba(255,255,255,0.3)'
+                            backgroundColor: 'rgba(255, 255, 255, 0.3)'
                         }}
                     >
                         <div 
@@ -131,8 +128,8 @@ function ToastNotification({ toasts, removeToast }) {
                             style={{
                                 height: '100%',
                                 width: '100%',
-                                backgroundColor: 'rgba(255,255,255,0.8)',
-                                animation: `shrink ${toast.duration}ms linear forwards`
+                                backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                animation: `toastProgress ${toast.duration}ms linear forwards`
                             }}
                         />
                     </div>
@@ -140,42 +137,6 @@ function ToastNotification({ toasts, removeToast }) {
             ))}
         </div>
     );
-
-    const container = toastRootRef.current || document.body;
-    
-    try {
-        return createPortal(toastContent, container);
-    } catch (error) {
-        console.error('❌ [Toast] Erreur createPortal:', error);
-        return toastContent;
-    }
-}
-
-// Ajouter les animations CSS globalement
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideInRight {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    @keyframes shrink {
-        from {
-            width: 100%;
-        }
-        to {
-            width: 0%;
-        }
-    }
-`;
-if (!document.querySelector('#toast-animations')) {
-    style.id = 'toast-animations';
-    document.head.appendChild(style);
 }
 
 export default ToastNotification;
