@@ -1,8 +1,29 @@
 // frontend/src/components/notifications/ToastNotification.jsx
-import React, { useEffect } from 'react';
-
+import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 function ToastNotification({ toasts, removeToast }) {
+    const [mounted, setMounted] = useState(false);
+    const toastRoot = useRef(null);
+
+    useEffect(() => {
+        setMounted(true);
+        
+        // Créer un conteneur pour les toasts s'il n'existe pas
+        if (!toastRoot.current) {
+            toastRoot.current = document.createElement('div');
+            toastRoot.current.id = 'toast-root';
+            document.body.appendChild(toastRoot.current);
+        }
+        
+        return () => {
+            setMounted(false);
+            if (toastRoot.current && document.body.contains(toastRoot.current) && toasts.length === 0) {
+                document.body.removeChild(toastRoot.current);
+            }
+        };
+    }, [toasts.length]);
+
     const getIcon = (type) => {
         switch(type) {
             case 'success': return '✅';
@@ -21,7 +42,9 @@ function ToastNotification({ toasts, removeToast }) {
         }
     };
 
-    return (
+    if (!mounted) return null;
+
+    const toastContent = (
         <div className="toast-container">
             {toasts.map(toast => (
                 <div 
@@ -44,6 +67,9 @@ function ToastNotification({ toasts, removeToast }) {
             ))}
         </div>
     );
+
+    const targetRoot = toastRoot.current || document.body;
+    return createPortal(toastContent, targetRoot);
 }
 
 export default ToastNotification;

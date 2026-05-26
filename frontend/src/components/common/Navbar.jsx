@@ -1,5 +1,5 @@
 // frontend/src/components/common/Navbar.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from './ThemeToggle';
 import axios from 'axios';
@@ -12,11 +12,17 @@ function Navbar({ user, role, onLogout }) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [photoPreview, setPhotoPreview] = useState(null);
     const navigate = useNavigate();
+    const isMounted = useRef(true);
 
     useEffect(() => {
+        isMounted.current = true;
         const handleResize = () => setIsMobile(window.innerWidth <= 768);
         window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
+        
+        return () => {
+            isMounted.current = false;
+            window.removeEventListener('resize', handleResize);
+        };
     }, []);
 
     useEffect(() => {
@@ -35,12 +41,7 @@ function Navbar({ user, role, onLogout }) {
     const fetchNotifications = async () => {
         try {
             const token = localStorage.getItem('token');
-            if (!token) return;
-
-            console.log('=== RÉCUPÉRATION NOTIFICATIONS ===');
-            console.log('Rôle:', role);
-            console.log('User ID:', user?.id);
-            console.log('Timestamp:', new Date().toISOString());
+            if (!token || !isMounted.current) return;
 
             let endpoint = '';
             if (role === 'admin') {
@@ -49,23 +50,15 @@ function Navbar({ user, role, onLogout }) {
                 endpoint = `${API_URL}/leaves/notifications`;
             }
 
-            console.log('Endpoint:', endpoint);
-
             const response = await axios.get(endpoint, {
                 headers: { Authorization: `Bearer ${token}` },
                 timeout: 10000
             });
             
-            console.log(`📥 Notifications reçues du backend: ${response.data.length}`);
-            
-            // Log détaillé de chaque notification
-            response.data.forEach((n, i) => {
-                console.log(`   ${i+1}. ID: ${n.id}, Type: ${n.type}, Titre: ${n.titre}, est_lu: ${n.est_lu}`);
-            });
+            if (!isMounted.current) return;
             
             let filteredNotifications = response.data;
             
-            // Filtrer selon le rôle
             if (role === 'employee') {
                 filteredNotifications = response.data.filter(n => 
                     n.type === 'approuve_final' || 
@@ -78,7 +71,6 @@ function Navbar({ user, role, onLogout }) {
                     n.type === 'demande_recue' ||
                     n.type === 'team_added'
                 );
-                console.log(`📊 Filtre employé - notifications gardées: ${filteredNotifications.length}`);
             } else if (role === 'manager') {
                 filteredNotifications = response.data.filter(n => 
                     n.type === 'demande_attente' ||
@@ -93,36 +85,27 @@ function Navbar({ user, role, onLogout }) {
                     n.type === 'demande_modifiee' ||
                     n.type === 'validation_requise'
                 );
-                console.log(`📊 Filtre manager - notifications gardées: ${filteredNotifications.length}`);
             } else if (role === 'admin') {
                 filteredNotifications = response.data;
-                console.log(`📊 Filtre admin - toutes notifications gardées: ${filteredNotifications.length}`);
             }
             
-            // Ajouter un identifiant unique pour les notifications sans id
+            if (!isMounted.current) return;
+            
             const notificationsWithId = filteredNotifications.map((notif, index) => {
                 if (!notif.id) {
-                    const tempId = `temp_${notif.type}_${index}_${Date.now()}`;
-                    console.log(`🔧 Génération ID temporaire pour notification sans ID: ${tempId}`);
-                    return { ...notif, id: tempId };
+                    return { ...notif, id: `temp_${notif.type}_${index}_${Date.now()}` };
                 }
                 return notif;
             });
             
-            console.log(`📋 Notifications finales avec IDs: ${notificationsWithId.length}`);
-            notificationsWithId.forEach(n => {
-                console.log(`   - ID: ${n.id}, est_lu: ${n.est_lu}, type: ${n.type}`);
-            });
-            
             setNotifications(notificationsWithId);
-            const newUnreadCount = notificationsWithId.filter(n => !n.est_lu).length;
-            setUnreadCount(newUnreadCount);
-            console.log(`🔔 Compte non lues: ${newUnreadCount}`);
-            console.log('=== FIN RÉCUPÉRATION NOTIFICATIONS ===');
+            setUnreadCount(notificationsWithId.filter(n => !n.est_lu).length);
         } catch (error) {
             console.error('Erreur chargement notifications:', error.message);
-            setNotifications([]);
-            setUnreadCount(0);
+            if (isMounted.current) {
+                setNotifications([]);
+                setUnreadCount(0);
+            }
         }
     };
 
@@ -131,30 +114,22 @@ function Navbar({ user, role, onLogout }) {
             event.stopPropagation();
         }
         
-        console.log(`🔔 MARK AS READ - Notification ID: ${id}`);
-        console.log(`Timestamp: ${new Date().toISOString()}`);
-        
-        // Vérifier si c'est un ID temporaire
         if (typeof id === 'string' && id.startsWith('temp_')) {
-            console.log(`📝 Notification temporaire, mise à jour locale uniquement`);
             setNotifications(prev => 
                 prev.map(notif => 
                     notif.id === id ? { ...notif, est_lu: true } : notif
                 )
             );
             setUnreadCount(prev => Math.max(0, prev - 1));
-            console.log(`✅ Notification temporaire marquée comme lue localement`);
             return;
         }
         
-        // Mise à jour locale immédiate
         setNotifications(prev => 
             prev.map(notif => 
                 notif.id === id ? { ...notif, est_lu: true } : notif
             )
         );
         setUnreadCount(prev => Math.max(0, prev - 1));
-        console.log(`📝 Mise à jour locale effectuée pour ID: ${id}`);
         
         try {
             const token = localStorage.getItem('token');
@@ -164,37 +139,18 @@ function Navbar({ user, role, onLogout }) {
                 endpoint = `${API_URL}/admin/notifications/${id}/read`;
             }
 
-            console.log(`📡 Appel API: PUT ${endpoint}`);
-            
-            const response = await axios.put(endpoint, {}, {
+            await axios.put(endpoint, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             
-            console.log(`✅ API Response:`, response.data);
-            console.log(`✅ Notification ${id} marquée comme lue avec succès en base`);
-            
-            // Rafraîchir les notifications pour s'assurer que l'état est cohérent
-            setTimeout(() => {
-                console.log(`🔄 Rafraîchissement des notifications après marquage...`);
-                fetchNotifications();
-            }, 500);
-            
         } catch (error) {
             console.error(`❌ Erreur lors du marquage comme lu:`, error);
-            console.error(`Status:`, error.response?.status);
-            console.error(`Data:`, error.response?.data);
         }
     };
 
     const markAllAsRead = async () => {
-        console.log(`🔔 MARK ALL AS READ`);
-        
         const realIds = notifications.filter(n => !n.est_lu && n.id && !String(n.id).startsWith('temp_')).map(n => n.id);
-        const tempIds = notifications.filter(n => !n.est_lu && String(n.id).startsWith('temp_')).map(n => n.id);
         
-        console.log(`IDs réels à marquer: ${realIds.length}, IDs temporaires: ${tempIds.length}`);
-        
-        // Mise à jour locale immédiate
         setNotifications(prev => 
             prev.map(notif => ({ ...notif, est_lu: true }))
         );
@@ -210,21 +166,13 @@ function Navbar({ user, role, onLogout }) {
                 await axios.put(endpoint, {}, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                console.log(`✅ Notification ${id} marquée comme lue`);
             } catch (error) {
                 console.error(`❌ Erreur pour notification ${id}:`, error);
             }
         }
-        
-        // Rafraîchir après marquage
-        setTimeout(() => {
-            fetchNotifications();
-        }, 500);
     };
 
     const handleNotificationClick = (notif) => {
-        console.log(`🔔 Clic sur notification: ID: ${notif.id}, Type: ${notif.type}, est_lu: ${notif.est_lu}`);
-        
         if (notif.id && !notif.est_lu && !String(notif.id).startsWith('temp_')) {
             markAsRead(notif.id);
         }
