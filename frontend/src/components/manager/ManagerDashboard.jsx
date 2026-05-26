@@ -16,6 +16,8 @@ import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
 import Profile from '../common/Profile';
 
+console.log('📁 [ManagerDashboard] Chargement du module');
+
 function ManagerDashboard({ onLogout }) {
     const [user, setUser] = useState({});
     const [pendingRequests, setPendingRequests] = useState([]);
@@ -28,12 +30,18 @@ function ManagerDashboard({ onLogout }) {
 
     const { toasts, removeToast, success } = useToast();
 
+    console.log(`🔧 [ManagerDashboard] Initialisation - path: ${location.pathname}`);
+
     useEffect(() => {
+        console.log('📦 [ManagerDashboard] Montage');
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
         fetchAllData();
         const interval = setInterval(() => fetchAllData(), 30000);
-        return () => clearInterval(interval);
+        return () => {
+            console.log('🗑️ [ManagerDashboard] Démontage');
+            clearInterval(interval);
+        };
     }, []);
 
     const getAuthHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
@@ -118,6 +126,8 @@ function ManagerDashboard({ onLogout }) {
 
     // Fonction pour déterminer le contenu à afficher selon la route
     const renderContent = () => {
+        console.log(`🎨 [ManagerDashboard] Rendu du contenu pour: ${currentPath}`);
+
         // Page Mon profil
         if (currentPath === '/dashboard/manager/profile') {
             return (
@@ -300,9 +310,9 @@ function ManagerDashboard({ onLogout }) {
                 <Sidebar role="manager" onLogout={onLogout} />
                 <main className="main-content">
                     {renderContent()}
+                    <Footer />
                 </main>
             </div>
-            <Footer />
             <ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );

@@ -2,13 +2,17 @@
 import React, { useEffect, useState } from 'react';
 
 function ToastNotification({ toasts, removeToast }) {
-    const [mounted, setMounted] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
+
+    console.log(`🔧 [ToastNotification] Rendu - ${toasts.length} toasts`);
 
     useEffect(() => {
-        setMounted(true);
+        console.log(`📦 [ToastNotification] Montage du composant`);
+        setIsMounted(true);
         
         // Ajouter les styles d'animation si nécessaire
         if (!document.querySelector('#toast-animation-style')) {
+            console.log(`🎨 [ToastNotification] Ajout des styles CSS`);
             const style = document.createElement('style');
             style.id = 'toast-animation-style';
             style.textContent = `
@@ -26,12 +30,23 @@ function ToastNotification({ toasts, removeToast }) {
                     from { width: 100%; }
                     to { width: 0%; }
                 }
+                @keyframes fadeInScale {
+                    from {
+                        opacity: 0;
+                        transform: scale(0.95);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: scale(1);
+                    }
+                }
             `;
             document.head.appendChild(style);
         }
         
         return () => {
-            setMounted(false);
+            console.log(`🗑️ [ToastNotification] Démontage du composant`);
+            setIsMounted(false);
         };
     }, []);
 
@@ -53,7 +68,12 @@ function ToastNotification({ toasts, removeToast }) {
         }
     };
 
-    if (!mounted || toasts.length === 0) return null;
+    if (!isMounted || toasts.length === 0) {
+        console.log(`⏭️ [ToastNotification] Rendu ignoré - isMounted: ${isMounted}, toasts: ${toasts.length}`);
+        return null;
+    }
+
+    console.log(`🎨 [ToastNotification] Rendu de ${toasts.length} toasts`);
 
     return (
         <div 
@@ -99,7 +119,10 @@ function ToastNotification({ toasts, removeToast }) {
                         </span>
                         <button 
                             className="toast-close" 
-                            onClick={() => removeToast(toast.id)}
+                            onClick={() => {
+                                console.log(`❌ [ToastNotification] Fermeture du toast ${toast.id}`);
+                                removeToast(toast.id);
+                            }}
                             style={{
                                 background: 'none',
                                 border: 'none',

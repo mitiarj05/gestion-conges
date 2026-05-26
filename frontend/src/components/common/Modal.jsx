@@ -1,44 +1,69 @@
 // frontend/src/components/common/Modal.jsx
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 function Modal({ isOpen, onClose, title, children }) {
+    const [isMounted, setIsMounted] = useState(false);
     const modalRef = useRef(null);
-    const isClosingRef = useRef(false);
+    const closeTimeoutRef = useRef(null);
 
-    // Gestion de la fermeture par Escape
+    console.log(`🔧 [Modal] Rendu - isOpen: ${isOpen}, title: ${title}`);
+
+    useEffect(() => {
+        console.log(`📦 [Modal] Montage du composant Modal`);
+        setIsMounted(true);
+        
+        return () => {
+            console.log(`🗑️ [Modal] Démontage du composant Modal`);
+            if (closeTimeoutRef.current) {
+                clearTimeout(closeTimeoutRef.current);
+            }
+        };
+    }, []);
+
     useEffect(() => {
         const handleEscape = (e) => {
-            if (e.key === 'Escape' && isOpen && onClose && !isClosingRef.current) {
-                isClosingRef.current = true;
-                onClose();
-                setTimeout(() => {
-                    isClosingRef.current = false;
-                }, 100);
+            if (e.key === 'Escape' && isOpen && onClose) {
+                console.log(`🔑 [Modal] Fermeture par touche Escape`);
+                if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+                closeTimeoutRef.current = setTimeout(() => {
+                    onClose();
+                    closeTimeoutRef.current = null;
+                }, 10);
             }
         };
         
         if (isOpen) {
+            console.log(`👁️ [Modal] Modale ouverte, blocage du scroll`);
             document.addEventListener('keydown', handleEscape);
             document.body.style.overflow = 'hidden';
         }
         
         return () => {
+            if (isOpen) {
+                console.log(`👁️ [Modal] Modale fermée, restauration du scroll`);
+            }
             document.removeEventListener('keydown', handleEscape);
             document.body.style.overflow = '';
         };
     }, [isOpen, onClose]);
 
-    if (!isOpen) return null;
+    if (!isOpen || !isMounted) {
+        console.log(`⏭️ [Modal] Rendu ignoré - isOpen: ${isOpen}, isMounted: ${isMounted}`);
+        return null;
+    }
 
     const handleOverlayClick = (e) => {
-        if (e.target === e.currentTarget && onClose && !isClosingRef.current) {
-            isClosingRef.current = true;
-            onClose();
-            setTimeout(() => {
-                isClosingRef.current = false;
-            }, 100);
+        if (e.target === e.currentTarget && onClose) {
+            console.log(`🖱️ [Modal] Clic sur l'overlay, fermeture`);
+            if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+            closeTimeoutRef.current = setTimeout(() => {
+                onClose();
+                closeTimeoutRef.current = null;
+            }, 10);
         }
     };
+
+    console.log(`🎨 [Modal] Rendu du contenu visuel`);
 
     return (
         <div 
@@ -63,7 +88,7 @@ function Modal({ isOpen, onClose, title, children }) {
                 ref={modalRef}
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                    backgroundColor: 'var(--bg-card, white)',
+                    backgroundColor: 'white',
                     borderRadius: '20px',
                     width: '90%',
                     maxWidth: '550px',
@@ -80,7 +105,7 @@ function Modal({ isOpen, onClose, title, children }) {
                         justifyContent: 'space-between',
                         alignItems: 'center',
                         padding: '16px 20px',
-                        borderBottom: '1px solid var(--border-light, #e2e8f0)',
+                        borderBottom: '1px solid #e2e8f0',
                         background: 'linear-gradient(135deg, #667eea, #764ba2)',
                         color: 'white',
                         borderRadius: '20px 20px 0 0'
@@ -92,13 +117,12 @@ function Modal({ isOpen, onClose, title, children }) {
                     <button 
                         className="modal-close" 
                         onClick={() => {
-                            if (!isClosingRef.current) {
-                                isClosingRef.current = true;
+                            console.log(`❌ [Modal] Clic sur bouton fermer`);
+                            if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+                            closeTimeoutRef.current = setTimeout(() => {
                                 onClose();
-                                setTimeout(() => {
-                                    isClosingRef.current = false;
-                                }, 100);
-                            }
+                                closeTimeoutRef.current = null;
+                            }, 10);
                         }}
                         style={{
                             background: 'none',
@@ -123,7 +147,7 @@ function Modal({ isOpen, onClose, title, children }) {
                     className="modal-body"
                     style={{
                         padding: '24px',
-                        color: 'var(--text-primary, #1e293b)'
+                        color: '#1e293b'
                     }}
                 >
                     {children}

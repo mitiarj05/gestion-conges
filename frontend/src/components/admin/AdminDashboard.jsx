@@ -16,6 +16,8 @@ import LeaveRequests from './LeaveRequests';
 import AdminStatistics from './AdminStatistics';
 import Profile from '../common/Profile';
 
+console.log('📁 [AdminDashboard] Chargement du module');
+
 function AdminDashboard({ onLogout }) {
     const [user, setUser] = useState({});
     const [stats, setStats] = useState({
@@ -66,11 +68,14 @@ function AdminDashboard({ onLogout }) {
     const navigate = useNavigate();
     const { toasts, removeToast, success, error: toastError } = useToast();
 
+    console.log(`🔧 [AdminDashboard] Initialisation - path: ${location.pathname}`);
+
     const getAuthHeaders = () => ({
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     });
 
     useEffect(() => {
+        console.log('📦 [AdminDashboard] Montage');
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
         if (storedUser.id) {
@@ -473,6 +478,8 @@ function AdminDashboard({ onLogout }) {
 
     // Déterminer le contenu à afficher selon la route
     const renderContent = () => {
+        console.log(`🎨 [AdminDashboard] Rendu du contenu pour: ${currentPath}`);
+
         // Page Mon profil
         if (currentPath.includes('/profile')) {
             return (
@@ -966,9 +973,9 @@ function AdminDashboard({ onLogout }) {
                 <Sidebar role="admin" onLogout={onLogout} />
                 <main className="main-content">
                     {renderContent()}
+                    <Footer />
                 </main>
             </div>
-            <Footer />
             <ToastNotification toasts={toasts} removeToast={removeToast} />
         </>
     );
