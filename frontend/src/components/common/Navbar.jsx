@@ -1,5 +1,5 @@
 // frontend/src/components/common/Navbar.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from './ThemeToggle';
 import axios from 'axios';
@@ -7,17 +7,17 @@ import { API_URL, getBaseUrl } from '../../config/api';
 
 console.log('📁 [Navbar] Chargement du module');
 
-function Navbar({ user, role, onLogout }) {
+function Navbar({ user: initialUser, role, onLogout }) {
+    const [user, setUser] = useState(initialUser || {});
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     const [showNotifications, setShowNotifications] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [photoPreview, setPhotoPreview] = useState(null);
+    const [imageError, setImageError] = useState(false);
     const navigate = useNavigate();
     
-    // Ref pour suivre si le composant est monté
     const isMounted = useRef(true);
-    // Ref pour les timeouts
     const fetchTimeoutRef = useRef(null);
     const intervalRef = useRef(null);
 
@@ -35,7 +35,6 @@ function Navbar({ user, role, onLogout }) {
         
         window.addEventListener('resize', handleResize);
         
-        // Nettoyage
         return () => {
             console.log('🗑️ [Navbar] Démontage - nettoyage des timers');
             isMounted.current = false;
@@ -49,9 +48,40 @@ function Navbar({ user, role, onLogout }) {
         };
     }, []);
 
-    // Gestion des notifications avec démontage sécurisé
+    // Mise à jour de l'utilisateur depuis le localStorage
+    const updateUserFromStorage = useCallback(() => {
+        if (!isMounted.current) return;
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        setUser(storedUser);
+        setImageError(false);
+        
+        if (storedUser.photo_url) {
+            const baseUrl = getBaseUrl();
+            const fullUrl = storedUser.photo_url.startsWith('http') 
+                ? storedUser.photo_url 
+                : `${baseUrl}${storedUser.photo_url}`;
+            setPhotoPreview(fullUrl);
+        } else {
+            setPhotoPreview(null);
+        }
+    }, []);
+
     useEffect(() => {
-        // Fonction de fetch sécurisée
+        updateUserFromStorage();
+        
+        const handleProfileUpdated = () => {
+            updateUserFromStorage();
+        };
+        
+        window.addEventListener('profileUpdated', handleProfileUpdated);
+        
+        return () => {
+            window.removeEventListener('profileUpdated', handleProfileUpdated);
+        };
+    }, [updateUserFromStorage]);
+
+    // Gestion des notifications
+    useEffect(() => {
         const safeFetchNotifications = async () => {
             if (!isMounted.current) {
                 console.log('⚠️ [Navbar] Composant démonté, fetch annulé');
@@ -133,10 +163,8 @@ function Navbar({ user, role, onLogout }) {
             }
         };
 
-        // Lancer le fetch initial
         safeFetchNotifications();
         
-        // Configurer l'intervalle
         if (intervalRef.current) {
             clearInterval(intervalRef.current);
         }
@@ -153,14 +181,6 @@ function Navbar({ user, role, onLogout }) {
             }
         };
     }, [role]);
-
-    // Gestion de la photo
-    useEffect(() => {
-        if (user?.photo_url && isMounted.current) {
-            const baseUrl = getBaseUrl();
-            setPhotoPreview(`${baseUrl}${user.photo_url}`);
-        }
-    }, [user]);
 
     const markAsRead = async (id, event) => {
         if (event) {
@@ -179,7 +199,6 @@ function Navbar({ user, role, onLogout }) {
             return;
         }
         
-        // Optimistic update
         setNotifications(prev => 
             prev.map(notif => 
                 notif.id === id ? { ...notif, est_lu: true } : notif
@@ -201,7 +220,6 @@ function Navbar({ user, role, onLogout }) {
             
         } catch (error) {
             console.error(`❌ Erreur lors du marquage comme lu:`, error);
-            // Revert si nécessaire
             if (isMounted.current) {
                 setNotifications(prev => 
                     prev.map(notif => 
@@ -297,8 +315,9 @@ function Navbar({ user, role, onLogout }) {
         }
     };
 
+    // Composant Avatar - Version CORRIGÉE
     const NavbarAvatar = () => {
-        if (photoPreview) {
+        if (photoPreview && !imageError) {
             return (
                 <img 
                     src={photoPreview} 
@@ -311,21 +330,16 @@ function Navbar({ user, role, onLogout }) {
                         objectFit: 'cover',
                         border: '2px solid #667eea'
                     }}
-                    onError={(e) => {
-                        e.target.style.display = 'none';
-                        const parent = e.target.parentElement;
-                        if (parent) {
-                            const placeholder = document.createElement('div');
-                            placeholder.className = 'navbar-avatar-placeholder';
-                            placeholder.style.cssText = `width: 32px; height: 32px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;`;
-                            placeholder.textContent = `${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}`;
-                            parent.appendChild(placeholder);
+                    onError={() => {
+                        if (isMounted.current) {
+                            setImageError(true);
                         }
                     }}
                 />
             );
         }
         
+        const initials = `${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}`;
         return (
             <div className="navbar-avatar-placeholder" style={{
                 width: '32px',
@@ -339,7 +353,7 @@ function Navbar({ user, role, onLogout }) {
                 fontWeight: 'bold',
                 fontSize: '12px'
             }}>
-                {user?.prenom?.charAt(0) || ''}{user?.nom?.charAt(0) || ''}
+                {initials || '?'}
             </div>
         );
     };

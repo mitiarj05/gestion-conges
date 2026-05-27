@@ -1,5 +1,5 @@
 // frontend/src/components/common/Sidebar.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL, getBaseUrl } from '../../config/api';
@@ -13,6 +13,8 @@ function Sidebar({ role, onLogout }) {
     const [isOpen, setIsOpen] = useState(false);
     const [user, setUser] = useState(null);
     const [photoPreview, setPhotoPreview] = useState(null);
+    const [imageError, setImageError] = useState(false);
+    const mountedRef = useRef(true);
 
     const [notificationCounts, setNotificationCounts] = useState({
         pendingRequests: 0,
@@ -22,7 +24,6 @@ function Sidebar({ role, onLogout }) {
         teamCount: 0
     });
 
-    // État pour suivre les pages visitées (persistant dans localStorage)
     const [visitedPages, setVisitedPages] = useState({
         dashboard: false,
         validations: false,
@@ -34,7 +35,13 @@ function Sidebar({ role, onLogout }) {
         }
     });
 
-    // Charger les pages visitées depuis localStorage au démarrage
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
     useEffect(() => {
         const savedVisited = localStorage.getItem('sidebar_visited_pages');
         if (savedVisited) {
@@ -47,12 +54,10 @@ function Sidebar({ role, onLogout }) {
         }
     }, []);
 
-    // Sauvegarder les pages visitées dans localStorage
     const saveVisitedPages = (newVisited) => {
         localStorage.setItem('sidebar_visited_pages', JSON.stringify(newVisited));
     };
 
-    // Fonction pour obtenir l'URL complète de la photo
     const getFullPhotoUrl = (photoUrl) => {
         if (!photoUrl) return null;
         if (photoUrl.startsWith('http')) return photoUrl;
@@ -60,10 +65,11 @@ function Sidebar({ role, onLogout }) {
         return `${baseUrl}${photoUrl}`;
     };
 
-    // Fonction pour mettre à jour l'utilisateur depuis le localStorage
-    const updateUserFromStorage = () => {
+    const updateUserFromStorage = useCallback(() => {
+        if (!mountedRef.current) return;
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         setUser(storedUser);
+        setImageError(false);
         
         if (storedUser.photo_url) {
             const fullUrl = getFullPhotoUrl(storedUser.photo_url);
@@ -71,9 +77,8 @@ function Sidebar({ role, onLogout }) {
         } else {
             setPhotoPreview(null);
         }
-    };
+    }, []);
 
-    // Marquer une page comme visitée
     const markPageAsVisited = (pageKey) => {
         if (!visitedPages[pageKey]) {
             const newVisited = { ...visitedPages, [pageKey]: true };
@@ -82,17 +87,6 @@ function Sidebar({ role, onLogout }) {
         }
     };
 
-    // Vérifier si le badge doit être affiché
-    const shouldShowBadge = (pageKey, count) => {
-        if (!count || count === 0) return false;
-        // Si la page a été visitée et que le compteur n'a pas augmenté depuis, ne pas afficher
-        if (visitedPages[pageKey] && visitedPages.lastCounts && count <= visitedPages.lastCounts[pageKey]) {
-            return false;
-        }
-        return true;
-    };
-
-    // Mettre à jour le dernier compteur connu pour une page
     const updateLastCount = (pageKey, count) => {
         if (visitedPages.lastCounts[pageKey] !== count) {
             const newVisited = {
@@ -107,12 +101,10 @@ function Sidebar({ role, onLogout }) {
     useEffect(() => {
         updateUserFromStorage();
         
-        // Écouter les changements dans localStorage
         const handleStorageChange = () => {
             updateUserFromStorage();
         };
         
-        // Écouter l'événement personnalisé profileUpdated
         const handleProfileUpdated = () => {
             updateUserFromStorage();
         };
@@ -140,36 +132,29 @@ function Sidebar({ role, onLogout }) {
             window.removeEventListener('profileUpdated', handleProfileUpdated);
             clearInterval(interval);
         };
-    }, [role]);
+    }, [role, updateUserFromStorage]);
 
-    // Surveiller le changement de chemin pour marquer les pages visitées
     useEffect(() => {
-        // Pour Manager - Page Validations
         if (currentPath.includes('/manager/validations')) {
             markPageAsVisited('validations');
             updateLastCount('validations', notificationCounts.pendingValidations);
         }
-        // Pour Manager - Tableau de bord
         if (currentPath === '/dashboard/manager' || currentPath === '/dashboard/manager/') {
             markPageAsVisited('dashboard');
             updateLastCount('dashboard', notificationCounts.pendingValidations);
         }
-        // Pour Admin - Page Demandes
         if (currentPath.includes('/leave-requests')) {
             markPageAsVisited('leave_requests');
             updateLastCount('leave_requests', notificationCounts.pendingAdminValidations);
         }
-        // Pour Admin - Tableau de bord
         if (currentPath === '/dashboard/admin' || currentPath === '/dashboard/admin/') {
             markPageAsVisited('dashboard');
             updateLastCount('dashboard', notificationCounts.pendingAdminValidations);
         }
-        // Pour Employé - Page Mes demandes
         if (currentPath.includes('/employee/requests')) {
             markPageAsVisited('leave_requests');
             updateLastCount('leave_requests', notificationCounts.pendingRequests);
         }
-        // Pour Employé - Tableau de bord
         if (currentPath === '/dashboard/employee' || currentPath === '/dashboard/employee/') {
             markPageAsVisited('dashboard');
             updateLastCount('dashboard', notificationCounts.pendingRequests);
@@ -177,6 +162,7 @@ function Sidebar({ role, onLogout }) {
     }, [currentPath, notificationCounts]);
 
     const fetchNotificationCounts = async () => {
+        if (!mountedRef.current) return;
         try {
             const token = localStorage.getItem('token');
             if (!token) return;
@@ -219,7 +205,9 @@ function Sidebar({ role, onLogout }) {
                 counts.pendingRequests = pendingCount;
             }
 
-            setNotificationCounts(counts);
+            if (mountedRef.current) {
+                setNotificationCounts(counts);
+            }
         } catch (error) {
             console.error('Erreur chargement notifications sidebar:', error);
         }
@@ -236,7 +224,6 @@ function Sidebar({ role, onLogout }) {
     };
 
     const Badge = ({ count, pageKey, roleType }) => {
-        // Déterminer quel compteur utiliser
         let currentCount = count;
         let lastCountKey = pageKey;
         
@@ -262,7 +249,6 @@ function Sidebar({ role, onLogout }) {
         
         if (!currentCount || currentCount === 0) return null;
         
-        // Si la page a été visitée et que le compteur n'a pas augmenté, ne pas afficher
         if (visitedPages[pageKey] && visitedPages.lastCounts && currentCount <= visitedPages.lastCounts[lastCountKey]) {
             return null;
         }
@@ -276,11 +262,35 @@ function Sidebar({ role, onLogout }) {
         );
     };
 
-    // Composant Avatar pour le sidebar
+    // Composant Avatar - Version CORRIGÉE sans manipulation directe du DOM
     const SidebarAvatar = () => {
         const avatarSize = isCollapsed ? 32 : 40;
         
-        if (photoPreview) {
+        // Ne pas rendre l'avatar si l'utilisateur n'est pas encore chargé
+        if (!user) {
+            return (
+                <div 
+                    className="sidebar-avatar-placeholder"
+                    style={{
+                        width: `${avatarSize}px`,
+                        height: `${avatarSize}px`,
+                        background: '#667eea',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: `${avatarSize * 0.4}px`
+                    }}
+                >
+                    ?
+                </div>
+            );
+        }
+        
+        // Si une photo est disponible et pas d'erreur
+        if (photoPreview && !imageError) {
             return (
                 <img 
                     src={photoPreview} 
@@ -293,40 +303,39 @@ function Sidebar({ role, onLogout }) {
                         objectFit: 'cover',
                         border: '2px solid #667eea'
                     }}
-                    onError={(e) => {
-                        e.target.style.display = 'none';
-                        const parent = e.target.parentElement;
-                        if (parent) {
-                            const initials = document.createElement('div');
-                            initials.className = 'sidebar-avatar-placeholder';
-                            initials.style.cssText = `width: ${avatarSize}px; height: ${avatarSize}px; background: #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: ${avatarSize * 0.4}px;`;
-                            initials.textContent = `${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}`;
-                            parent.appendChild(initials);
+                    onError={() => {
+                        // Marquer l'erreur pour passer au placeholder
+                        if (mountedRef.current) {
+                            setImageError(true);
                         }
                     }}
                 />
             );
         }
         
+        // Fallback: initials
+        const initials = `${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}`;
         return (
-            <div className="sidebar-avatar-placeholder" style={{
-                width: `${avatarSize}px`,
-                height: `${avatarSize}px`,
-                background: '#667eea',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontWeight: 'bold',
-                fontSize: `${avatarSize * 0.4}px`
-            }}>
-                {user?.prenom?.charAt(0) || ''}{user?.nom?.charAt(0) || ''}
+            <div 
+                className="sidebar-avatar-placeholder"
+                style={{
+                    width: `${avatarSize}px`,
+                    height: `${avatarSize}px`,
+                    background: '#667eea',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: `${avatarSize * 0.4}px`
+                }}
+            >
+                {initials || '?'}
             </div>
         );
     };
 
-    // ============ MENU POUR ADMIN ============
     const getAdminMenuItems = () => {
         return [
             {
@@ -454,7 +463,6 @@ function Sidebar({ role, onLogout }) {
         ];
     };
 
-    // ============ MENU POUR MANAGER ============
     const getManagerMenuItems = () => {
         return [
             {
@@ -567,7 +575,6 @@ function Sidebar({ role, onLogout }) {
         ];
     };
 
-    // ============ MENU POUR EMPLOYÉ ============
     const getEmployeeMenuItems = () => {
         return [
             {
@@ -710,7 +717,6 @@ function Sidebar({ role, onLogout }) {
         ];
     };
 
-    // Choisir le menu selon le rôle
     const getMenuItems = () => {
         if (role === 'admin') return getAdminMenuItems();
         if (role === 'manager') return getManagerMenuItems();
@@ -754,7 +760,6 @@ function Sidebar({ role, onLogout }) {
                 </button>
                 {isOpen && (
                     <nav style={{ marginTop: '16px' }}>
-                        {/* Avatar utilisateur dans le menu mobile */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', marginBottom: '12px', borderBottom: '1px solid #e2e8f0' }}>
                             <SidebarAvatar />
                             <div>
@@ -841,7 +846,6 @@ function Sidebar({ role, onLogout }) {
                     {isCollapsed ? '→' : '←'}
                 </button>
             </div>
-            {/* Avatar utilisateur en haut du sidebar */}
             {!isCollapsed && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 16px 20px 16px', borderBottom: '1px solid #e2e8f0', marginBottom: '16px' }}>
                     <SidebarAvatar />
