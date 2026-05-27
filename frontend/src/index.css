@@ -3029,6 +3029,54 @@ tr:hover { background: #f8fafc; }
         width: 60px;
     }
 }
+
+/* ====================================================
+   VALIDATION ERRORS
+   ==================================================== */
+
+.error-text {
+    color: #dc3545 !important;
+    font-size: 11px !important;
+    margin-top: 4px !important;
+    display: block !important;
+}
+
+/* La bordure rouge s'applique UNIQUEMENT quand la classe .input-error est ajoutée */
+.pro-input-group input.input-error {
+    border-color: #dc3545 !important;
+}
+
+/* Suppression du style :invalid qui cause les bordures rouges au chargement */
+.pro-input-group input:invalid {
+    border-color: inherit !important;
+    box-shadow: none !important;
+}
+
+/* Mode sombre pour les erreurs */
+[data-theme="dark"] .error-text {
+    color: #f87171 !important;
+}
+
+[data-theme="dark"] .pro-input-group input.input-error {
+    border-color: #f87171 !important;
+}
+
+/* Mode sombre - suppression du style :invalid */
+[data-theme="dark"] .pro-input-group input:invalid {
+    border-color: inherit !important;
+    box-shadow: none !important;
+}
+
+.info-text-register {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+[data-theme="dark"] .info-text-register {
+    color: #94a3b8;
+}
 /* ====================================================
    GRAPHIQUE MENTSUEL - TOUS LES MOIS
    ==================================================== */
@@ -13401,3 +13449,4 @@ div[class*="chat-input-area"] {
     border-bottom-left-radius: 20px !important;
     border-bottom-right-radius: 20px !important;
 }
+

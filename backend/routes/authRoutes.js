@@ -7,6 +7,28 @@ const crypto = require('crypto');
 const pool = require('../config/database');
 const { sendResetPasswordEmail } = require('../utils/emailService');
 
+// ============ FONCTIONS DE VALIDATION ============
+
+// Valider que le champ ne contient que des lettres et espaces
+const validateLettresOnly = (value) => {
+    if (!value) return false;
+    const regex = /^[A-Za-zÀ-ÿ\s-]+$/;
+    return regex.test(value);
+};
+
+// Valider que le téléphone ne contient que des chiffres, espaces, +, -
+const validateTelephone = (value) => {
+    if (!value) return true; // Le téléphone est optionnel
+    const regex = /^[0-9\s\+-]+$/;
+    return regex.test(value);
+};
+
+// Nettoyer le téléphone (garder uniquement les chiffres)
+const cleanTelephone = (value) => {
+    if (!value) return null;
+    return value.replace(/[^0-9]/g, '');
+};
+
 // ============ VÉRIFIER SI ADMIN EXISTE ============
 async function adminExists() {
     const result = await pool.query(
@@ -20,6 +42,32 @@ async function adminExists() {
 // ============ INSCRIPTION ============
 router.post('/register', async (req, res) => {
     const { nom, prenom, email, password, telephone, role_souhaite, adminCode, adminSecretKey } = req.body;
+    
+    // ============ VALIDATIONS ============
+    
+    // Validation nom (lettres uniquement)
+    if (!nom || nom.trim() === '') {
+        return res.status(400).json({ message: 'Le nom est requis' });
+    }
+    if (!validateLettresOnly(nom)) {
+        return res.status(400).json({ message: 'Le nom ne doit contenir que des lettres (pas de chiffres ou caractères spéciaux)' });
+    }
+    
+    // Validation prénom (lettres uniquement)
+    if (!prenom || prenom.trim() === '') {
+        return res.status(400).json({ message: 'Le prénom est requis' });
+    }
+    if (!validateLettresOnly(prenom)) {
+        return res.status(400).json({ message: 'Le prénom ne doit contenir que des lettres (pas de chiffres ou caractères spéciaux)' });
+    }
+    
+    // Validation téléphone (optionnel mais si rempli, doit être valide)
+    if (telephone && !validateTelephone(telephone)) {
+        return res.status(400).json({ message: 'Le numéro de téléphone ne doit contenir que des chiffres, espaces, + ou -' });
+    }
+    
+    // Nettoyer le téléphone
+    const cleanedTelephone = cleanTelephone(telephone);
     
     try {
         const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -53,7 +101,7 @@ router.post('/register', async (req, res) => {
             `INSERT INTO users (nom, prenom, email, password_hash, telephone, statut, cree_le)
              VALUES ($1, $2, $3, $4, $5, 'actif', NOW())
              RETURNING id, nom, prenom, email`,
-            [nom, prenom, email, hashedPassword, telephone || null]
+            [nom.trim(), prenom.trim(), email, hashedPassword, cleanedTelephone || null]
         );
         
         const userId = userResult.rows[0].id;
@@ -88,7 +136,7 @@ router.post('/register', async (req, res) => {
         
         res.status(201).json({ 
             message: roleNom === 'admin' ? 'Compte Admin créé avec succès !' : 'Inscription réussie',
-            user: { id: userId, nom, prenom, email, role: roleNom }
+            user: { id: userId, nom: nom.trim(), prenom: prenom.trim(), email, role: roleNom }
         });
         
     } catch (error) {
@@ -277,6 +325,7 @@ router.get('/admin-exists', async (req, res) => {
         const exists = await adminExists();
         res.json({ adminExists: exists });
     } catch (error) {
+        console.error('Erreur admin-exists:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });

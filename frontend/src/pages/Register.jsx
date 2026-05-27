@@ -18,7 +18,135 @@ function Register() {
     const [checkingAdmin, setCheckingAdmin] = useState(true);
     const [acceptTerms, setAcceptTerms] = useState(false);
     const [connectionError, setConnectionError] = useState(false);
+    
+    // État pour savoir quels champs ont été touchés (pour afficher l'erreur seulement après interaction)
+    const [touched, setTouched] = useState({
+        nom: false,
+        prenom: false,
+        telephone: false
+    });
+    
+    // Validation errors
+    const [validationErrors, setValidationErrors] = useState({
+        nom: '',
+        prenom: '',
+        telephone: ''
+    });
+
     const navigate = useNavigate();
+
+    // Fonction pour valider que le champ ne contient que des lettres et espaces
+    const validateLettresOnly = (value) => {
+        if (!value) return true; // Champ vide est accepté pour validation (erreur gérée par required)
+        const regex = /^[A-Za-zÀ-ÿ\s-]+$/;
+        return regex.test(value);
+    };
+
+    // Fonction pour valider que le téléphone ne contient que des chiffres, espaces, +, -
+    const validateTelephoneFormat = (value) => {
+        if (!value) return true; // Champ optionnel
+        const regex = /^[0-9\s\+-]+$/;
+        return regex.test(value);
+    };
+
+    // Fonction pour nettoyer le téléphone (garder uniquement les chiffres)
+    const cleanTelephone = (value) => {
+        return value.replace(/[^0-9]/g, '');
+    };
+
+    // Valider un champ spécifique et retourner le message d'erreur
+    const getFieldError = (name, value) => {
+        if (name === 'nom' || name === 'prenom') {
+            if (!value) return '';
+            if (!validateLettresOnly(value)) {
+                return 'Ce champ ne doit contenir que des lettres (pas de chiffres)';
+            }
+        }
+        if (name === 'telephone') {
+            if (!value) return '';
+            if (!validateTelephoneFormat(value)) {
+                return 'Le numéro ne doit contenir que des chiffres, espaces, + ou -';
+            }
+        }
+        return '';
+    };
+
+    // Mettre à jour un champ et sa validation
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        
+        setFormData(prev => ({ ...prev, [name]: value }));
+        
+        // Valider et mettre à jour l'erreur seulement si le champ a déjà été touché
+        if (touched[name]) {
+            const errorMsg = getFieldError(name, value);
+            setValidationErrors(prev => ({ ...prev, [name]: errorMsg }));
+        }
+    };
+
+    // Marquer un champ comme touché quand l'utilisateur commence à saisir ou quitte le champ
+    const handleFocus = (e) => {
+        const { name } = e.target;
+        if (!touched[name]) {
+            setTouched(prev => ({ ...prev, [name]: true }));
+        }
+    };
+
+    const handleBlur = (e) => {
+        const { name, value } = e.target;
+        // Marquer comme touché
+        if (!touched[name]) {
+            setTouched(prev => ({ ...prev, [name]: true }));
+        }
+        // Valider
+        const errorMsg = getFieldError(name, value);
+        setValidationErrors(prev => ({ ...prev, [name]: errorMsg }));
+    };
+
+    const handleRoleChange = (role) => {
+        setFormData({ ...formData, role_souhaite: role, adminCode: '', adminSecretKey: '' });
+    };
+
+    // Validation complète avant soumission
+    const validateForm = () => {
+        let isValid = true;
+        const newErrors = { nom: '', prenom: '', telephone: '' };
+        
+        // Validation nom
+        if (!formData.nom.trim()) {
+            newErrors.nom = 'Le nom est requis';
+            isValid = false;
+        } else if (!validateLettresOnly(formData.nom)) {
+            newErrors.nom = 'Le nom ne doit contenir que des lettres';
+            isValid = false;
+        }
+        
+        // Validation prénom
+        if (!formData.prenom.trim()) {
+            newErrors.prenom = 'Le prénom est requis';
+            isValid = false;
+        } else if (!validateLettresOnly(formData.prenom)) {
+            newErrors.prenom = 'Le prénom ne doit contenir que des lettres';
+            isValid = false;
+        }
+        
+        // Validation téléphone (optionnel mais si rempli, doit être valide)
+        if (formData.telephone && !validateTelephoneFormat(formData.telephone)) {
+            newErrors.telephone = 'Le téléphone ne doit contenir que des chiffres, espaces, + ou -';
+            isValid = false;
+        }
+        
+        setValidationErrors(newErrors);
+        
+        // Marquer tous les champs comme touchés
+        setTouched({
+            nom: true,
+            prenom: true,
+            telephone: true
+        });
+        
+        return isValid;
+    };
 
     useEffect(() => {
         const checkAdminExists = async () => {
@@ -42,14 +170,14 @@ function Register() {
         checkAdminExists();
     }, []);
 
-    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
-
-    const handleRoleChange = (role) => {
-        setFormData({ ...formData, role_souhaite: role, adminCode: '', adminSecretKey: '' });
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        // Validation avant soumission
+        if (!validateForm()) {
+            return;
+        }
+        
         setLoading(true);
         setError('');
         setSuccess('');
@@ -71,9 +199,15 @@ function Register() {
         }
 
         try {
+            // Nettoyer le téléphone (supprimer espaces, +, - pour stockage)
+            const cleanedTelephone = formData.telephone ? cleanTelephone(formData.telephone) : '';
+            
             const payload = {
-                nom: formData.nom, prenom: formData.prenom, email: formData.email,
-                password: formData.password, telephone: formData.telephone, 
+                nom: formData.nom.trim(),
+                prenom: formData.prenom.trim(),
+                email: formData.email,
+                password: formData.password,
+                telephone: cleanedTelephone || null,
                 role_souhaite: formData.role_souhaite
             };
             if (formData.role_souhaite === 'admin') {
@@ -137,6 +271,14 @@ function Register() {
             </div>
         );
     }
+
+    // Style pour l'input avec erreur (seulement si touché ET erreur)
+    const getInputStyle = (fieldName) => {
+        if (touched[fieldName] && validationErrors[fieldName]) {
+            return { borderColor: '#dc3545' };
+        }
+        return {};
+    };
 
     return (
         <div className="login-pro-container">
@@ -233,7 +375,7 @@ function Register() {
 
                         <div className="register-row">
                             <div className="pro-input-group">
-                                <label>Nom</label>
+                                <label>Nom *</label>
                                 <div className="pro-input-wrapper">
                                     <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -244,13 +386,22 @@ function Register() {
                                         name="nom"
                                         value={formData.nom}
                                         onChange={handleChange}
+                                        onFocus={handleFocus}
+                                        onBlur={handleBlur}
                                         placeholder="Dupont"
                                         required
+                                        style={getInputStyle('nom')}
                                     />
                                 </div>
+                                {touched.nom && validationErrors.nom && (
+                                    <small className="error-text" style={{ color: '#dc3545', fontSize: '11px' }}>
+                                        {validationErrors.nom}
+                                    </small>
+                                )}
+                                <small className="info-text-register">Lettres uniquement (pas de chiffres)</small>
                             </div>
                             <div className="pro-input-group">
-                                <label>Prénom</label>
+                                <label>Prénom *</label>
                                 <div className="pro-input-wrapper">
                                     <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -261,15 +412,24 @@ function Register() {
                                         name="prenom"
                                         value={formData.prenom}
                                         onChange={handleChange}
+                                        onFocus={handleFocus}
+                                        onBlur={handleBlur}
                                         placeholder="Jean"
                                         required
+                                        style={getInputStyle('prenom')}
                                     />
                                 </div>
+                                {touched.prenom && validationErrors.prenom && (
+                                    <small className="error-text" style={{ color: '#dc3545', fontSize: '11px' }}>
+                                        {validationErrors.prenom}
+                                    </small>
+                                )}
+                                <small className="info-text-register">Lettres uniquement (pas de chiffres)</small>
                             </div>
                         </div>
 
                         <div className="pro-input-group">
-                            <label>Email professionnel</label>
+                            <label>Email professionnel *</label>
                             <div className="pro-input-wrapper">
                                 <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
@@ -297,14 +457,23 @@ function Register() {
                                     name="telephone"
                                     value={formData.telephone}
                                     onChange={handleChange}
+                                    onFocus={handleFocus}
+                                    onBlur={handleBlur}
                                     placeholder="+261 38 98 154 87"
+                                    style={getInputStyle('telephone')}
                                 />
                             </div>
+                            {touched.telephone && validationErrors.telephone && (
+                                <small className="error-text" style={{ color: '#dc3545', fontSize: '11px' }}>
+                                    {validationErrors.telephone}
+                                </small>
+                            )}
+                            <small className="info-text-register">Chiffres uniquement (espaces, +, - acceptés)</small>
                         </div>
 
                         <div className="register-row">
                             <div className="pro-input-group">
-                                <label>Mot de passe</label>
+                                <label>Mot de passe *</label>
                                 <div className="pro-input-wrapper">
                                     <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -336,9 +505,10 @@ function Register() {
                                         )}
                                     </button>
                                 </div>
+                                <small className="info-text-register">Minimum 6 caractères</small>
                             </div>
                             <div className="pro-input-group">
-                                <label>Confirmer</label>
+                                <label>Confirmer *</label>
                                 <div className="pro-input-wrapper">
                                     <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -411,7 +581,7 @@ function Register() {
                         {formData.role_souhaite === 'admin' && !adminAlreadyExists && (
                             <div className="admin-fields">
                                 <div className="pro-input-group">
-                                    <label>Code Admin</label>
+                                    <label>Code Admin *</label>
                                     <div className="pro-input-wrapper">
                                         <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
@@ -428,7 +598,7 @@ function Register() {
                                     </div>
                                 </div>
                                 <div className="pro-input-group">
-                                    <label>Clé secrète</label>
+                                    <label>Clé secrète *</label>
                                     <div className="pro-input-wrapper">
                                         <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10"/>
@@ -477,7 +647,7 @@ function Register() {
                     </form>
 
                     <div className="login-pro-footer">
-                        <p>© 2024 - Solution de gestion des congés</p>
+                        <p>© 2026 - Solution de gestion des congés</p>
                         <div className="footer-links">
                             <Link to="/about">À propos</Link>
                             <span>•</span>
