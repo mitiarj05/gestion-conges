@@ -15,6 +15,7 @@ import GlobalCalendar from './GlobalCalendar';
 import LeaveRequests from './LeaveRequests';
 import AdminStatistics from './AdminStatistics';
 import Profile from '../common/Profile';
+import ChatbotWidget from '../chatbot/ChatbotWidget';
 
 console.log('📁 [AdminDashboard] Chargement du module');
 
@@ -977,6 +978,7 @@ function AdminDashboard({ onLogout }) {
                 </main>
             </div>
             <ToastNotification toasts={toasts} removeToast={removeToast} />
+                    <ChatbotWidget user={user} role="admin" />
         </>
     );
 }

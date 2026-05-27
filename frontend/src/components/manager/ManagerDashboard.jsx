@@ -15,6 +15,7 @@ import ManagerMyRequests from './MyRequests';
 import ToastNotification from '../notifications/ToastNotification';
 import useToast from '../../hooks/useToast';
 import Profile from '../common/Profile';
+import ChatbotWidget from '../chatbot/ChatbotWidget';
 
 console.log('📁 [ManagerDashboard] Chargement du module');
 
@@ -314,6 +315,7 @@ function ManagerDashboard({ onLogout }) {
                 </main>
             </div>
             <ToastNotification toasts={toasts} removeToast={removeToast} />
+                    <ChatbotWidget user={user} role="manager" />
         </>
     );
 }

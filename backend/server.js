@@ -111,6 +111,9 @@ server.listen(PORT, () => {
     console.log(`✅ Dossier uploads: ${uploadsDir}`);
 });
 
+const chatbotRoutes = require('./routes/chatbotRoutes');
+app.use('/api/chatbot', chatbotRoutes);
+
 // Gestion des erreurs non capturées
 process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err);

@@ -20,6 +20,7 @@ import useToast from '../../hooks/useToast';
 import { formatDateTime } from '../../utils/dateUtils';
 import EmployeePayroll from '../payroll/EmployeePayroll';
 import Profile from '../common/Profile';
+import ChatbotWidget from '../chatbot/ChatbotWidget';
 
 console.log('📁 [EmployeeDashboard] Chargement du module');
 
@@ -707,6 +708,7 @@ function EmployeeDashboard({ onLogout }) {
                 </main>
             </div>
             <ToastNotification toasts={toasts} removeToast={removeToast} />
+                    <ChatbotWidget user={user} role="employe" />
         </>
     );
 }
