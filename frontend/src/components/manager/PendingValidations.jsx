@@ -52,17 +52,21 @@ function PendingValidations({ requests, onRefresh }) {
     };
 
     const getDisplayInfo = (req) => {
-        if (req.request_type === 'permission') {
+        const isPermission = req.isPermission || req.type_conge_id === 3 || req.request_type === 'permission';
+        
+        if (isPermission) {
             return {
-                dates: `${req.date_permission || req.date_debut}`,
-                duration: `${req.duree_heures || req.nombre_jours} heures`,
-                type: '⏰ Permission'
+                dates: `📅 ${req.date_permission || req.date_debut}`,
+                duration: `⏰ ${req.duree_heures || req.nombre_jours || 0} heure(s)`,
+                type: '⏰ Permission',
+                details: req.est_demi_journee ? ' (Demi-journée)' : ''
             };
         }
         return {
-            dates: `${req.date_debut} → ${req.date_fin}`,
-            duration: `${req.nombre_jours} jours`,
-            type: req.type_name
+            dates: `📅 ${req.date_debut} → ${req.date_fin}`,
+            duration: `📊 ${req.nombre_jours || 0} jours`,
+            type: req.type_name || 'Congé',
+            details: ''
         };
     };
 
@@ -78,27 +82,42 @@ function PendingValidations({ requests, onRefresh }) {
         );
     }
 
-    const safeRequests = Array.isArray(requests) ? requests : [];
-
     return (
         <div className="requests-list-modern">
-            {safeRequests.map(req => {
+            {requests.map(req => {
                 const info = getDisplayInfo(req);
+                const isPermission = req.isPermission || req.type_conge_id === 3 || req.request_type === 'permission';
+                
                 return (
                     <div key={`${req.request_type}-${req.id}`} className="request-card">
                         <div className="request-card-info">
                             <div className="request-employee">
-                                <div className="employee-avatar">
+                                <div className="employee-avatar" style={{ background: isPermission ? '#f59e0b' : '#667eea' }}>
                                     {req.prenom?.charAt(0)}{req.nom?.charAt(0)}
                                 </div>
                                 <div>
                                     <div className="employee-name">{req.prenom} {req.nom}</div>
                                     <div className="request-details">
                                         {info.dates} • {info.type} • {info.duration}
+                                        {info.details}
                                     </div>
                                     {req.motif && (
                                         <div className="request-motive">
                                             📝 Motif : {req.motif}
+                                        </div>
+                                    )}
+                                    {isPermission && (
+                                        <div className="request-type-badge" style={{ 
+                                            display: 'inline-block',
+                                            background: '#fef3c7', 
+                                            color: '#92400e',
+                                            padding: '2px 10px',
+                                            borderRadius: '20px',
+                                            fontSize: '11px',
+                                            fontWeight: '600',
+                                            marginTop: '6px'
+                                        }}>
+                                            ⏰ Permission
                                         </div>
                                     )}
                                     <div className="request-status-info" style={{ color: '#f59e0b', fontSize: '12px', marginTop: '6px' }}>

@@ -28,8 +28,10 @@ function EmployeeDashboard({ onLogout }) {
     const [user, setUser] = useState({});
     const [balance, setBalance] = useState({
         cp_total: 25, cp_pris: 0, cp_restant: 25,
-        rtt_total: 0, rtt_pris: 0, rtt_restant: 0,
-        permission: 0
+        permissions_count: 0,
+        permissions_heures: 0,
+        permissions_max: 2,
+        permissions_max_heures: 4
     });
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -61,10 +63,10 @@ function EmployeeDashboard({ onLogout }) {
                 cp_total: response.data.cp_total || 25,
                 cp_pris: response.data.cp_pris || 0,
                 cp_restant: response.data.cp_restant || 25,
-                rtt_total: 0,
-                rtt_pris: 0,
-                rtt_restant: 0,
-                permission: 0
+                permissions_count: response.data.permissions_count || 0,
+                permissions_heures: response.data.permissions_heures || 0,
+                permissions_max: response.data.permissions_max || 2,
+                permissions_max_heures: response.data.permissions_max_heures || 4
             });
         } catch (error) {
             console.error('Erreur solde:', error);
@@ -95,27 +97,49 @@ function EmployeeDashboard({ onLogout }) {
                     normalizedStatus = 'pending_manager';
                 }
                 
+                // Gestion des types
                 let displayType = req.type;
-                if (req.type_id === 1 || req.type === 'Congés Payés') {
+                if (req.type_id === 1) {
                     displayType = 'Congés Payés';
-                } else {
+                } else if (req.type_id === 2) {
                     displayType = 'Congé sans solde';
+                } else if (req.type_id === 3) {
+                    displayType = 'Permission';
+                }
+                
+                // Gestion des dates et durées selon le type
+                let displayDates = '';
+                let displayDuration = '';
+                let requestType = 'conges';
+                let isPermission = req.type_id === 3;
+                
+                if (isPermission) {
+                    displayDates = req.date_permission || req.start_date;
+                    displayDuration = `${req.duree_heures || 0} heure(s)`;
+                    requestType = 'permission';
+                } else {
+                    displayDates = `${req.start_date || req.date_debut} → ${req.end_date || req.date_fin}`;
+                    displayDuration = `${req.duration || req.nombre_jours || 0} jour(s)`;
+                    requestType = 'conges';
                 }
                 
                 return {
                     id: req.id,
-                    start_date: req.start_date || req.date_permission,
-                    end_date: req.end_date || req.date_permission,
+                    start_date: req.start_date || req.date_debut,
+                    end_date: req.end_date || req.date_fin,
                     date_permission: req.date_permission,
+                    duree_heures: req.duree_heures,
+                    est_demi_journee: req.est_demi_journee,
                     type_id: req.type_id || 2,
                     type: displayType,
-                    duration: req.duration || req.duree_heures || req.nombre_jours || 0,
+                    duration: req.duration || req.nombre_jours || req.duree_heures || 0,
                     status: normalizedStatus,
                     motif: req.motif || '',
                     motif_refus: req.motif_refus || '',
-                    request_type: req.request_type || 'conges',
-                    displayDuration: `${req.duration || req.nombre_jours || 0} jour(s)`,
-                    displayDates: `${req.start_date || req.date_debut} → ${req.end_date || req.date_fin}`
+                    request_type: requestType,
+                    isPermission: isPermission,
+                    displayDates: displayDates,
+                    displayDuration: displayDuration
                 };
             });
             
@@ -161,13 +185,14 @@ function EmployeeDashboard({ onLogout }) {
         let filtered = [...requests];
         if (filterStatus !== 'all') filtered = filtered.filter(r => r.status === filterStatus);
         if (filterType !== 'all') {
-            if (filterType === 'permission') filtered = filtered.filter(r => r.request_type === 'permission');
-            else filtered = filtered.filter(r => r.type_id === parseInt(filterType));
+            if (filterType === 'permission') filtered = filtered.filter(r => r.isPermission === true);
+            else if (filterType === 'cp') filtered = filtered.filter(r => r.type_id === 1);
+            else if (filterType === 'sans_solde') filtered = filtered.filter(r => r.type_id === 2);
         }
         if (searchTerm) {
             filtered = filtered.filter(r => {
                 const searchLower = searchTerm.toLowerCase();
-                return (r.start_date || '').toLowerCase().includes(searchLower) || 
+                return (r.displayDates || '').toLowerCase().includes(searchLower) || 
                        (r.motif || '').toLowerCase().includes(searchLower) ||
                        (r.type || '').toLowerCase().includes(searchLower);
             });
@@ -180,33 +205,30 @@ function EmployeeDashboard({ onLogout }) {
             toastError('Cette demande ne peut plus être modifiée'); 
             return; 
         }
-        if (request.request_type === 'permission') { 
-            toastError('Les permissions ne peuvent pas être modifiées'); 
-            return; 
-        }
         
         setEditingRequest({
             id: request.id,
             type_id: request.type_id || 1,
             start_date: request.start_date,
             end_date: request.end_date,
+            date_permission: request.date_permission,
+            duree_heures: request.duree_heures,
+            est_demi_journee: request.est_demi_journee,
             motif: request.motif || '',
             type: request.type,
-            status: request.status
+            status: request.status,
+            isPermission: request.isPermission,
+            request_type: request.request_type
         });
         setShowEditModal(true);
     };
 
     const handleDeleteRequest = async (request) => {
-        const typeLabel = request.request_type === 'permission' ? 'permission' : 'congé';
+        const typeLabel = request.isPermission ? 'permission' : 'congé';
         if (window.confirm(`Supprimer définitivement cette demande de ${typeLabel} ?`)) {
             try {
                 const token = localStorage.getItem('token');
-                if (request.request_type === 'permission') {
-                    await axios.delete(`${API_URL}/leaves/cancel-permission/${request.id}`, getAuthHeaders());
-                } else {
-                    await axios.delete(`${API_URL}/leaves/cancel-request/${request.id}`, getAuthHeaders());
-                }
+                await axios.delete(`${API_URL}/leaves/cancel-request/${request.id}`, getAuthHeaders());
                 success(`Demande de ${typeLabel} supprimée !`);
                 refreshAllData();
             } catch (error) { 
@@ -216,6 +238,29 @@ function EmployeeDashboard({ onLogout }) {
     };
 
     const handleCancelApprovedRequest = async (request) => {
+        // Si c'est une permission, annulation simplifiée
+        if (request.isPermission) {
+            const motif = prompt('Motif de l\'annulation (obligatoire) :');
+            if (!motif || motif.trim() === '') {
+                toastError('Veuillez fournir un motif pour annuler votre permission.');
+                return;
+            }
+            if (window.confirm(`Confirmer l'annulation de votre permission du ${request.date_permission} ?`)) {
+                try {
+                    await axios.put(`${API_URL}/leaves/cancel-approved-request/${request.id}`, 
+                        { motif_annulation: motif.trim() },
+                        getAuthHeaders()
+                    );
+                    success('Permission annulée avec succès !');
+                    refreshAllData();
+                } catch (error) {
+                    toastError(error.response?.data?.message || 'Erreur lors de l\'annulation');
+                }
+            }
+            return;
+        }
+
+        // Pour les congés, vérifier le délai de 48h
         const startDate = new Date(request.start_date);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -233,7 +278,7 @@ function EmployeeDashboard({ onLogout }) {
             return;
         }
         
-        if (window.confirm(`Confirmer l'annulation de votre congé ?\n\n📅 Dates : ${request.start_date} → ${request.end_date}\n📊 Durée : ${request.displayDuration}\n📝 Motif : ${motif}\n\n⚠️ Attention : Cette action est irréversible. Les jours seront recrédités sur votre solde.`)) {
+        if (window.confirm(`Confirmer l'annulation de votre congé ?\n\n📅 Dates : ${request.displayDates}\n📊 Durée : ${request.displayDuration}\n📝 Motif : ${motif}\n\n⚠️ Attention : Cette action est irréversible. Les jours seront recrédités sur votre solde.`)) {
             try {
                 const token = localStorage.getItem('token');
                 const response = await axios.put(`${API_URL}/leaves/cancel-approved-request/${request.id}`, 
@@ -334,11 +379,9 @@ function EmployeeDashboard({ onLogout }) {
 
     const currentPath = location.pathname;
 
-    // Fonction pour déterminer le contenu à afficher selon la route
     const renderMainContent = () => {
         console.log(`🎨 [EmployeeDashboard] Rendu du contenu pour: ${currentPath}`);
 
-        // Page Mon profil
         if (currentPath.includes('/profile')) {
             return (
                 <Profile user={user} role="employee" onLogout={onLogout} onProfileUpdate={(updatedUser) => {
@@ -349,23 +392,20 @@ function EmployeeDashboard({ onLogout }) {
             );
         }
 
-        // Page Payroll
         if (currentPath.includes('/payroll')) {
             return <EmployeePayroll />;
         }
 
-        // Page Balance
         if (currentPath.includes('/balance')) {
             return <LeaveBalance balance={balance} />;
         }
 
-        // Page My Requests
         if (currentPath.includes('/requests')) {
             return (
                 <>
                     <div className="page-header">
-                        <h2>Mes demandes de congé</h2>
-                        <p className="page-subtitle">Historique complet de toutes vos demandes</p>
+                        <h2>Mes demandes</h2>
+                        <p className="page-subtitle">Historique complet de toutes vos demandes (congés et permissions)</p>
                     </div>
                     
                     <LeaveFilters 
@@ -378,6 +418,7 @@ function EmployeeDashboard({ onLogout }) {
                         totalCount={requests.length} 
                         filteredCount={filteredRequests.length} 
                         onReset={() => { setFilterStatus('all'); setFilterType('all'); setSearchTerm(''); }} 
+                        showPermissionFilter={true}
                     />
                     
                     <div className="table-wrapper-modern">
@@ -401,31 +442,66 @@ function EmployeeDashboard({ onLogout }) {
                                     today.setHours(0, 0, 0, 0);
                                     const canCancelApproved = isApproved && startDate > today;
                                     
+                                    const isPermission = req.isPermission;
+                                    
                                     return (
                                         <tr key={req.id}>
-                                            <td className="date-cell">{req.displayDates}</td>
-                                            <td>{req.type}</td>
-                                            <td>{req.displayDuration}</td>
+                                            <td className="date-cell">
+                                                {isPermission ? (
+                                                    <span style={{ color: '#f59e0b' }}>📅 {req.displayDates}</span>
+                                                ) : (
+                                                    req.displayDates
+                                                )}
+                                                {isPermission && req.est_demi_journee && (
+                                                    <div style={{ fontSize: '11px', color: '#f59e0b' }}>Demi-journée</div>
+                                                )}
+                                            </td>
+                                            <td>
+                                                {isPermission ? (
+                                                    <span style={{ 
+                                                        background: '#fef3c7', 
+                                                        color: '#92400e', 
+                                                        padding: '2px 10px', 
+                                                        borderRadius: '20px', 
+                                                        fontSize: '11px', 
+                                                        fontWeight: '600',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        ⏰ Permission
+                                                    </span>
+                                                ) : (
+                                                    req.type
+                                                )}
+                                            </td>
+                                            <td>
+                                                {isPermission ? (
+                                                    <span style={{ color: '#f59e0b', fontWeight: '500' }}>
+                                                        {req.displayDuration}
+                                                    </span>
+                                                ) : (
+                                                    req.displayDuration
+                                                )}
+                                            </td>
                                             <td>{req.motif || '-'}</td>
                                             <td>{getStatusLabel(req.status, req.motif_refus, user.roles)}</td>
                                             <td>
                                                 {justificatifs[req.id]?.length > 0 ? (
                                                     <span className="badge-success">Fichier(s)</span>
-                                                ) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (
+                                                ) : (req.status === 'pending_manager' && !isPermission && (
                                                     <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
                                                 ))}
                                             </td>
                                             <td>
                                                 {req.status === 'pending_manager' && (
                                                     <div className="action-buttons">
-                                                        {req.request_type !== 'permission' && (
-                                                            <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
-                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                    <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
-                                                                    <path d="M4 20h16"/>
-                                                                </svg>
-                                                            </button>
-                                                        )}
+                                                        <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
+                                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
+                                                                <path d="M4 20h16"/>
+                                                            </svg>
+                                                        </button>
                                                         <button className="action-btn delete" onClick={() => handleDeleteRequest(req)} title="Supprimer">
                                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                                 <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
@@ -435,7 +511,7 @@ function EmployeeDashboard({ onLogout }) {
                                                 )}
                                                 {req.status === 'approved' && canCancelApproved && (
                                                     <div className="action-buttons">
-                                                        <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler le congé">
+                                                        <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler">
                                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                                 <path d="M18 6L6 18M6 6l12 12"/>
                                                             </svg>
@@ -443,7 +519,7 @@ function EmployeeDashboard({ onLogout }) {
                                                     </div>
                                                 )}
                                                 {req.status === 'approved' && !canCancelApproved && (
-                                                    <span className="info-text">Non annulable (délai dépassé)</span>
+                                                    <span className="info-text">Non annulable</span>
                                                 )}
                                                 {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
                                                 {(req.status === 'rejected' || req.status === 'cancelled') && <span className="info-text">Non modifiable</span>}
@@ -479,22 +555,18 @@ function EmployeeDashboard({ onLogout }) {
             );
         }
 
-        // Page New Request
         if (currentPath.includes('/new-request')) {
             return <LeaveRequest onSuccess={handleRequestSuccess} />;
         }
 
-        // Page Calendar
         if (currentPath.includes('/calendar')) {
             return <CalendarView requests={requests} onRequestUpdate={refreshAllData} />;
         }
 
-        // Page Statistics
         if (currentPath.includes('/statistics')) {
             return <StatisticsChart requests={requests} balance={balance} />;
         }
 
-        // Page Manager Profile
         if (currentPath.includes('/manager-profile')) {
             return <ManagerProfile />;
         }
@@ -542,6 +614,20 @@ function EmployeeDashboard({ onLogout }) {
                             </svg>
                         </div>
                         <div className="kpi-card-info">
+                            <div className="kpi-card-value">{balance.permissions_count || 0} / {balance.permissions_max || 2}</div>
+                            <div className="kpi-card-label">Permissions ce mois</div>
+                            <div className="kpi-card-sub">{balance.permissions_heures || 0}h utilisées</div>
+                        </div>
+                    </div>
+
+                    <div className="kpi-card-modern">
+                        <div className="kpi-card-icon blue">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 6v6l4 2"/>
+                            </svg>
+                        </div>
+                        <div className="kpi-card-info">
                             <div className="kpi-card-value">{requests.filter(r => r.status === 'pending_manager' || r.status === 'pending_admin').length}</div>
                             <div className="kpi-card-label">Demandes en attente</div>
                             <div className="kpi-card-sub">en cours de validation</div>
@@ -549,7 +635,7 @@ function EmployeeDashboard({ onLogout }) {
                     </div>
 
                     <div className="kpi-card-modern">
-                        <div className="kpi-card-icon blue">
+                        <div className="kpi-card-icon purple">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M20 6L9 17l-5-5"/>
                             </svg>
@@ -619,7 +705,6 @@ function EmployeeDashboard({ onLogout }) {
                                     <th>Durée</th>
                                     <th>Motif</th>
                                     <th>Statut</th>
-                                    <th>Justificatif</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -630,32 +715,45 @@ function EmployeeDashboard({ onLogout }) {
                                     const today = new Date();
                                     today.setHours(0, 0, 0, 0);
                                     const canCancelApproved = isApproved && startDate > today;
+                                    const isPermission = req.isPermission;
                                     
                                     return (
                                         <tr key={req.id}>
-                                            <td className="date-cell">{req.displayDates}</td>
-                                            <td>{req.type}</td>
+                                            <td className="date-cell">
+                                                {isPermission ? (
+                                                    <span style={{ color: '#f59e0b' }}>📅 {req.displayDates}</span>
+                                                ) : (
+                                                    req.displayDates
+                                                )}
+                                            </td>
+                                            <td>
+                                                {isPermission ? (
+                                                    <span style={{ 
+                                                        background: '#fef3c7', 
+                                                        color: '#92400e', 
+                                                        padding: '2px 10px', 
+                                                        borderRadius: '20px', 
+                                                        fontSize: '11px', 
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        ⏰ Permission
+                                                    </span>
+                                                ) : (
+                                                    req.type
+                                                )}
+                                            </td>
                                             <td>{req.displayDuration}</td>
                                             <td>{req.motif || '-'}</td>
                                             <td>{getStatusLabel(req.status, req.motif_refus, user.roles)}</td>
                                             <td>
-                                                {justificatifs[req.id]?.length > 0 ? (
-                                                    <span className="badge-success">Fichier(s)</span>
-                                                ) : (req.status === 'pending_manager' && req.request_type !== 'permission' && (
-                                                    <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
-                                                ))}
-                                            </td>
-                                            <td>
                                                 {req.status === 'pending_manager' && (
                                                     <div className="action-buttons">
-                                                        {req.request_type !== 'permission' && (
-                                                            <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
-                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                    <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
-                                                                    <path d="M4 20h16"/>
-                                                                </svg>
-                                                            </button>
-                                                        )}
+                                                        <button className="action-btn edit" onClick={() => handleModifyRequest(req)} title="Modifier">
+                                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                <path d="M17 3l4 4-7 7H10v-4l7-7z"/>
+                                                                <path d="M4 20h16"/>
+                                                            </svg>
+                                                        </button>
                                                         <button className="action-btn delete" onClick={() => handleDeleteRequest(req)} title="Supprimer">
                                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                                 <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
@@ -664,18 +762,16 @@ function EmployeeDashboard({ onLogout }) {
                                                     </div>
                                                 )}
                                                 {req.status === 'approved' && canCancelApproved && (
-                                                    <div className="action-buttons">
-                                                        <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler le congé">
-                                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                <path d="M18 6L6 18M6 6l12 12"/>
-                                                            </svg>
-                                                        </button>
-                                                    </div>
+                                                    <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M18 6L6 18M6 6l12 12"/>
+                                                        </svg>
+                                                    </button>
                                                 )}
                                                 {req.status === 'approved' && !canCancelApproved && (
-                                                    <span className="info-text">Non annulable (délai dépassé)</span>
+                                                    <span className="info-text">Non annulable</span>
                                                 )}
-                                                {req.status === 'pending_admin' && <span className="info-text">Déjà validé par manager</span>}
+                                                {req.status === 'pending_admin' && <span className="info-text">Déjà validé</span>}
                                                 {(req.status === 'rejected' || req.status === 'cancelled') && <span className="info-text">Non modifiable</span>}
                                             </td>
                                         </tr>
@@ -683,7 +779,7 @@ function EmployeeDashboard({ onLogout }) {
                                 })}
                                 {filteredRequests.length === 0 && (
                                     <tr>
-                                        <td colSpan="7" className="empty-state">Aucune demande</td>
+                                        <td colSpan="6" className="empty-state">Aucune demande</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -696,7 +792,6 @@ function EmployeeDashboard({ onLogout }) {
         );
     };
 
-    // Layout commun avec un seul return
     return (
         <>
             <Navbar user={user} role="employee" onLogout={onLogout} />
@@ -708,7 +803,7 @@ function EmployeeDashboard({ onLogout }) {
                 </main>
             </div>
             <ToastNotification toasts={toasts} removeToast={removeToast} />
-                    <ChatbotWidget user={user} role="employe" />
+            <ChatbotWidget user={user} role="employe" />
         </>
     );
 }

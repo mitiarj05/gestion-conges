@@ -79,15 +79,15 @@ function Sidebar({ role, onLogout }) {
         }
     }, []);
 
-    const markPageAsVisited = (pageKey) => {
+    const markPageAsVisited = useCallback((pageKey) => {
         if (!visitedPages[pageKey]) {
             const newVisited = { ...visitedPages, [pageKey]: true };
             setVisitedPages(newVisited);
             saveVisitedPages(newVisited);
         }
-    };
+    }, [visitedPages]);
 
-    const updateLastCount = (pageKey, count) => {
+    const updateLastCount = useCallback((pageKey, count) => {
         if (visitedPages.lastCounts[pageKey] !== count) {
             const newVisited = {
                 ...visitedPages,
@@ -96,72 +96,9 @@ function Sidebar({ role, onLogout }) {
             setVisitedPages(newVisited);
             saveVisitedPages(newVisited);
         }
-    };
+    }, [visitedPages]);
 
-    useEffect(() => {
-        updateUserFromStorage();
-        
-        const handleStorageChange = () => {
-            updateUserFromStorage();
-        };
-        
-        const handleProfileUpdated = () => {
-            updateUserFromStorage();
-        };
-        
-        window.addEventListener('storage', handleStorageChange);
-        window.addEventListener('profileUpdated', handleProfileUpdated);
-        
-        const handleResize = () => {
-            const mobile = window.innerWidth <= 1024;
-            setIsMobile(mobile);
-            if (!mobile) {
-                setIsOpen(true);
-                setIsCollapsed(false);
-            }
-        };
-        window.addEventListener('resize', handleResize);
-        handleResize();
-
-        fetchNotificationCounts();
-
-        const interval = setInterval(fetchNotificationCounts, 30000);
-        return () => {
-            window.removeEventListener('resize', handleResize);
-            window.removeEventListener('storage', handleStorageChange);
-            window.removeEventListener('profileUpdated', handleProfileUpdated);
-            clearInterval(interval);
-        };
-    }, [role, updateUserFromStorage]);
-
-    useEffect(() => {
-        if (currentPath.includes('/manager/validations')) {
-            markPageAsVisited('validations');
-            updateLastCount('validations', notificationCounts.pendingValidations);
-        }
-        if (currentPath === '/dashboard/manager' || currentPath === '/dashboard/manager/') {
-            markPageAsVisited('dashboard');
-            updateLastCount('dashboard', notificationCounts.pendingValidations);
-        }
-        if (currentPath.includes('/leave-requests')) {
-            markPageAsVisited('leave_requests');
-            updateLastCount('leave_requests', notificationCounts.pendingAdminValidations);
-        }
-        if (currentPath === '/dashboard/admin' || currentPath === '/dashboard/admin/') {
-            markPageAsVisited('dashboard');
-            updateLastCount('dashboard', notificationCounts.pendingAdminValidations);
-        }
-        if (currentPath.includes('/employee/requests')) {
-            markPageAsVisited('leave_requests');
-            updateLastCount('leave_requests', notificationCounts.pendingRequests);
-        }
-        if (currentPath === '/dashboard/employee' || currentPath === '/dashboard/employee/') {
-            markPageAsVisited('dashboard');
-            updateLastCount('dashboard', notificationCounts.pendingRequests);
-        }
-    }, [currentPath, notificationCounts]);
-
-    const fetchNotificationCounts = async () => {
+    const fetchNotificationCounts = useCallback(async () => {
         if (!mountedRef.current) return;
         try {
             const token = localStorage.getItem('token');
@@ -211,7 +148,74 @@ function Sidebar({ role, onLogout }) {
         } catch (error) {
             console.error('Erreur chargement notifications sidebar:', error);
         }
-    };
+    }, [role]);
+
+    useEffect(() => {
+        updateUserFromStorage();
+        
+        const handleStorageChange = () => {
+            updateUserFromStorage();
+        };
+        
+        const handleProfileUpdated = () => {
+            updateUserFromStorage();
+        };
+        
+        window.addEventListener('storage', handleStorageChange);
+        window.addEventListener('profileUpdated', handleProfileUpdated);
+        
+        const handleResize = () => {
+            const mobile = window.innerWidth <= 1024;
+            setIsMobile(mobile);
+            if (!mobile) {
+                setIsOpen(true);
+                setIsCollapsed(false);
+            }
+        };
+        window.addEventListener('resize', handleResize);
+        handleResize();
+
+        fetchNotificationCounts();
+
+        const interval = setInterval(fetchNotificationCounts, 30000);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('profileUpdated', handleProfileUpdated);
+            clearInterval(interval);
+        };
+    }, [updateUserFromStorage, fetchNotificationCounts]);
+
+    useEffect(() => {
+        if (currentPath.includes('/manager/validations')) {
+            markPageAsVisited('validations');
+            updateLastCount('validations', notificationCounts.pendingValidations);
+        }
+        if (currentPath === '/dashboard/manager' || currentPath === '/dashboard/manager/') {
+            markPageAsVisited('dashboard');
+            updateLastCount('dashboard', notificationCounts.pendingValidations);
+        }
+        if (currentPath.includes('/leave-requests')) {
+            markPageAsVisited('leave_requests');
+            updateLastCount('leave_requests', notificationCounts.pendingAdminValidations);
+        }
+        if (currentPath === '/dashboard/admin' || currentPath === '/dashboard/admin/') {
+            markPageAsVisited('dashboard');
+            updateLastCount('dashboard', notificationCounts.pendingAdminValidations);
+        }
+        if (currentPath.includes('/admin/validations')) {
+            markPageAsVisited('validations');
+            updateLastCount('validations', notificationCounts.pendingAdminValidations);
+        }
+        if (currentPath.includes('/employee/requests')) {
+            markPageAsVisited('leave_requests');
+            updateLastCount('leave_requests', notificationCounts.pendingRequests);
+        }
+        if (currentPath === '/dashboard/employee' || currentPath === '/dashboard/employee/') {
+            markPageAsVisited('dashboard');
+            updateLastCount('dashboard', notificationCounts.pendingRequests);
+        }
+    }, [currentPath, notificationCounts, markPageAsVisited, updateLastCount]);
 
     const handleLogout = () => {
         if (onLogout) {
@@ -233,6 +237,9 @@ function Sidebar({ role, onLogout }) {
         } else if (roleType === 'admin' && pageKey === 'leave_requests') {
             currentCount = notificationCounts.pendingAdminValidations;
             lastCountKey = 'leave_requests';
+        } else if (roleType === 'admin' && pageKey === 'validations') {
+            currentCount = notificationCounts.pendingAdminValidations;
+            lastCountKey = 'validations';
         } else if (roleType === 'manager' && pageKey === 'dashboard') {
             currentCount = notificationCounts.pendingValidations;
             lastCountKey = 'dashboard';
@@ -262,11 +269,10 @@ function Sidebar({ role, onLogout }) {
         );
     };
 
-    // Composant Avatar - Version CORRIGÉE sans manipulation directe du DOM
+    // Composant Avatar
     const SidebarAvatar = () => {
         const avatarSize = isCollapsed ? 32 : 40;
         
-        // Ne pas rendre l'avatar si l'utilisateur n'est pas encore chargé
         if (!user) {
             return (
                 <div 
@@ -289,7 +295,6 @@ function Sidebar({ role, onLogout }) {
             );
         }
         
-        // Si une photo est disponible et pas d'erreur
         if (photoPreview && !imageError) {
             return (
                 <img 
@@ -304,7 +309,6 @@ function Sidebar({ role, onLogout }) {
                         border: '2px solid #667eea'
                     }}
                     onError={() => {
-                        // Marquer l'erreur pour passer au placeholder
                         if (mountedRef.current) {
                             setImageError(true);
                         }
@@ -313,7 +317,6 @@ function Sidebar({ role, onLogout }) {
             );
         }
         
-        // Fallback: initials
         const initials = `${user?.prenom?.charAt(0) || ''}${user?.nom?.charAt(0) || ''}`;
         return (
             <div 
@@ -365,6 +368,20 @@ function Sidebar({ role, onLogout }) {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                         <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                )
+            },
+            {
+                path: '/dashboard/admin/validations',
+                label: 'Validations',
+                key: 'validations',
+                pageKey: 'validations',
+                badge: notificationCounts.pendingAdminValidations,
+                roleType: 'admin',
+                icon: (active) => (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
                     </svg>
                 )
             },

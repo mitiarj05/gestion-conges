@@ -176,18 +176,46 @@ router.get('/leave-requests-filtered', async (req, res) => {
             SELECT dc.id,
                     TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
                     TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
-                    dc.nombre_jours, dc.statut, dc.cree_le,
-                    u.nom, u.prenom,
+                    TO_CHAR(dc.date_permission, 'YYYY-MM-DD') as date_permission,
+                    dc.duree_heures,
+                    dc.est_demi_journee,
+                    dc.nombre_jours,
+                    dc.statut,
+                    dc.cree_le,
+                    dc.type_conge_id,
+                    u.nom,
+                    u.prenom,
+                    u.email,
+                    u.service,
                     CASE 
                         WHEN dc.type_conge_id = 1 THEN 'Congés Payés'
-                        ELSE 'Congé sans solde'
-                    END as type_name
+                        WHEN dc.type_conge_id = 2 THEN 'Congé sans solde'
+                        WHEN dc.type_conge_id = 3 THEN 'Permission'
+                    END as type_name,
+                    dc.motif,
+                    dc.motif_refus
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              WHERE 1=1 ${dateCondition}
              ORDER BY dc.cree_le DESC
         `);
-        res.json(result.rows);
+        
+        const formattedResult = result.rows.map(row => {
+            if (row.type_conge_id === 3) {
+                return {
+                    ...row,
+                    displayInfo: {
+                        type: 'Permission',
+                        date: row.date_permission,
+                        duree: row.duree_heures,
+                        est_demi_journee: row.est_demi_journee
+                    }
+                };
+            }
+            return row;
+        });
+        
+        res.json(formattedResult);
     } catch (error) {
         console.error('Erreur leave-requests-filtered:', error);
         res.status(500).json({ message: 'Erreur serveur' });
@@ -504,13 +532,24 @@ router.get('/pending-approvals', async (req, res) => {
             `SELECT dc.id, 
                     TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
                     TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
-                    dc.nombre_jours, dc.motif, dc.statut,
-                    u.nom, u.prenom, u.email, u.service,
+                    TO_CHAR(dc.date_permission, 'YYYY-MM-DD') as date_permission,
+                    dc.duree_heures,
+                    dc.est_demi_journee,
+                    dc.nombre_jours, 
+                    dc.motif, 
+                    dc.statut,
+                    dc.type_conge_id,
+                    u.nom, 
+                    u.prenom, 
+                    u.email, 
+                    u.service,
                     CASE 
                         WHEN dc.type_conge_id = 1 THEN 'Congés Payés'
-                        ELSE 'Congé sans solde'
+                        WHEN dc.type_conge_id = 2 THEN 'Congé sans solde'
+                        WHEN dc.type_conge_id = 3 THEN 'Permission'
                     END as type_name,
-                    m.nom as manager_nom, m.prenom as manager_prenom,
+                    m.nom as manager_nom, 
+                    m.prenom as manager_prenom,
                     'conges' as request_type,
                     dc.date_approbation
              FROM demandes_conges dc
@@ -520,24 +559,51 @@ router.get('/pending-approvals', async (req, res) => {
              ORDER BY dc.date_approbation ASC`
         );
         
-        res.json(congesResult.rows);
+        // Ajouter des informations supplémentaires pour les permissions
+        const formattedResult = congesResult.rows.map(row => {
+            if (row.type_conge_id === 3) {
+                return {
+                    ...row,
+                    displayInfo: {
+                        type: 'Permission',
+                        date: row.date_permission,
+                        duree: row.duree_heures,
+                        est_demi_journee: row.est_demi_journee
+                    }
+                };
+            }
+            return {
+                ...row,
+                displayInfo: {
+                    type: row.type_name,
+                    date_debut: row.date_debut,
+                    date_fin: row.date_fin,
+                    duree: row.nombre_jours
+                }
+            };
+        });
+        
+        res.json(formattedResult);
     } catch (error) {
         console.error('Erreur pending approvals:', error);
         res.status(500).json({ message: 'Erreur serveur' });
     }
 });
 
-// ============ FINAL APPROVE (avec email pour manager) ============
+// ============ FINAL APPROVE ============
+
 router.put('/final-approve/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
     const io = req.app.get('io');
     
     try {
-        // Récupérer la demande ET les rôles de l'utilisateur via une sous-requête
         const requestResult = await pool.query(
             `SELECT dc.*, 
-                    u.nom, u.prenom, u.email, u.manager_id,
+                    u.nom, 
+                    u.prenom, 
+                    u.email, 
+                    u.manager_id,
                     (SELECT array_agg(DISTINCT r.nom) 
                      FROM utilisateurs_roles ur 
                      JOIN roles r ON ur.role_id = r.id 
@@ -563,6 +629,7 @@ router.put('/final-approve/:id', async (req, res) => {
             [adminId, requestId]
         );
         
+        // Si c'est un congé payé, mettre à jour le solde
         if (demande.type_conge_id === 1) {
             const currentYear = new Date().getFullYear();
             await pool.query(
@@ -573,17 +640,25 @@ router.put('/final-approve/:id', async (req, res) => {
             );
         }
         
+        // Message personnalisé selon le type
+        let messageNotif = '';
+        if (demande.type_conge_id === 3) {
+            messageNotif = `✅ Votre permission du ${demande.date_permission} (${demande.duree_heures}h) a été définitivement approuvée.`;
+        } else {
+            messageNotif = `✅ Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été définitivement approuvée.`;
+        }
+        
         // Notification pour le demandeur
         await pool.query(
             `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-             VALUES ($1, 'approuve_final', 'Congé définitivement approuvé', 
+             VALUES ($1, 'approuve_final', 'Demande définitivement approuvée', 
              $2, '/dashboard/employee/requests', NOW())`,
-            [demande.utilisateur_id, `Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été définitivement approuvée.`]
+            [demande.utilisateur_id, messageNotif]
         );
         
         io.to(`user_${demande.utilisateur_id}`).emit('new_notification', {
-            titre: 'Congé définitivement approuvé',
-            message: `Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été approuvée.`,
+            titre: 'Demande définitivement approuvée',
+            message: messageNotif,
             lien: '/dashboard/employee/requests'
         });
         
@@ -593,18 +668,16 @@ router.put('/final-approve/:id', async (req, res) => {
                 await sendManagerApprovalEmail(
                     demande.email,
                     `${demande.prenom} ${demande.nom}`,
-                    `${demande.date_debut} au ${demande.date_fin}`,
-                    demande.nombre_jours
+                    demande.type_conge_id === 3 ? `le ${demande.date_permission} (${demande.duree_heures}h)` : `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.type_conge_id === 3 ? demande.duree_heures : demande.nombre_jours
                 );
-                console.log(`✅ Email d'approbation envoyé au manager ${demande.email}`);
             } else {
                 await sendAdminApprovalEmail(
                     demande.email,
                     `${demande.prenom} ${demande.nom}`,
-                    `${demande.date_debut} au ${demande.date_fin}`,
-                    demande.nombre_jours
+                    demande.type_conge_id === 3 ? `le ${demande.date_permission} (${demande.duree_heures}h)` : `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.type_conge_id === 3 ? demande.duree_heures : demande.nombre_jours
                 );
-                console.log(`✅ Email d'approbation envoyé à l'employé ${demande.email}`);
             }
         } catch (emailError) {
             console.error('Erreur envoi email approbation:', emailError);
@@ -612,39 +685,25 @@ router.put('/final-approve/:id', async (req, res) => {
         
         // Notification pour le manager (si la demande vient d'un employé)
         if (demande.manager_id) {
+            let managerMessage = '';
+            if (demande.type_conge_id === 3) {
+                managerMessage = `La demande de permission de ${demande.prenom} ${demande.nom} a été définitivement approuvée.`;
+            } else {
+                managerMessage = `La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement approuvée.`;
+            }
+            
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'approuve_final_manager', 'Demande de congé approuvée', 
+                 VALUES ($1, 'approuve_final_manager', 'Demande approuvée', 
                  $2, '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id, `La demande de congé de ${demande.prenom} ${demande.nom} a été définitivement approuvée.`]
+                [demande.manager_id, managerMessage]
             );
             
             io.to(`user_${demande.manager_id}`).emit('new_notification', {
                 titre: 'Demande approuvée',
-                message: `La demande de ${demande.prenom} ${demande.nom} a été approuvée.`,
+                message: managerMessage,
                 lien: '/dashboard/manager/validations'
             });
-        }
-        
-        // Si le demandeur est manager, envoyer aussi une notification à son manager (si existant)
-        if (estManager) {
-            const managerOfManager = await pool.query(`SELECT manager_id, email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
-            const managerId = managerOfManager.rows[0]?.manager_id;
-            
-            if (managerId) {
-                const managerInfo = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [managerId]);
-                if (managerInfo.rows.length > 0) {
-                    const manager = managerInfo.rows[0];
-                    await sendManagerApprovalEmail(
-                        manager.email,
-                        `${manager.prenom}`,
-                        `Le manager ${demande.prenom} ${demande.nom}`,
-                        `${demande.date_debut} au ${demande.date_fin}`,
-                        demande.nombre_jours
-                    );
-                    console.log(`✅ Email d'approbation envoyé au manager du manager: ${manager.email}`);
-                }
-            }
         }
         
         res.json({ message: 'Demande définitivement approuvée' });
@@ -655,7 +714,8 @@ router.put('/final-approve/:id', async (req, res) => {
     }
 });
 
-// ============ FINAL REJECT (avec email pour manager) ============
+// ============ FINAL REJECT ============
+
 router.put('/final-reject/:id', async (req, res) => {
     const requestId = req.params.id;
     const adminId = req.user.id;
@@ -664,10 +724,12 @@ router.put('/final-reject/:id', async (req, res) => {
     const io = req.app.get('io');
     
     try {
-        // Récupérer la demande ET les rôles de l'utilisateur via une sous-requête
         const requestResult = await pool.query(
             `SELECT dc.*, 
-                    u.nom, u.prenom, u.email, u.manager_id,
+                    u.nom, 
+                    u.prenom, 
+                    u.email, 
+                    u.manager_id,
                     (SELECT array_agg(DISTINCT r.nom) 
                      FROM utilisateurs_roles ur 
                      JOIN roles r ON ur.role_id = r.id 
@@ -693,17 +755,25 @@ router.put('/final-reject/:id', async (req, res) => {
             [adminId, motifFinal, requestId]
         );
         
+        // Message personnalisé selon le type
+        let messageNotif = '';
+        if (demande.type_conge_id === 3) {
+            messageNotif = `❌ Votre permission du ${demande.date_permission} a été refusée. Motif : ${motifFinal}`;
+        } else {
+            messageNotif = `❌ Votre demande de congé du ${demande.date_debut} au ${demande.date_fin} a été refusée. Motif : ${motifFinal}`;
+        }
+        
         // Notification pour le demandeur
         await pool.query(
             `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
              VALUES ($1, 'refus_admin', 'Demande de congé refusée', 
              $2, '/dashboard/employee/requests', NOW())`,
-            [demande.utilisateur_id, `Votre demande de congé a été refusée par l'administrateur. Motif : ${motifFinal}`]
+            [demande.utilisateur_id, messageNotif]
         );
         
         io.to(`user_${demande.utilisateur_id}`).emit('new_notification', {
             titre: 'Demande refusée',
-            message: `Votre demande de congé a été refusée. Motif : ${motifFinal}`,
+            message: messageNotif,
             lien: '/dashboard/employee/requests'
         });
         
@@ -713,57 +783,42 @@ router.put('/final-reject/:id', async (req, res) => {
                 await sendManagerRejectionEmail(
                     demande.email,
                     `${demande.prenom} ${demande.nom}`,
-                    `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.type_conge_id === 3 ? `le ${demande.date_permission} (${demande.duree_heures}h)` : `${demande.date_debut} au ${demande.date_fin}`,
                     motifFinal
                 );
-                console.log(`✅ Email de refus envoyé au manager ${demande.email}`);
             } else {
                 await sendAdminRejectionEmail(
                     demande.email,
                     `${demande.prenom} ${demande.nom}`,
-                    `${demande.date_debut} au ${demande.date_fin}`,
+                    demande.type_conge_id === 3 ? `le ${demande.date_permission} (${demande.duree_heures}h)` : `${demande.date_debut} au ${demande.date_fin}`,
                     motifFinal
                 );
-                console.log(`✅ Email de refus envoyé à l'employé ${demande.email}`);
             }
         } catch (emailError) {
             console.error('Erreur envoi email refus:', emailError);
         }
         
-        // Notification pour le manager (si la demande vient d'un employé)
+        // Notification pour le manager
         if (demande.manager_id) {
+            let managerMessage = '';
+            if (demande.type_conge_id === 3) {
+                managerMessage = `La demande de permission de ${demande.prenom} ${demande.nom} a été refusée définitivement. Motif : ${motifFinal}`;
+            } else {
+                managerMessage = `La demande de congé de ${demande.prenom} ${demande.nom} a été refusée définitivement. Motif : ${motifFinal}`;
+            }
+            
             await pool.query(
                 `INSERT INTO notifications (utilisateur_id, type, titre, message, lien, cree_le)
-                 VALUES ($1, 'refus_admin_manager', 'Demande de congé refusée', 
+                 VALUES ($1, 'refus_admin_manager', 'Demande refusée', 
                  $2, '/dashboard/manager/validations', NOW())`,
-                [demande.manager_id, `La demande de congé de ${demande.prenom} ${demande.nom} a été refusée définitivement.`]
+                [demande.manager_id, managerMessage]
             );
             
             io.to(`user_${demande.manager_id}`).emit('new_notification', {
                 titre: 'Demande refusée',
-                message: `La demande de ${demande.prenom} ${demande.nom} a été refusée.`,
+                message: managerMessage,
                 lien: '/dashboard/manager/validations'
             });
-        }
-        
-        // Si le demandeur est manager, envoyer aussi une notification à son manager (si existant)
-        if (estManager) {
-            const managerOfManager = await pool.query(`SELECT manager_id, email, prenom FROM users WHERE id = $1`, [demande.utilisateur_id]);
-            const managerId = managerOfManager.rows[0]?.manager_id;
-            
-            if (managerId) {
-                const managerInfo = await pool.query(`SELECT email, prenom FROM users WHERE id = $1`, [managerId]);
-                if (managerInfo.rows.length > 0) {
-                    const manager = managerInfo.rows[0];
-                    await sendManagerRejectionEmail(
-                        manager.email,
-                        `${manager.prenom}`,
-                        `La demande du manager ${demande.prenom} ${demande.nom}`,
-                        motifFinal
-                    );
-                    console.log(`✅ Email de refus envoyé au manager du manager: ${manager.email}`);
-                }
-            }
         }
         
         res.json({ message: 'Demande définitivement refusée' });
@@ -780,17 +835,46 @@ router.get('/leave-requests', async (req, res) => {
             `SELECT dc.id,
                     TO_CHAR(dc.date_debut, 'YYYY-MM-DD') as date_debut,
                     TO_CHAR(dc.date_fin, 'YYYY-MM-DD') as date_fin,
-                    dc.nombre_jours, dc.statut, dc.cree_le,
-                    u.nom, u.prenom,
+                    TO_CHAR(dc.date_permission, 'YYYY-MM-DD') as date_permission,
+                    dc.duree_heures,
+                    dc.est_demi_journee,
+                    dc.nombre_jours,
+                    dc.statut,
+                    dc.cree_le,
+                    dc.type_conge_id,
+                    u.nom,
+                    u.prenom,
+                    u.email,
+                    u.service,
                     CASE 
                         WHEN dc.type_conge_id = 1 THEN 'Congés Payés'
-                        ELSE 'Congé sans solde'
-                    END as type_name
+                        WHEN dc.type_conge_id = 2 THEN 'Congé sans solde'
+                        WHEN dc.type_conge_id = 3 THEN 'Permission'
+                    END as type_name,
+                    dc.motif,
+                    dc.motif_refus
              FROM demandes_conges dc
              JOIN users u ON dc.utilisateur_id = u.id
              ORDER BY dc.cree_le DESC`
         );
-        res.json(result.rows);
+        
+        // Ajouter des informations supplémentaires pour les permissions
+        const formattedResult = result.rows.map(row => {
+            if (row.type_conge_id === 3) {
+                return {
+                    ...row,
+                    displayInfo: {
+                        type: 'Permission',
+                        date: row.date_permission,
+                        duree: row.duree_heures,
+                        est_demi_journee: row.est_demi_journee
+                    }
+                };
+            }
+            return row;
+        });
+        
+        res.json(formattedResult);
     } catch (error) {
         console.error('Erreur leave-requests:', error);
         res.status(500).json({ message: 'Erreur serveur' });

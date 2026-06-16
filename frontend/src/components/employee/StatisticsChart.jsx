@@ -8,7 +8,10 @@ function StatisticsChart({ requests, balance }) {
     const [typeStats, setTypeStats] = useState([]);
     const [statusStats, setStatusStats] = useState([]);
     const [totalDemandes, setTotalDemandes] = useState(0);
+    const [totalConges, setTotalConges] = useState(0);
     const [totalJoursPris, setTotalJoursPris] = useState(0);
+    const [totalPermissionHeures, setTotalPermissionHeures] = useState(0);
+    const [totalPermissions, setTotalPermissions] = useState(0);
     const [tauxApprobation, setTauxApprobation] = useState(0);
 
     const COLORS = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -48,43 +51,61 @@ function StatisticsChart({ requests, balance }) {
         }));
         setMonthlyData(monthlyDataArray);
         
-        // 2. Total des demandes et jours pris
-        const validRequests = requests.filter(r => r.request_type !== 'permission');
-        setTotalDemandes(validRequests.length);
+        // 2. Total des demandes
+        const conges = requests.filter(r => r.request_type !== 'permission' && !r.isPermission);
+        const permissions = requests.filter(r => r.isPermission || r.type_id === 3);
         
-        const totalJours = validRequests
+        setTotalConges(conges.length);
+        setTotalPermissions(permissions.length);
+        setTotalDemandes(conges.length + permissions.length);
+        
+        // 3. Jours pris et heures de permission
+        const totalJours = conges
             .filter(r => r.status === 'approved')
             .reduce((sum, r) => sum + (r.duration || 0), 0);
         setTotalJoursPris(totalJours);
         
-        // 3. Taux d'approbation
-        const approuvees = validRequests.filter(r => r.status === 'approved').length;
-        setTauxApprobation(validRequests.length > 0 ? Math.round((approuvees / validRequests.length) * 100) : 0);
+        const totalHeures = permissions
+            .filter(r => r.status === 'approved')
+            .reduce((sum, r) => sum + (r.duree_heures || r.duration || 0), 0);
+        setTotalPermissionHeures(totalHeures);
         
-        // 4. Statistiques par type
-        const cpPris = validRequests
+        // 4. Taux d'approbation (uniquement sur les congés)
+        const approuvees = conges.filter(r => r.status === 'approved').length;
+        setTauxApprobation(conges.length > 0 ? Math.round((approuvees / conges.length) * 100) : 0);
+        
+        // 5. Statistiques par type
+        const cpPris = conges
             .filter(r => r.status === 'approved' && (r.type_id === 1 || r.type === 'Congés Payés'))
             .reduce((sum, r) => sum + (r.duration || 0), 0);
         
-        const sansSoldePris = validRequests
+        const sansSoldePris = conges
             .filter(r => r.status === 'approved' && (r.type_id === 2 || r.type === 'Congé sans solde'))
             .reduce((sum, r) => sum + (r.duration || 0), 0);
         
+        const permCount = permissions.filter(r => r.status === 'approved').length;
+        const permHeures = permissions.filter(r => r.status === 'approved').reduce((sum, r) => sum + (r.duree_heures || r.duration || 0), 0);
+        
         setTypeStats([
-            { name: 'Congés Payés', value: cpPris, total: balance.cp_total || 25, color: '#667eea' },
-            { name: 'Congé sans solde', value: sansSoldePris, total: 0, color: '#f59e0b' }
+            { name: '🏖️ Congés Payés', value: cpPris, total: balance.cp_total || 25, color: '#667eea' },
+            { name: '📝 Congé sans solde', value: sansSoldePris, total: 0, color: '#10b981' },
+            { name: '⏰ Permissions', value: permCount, total: balance.permissions_max || 2, color: '#f59e0b', heures: permHeures }
         ]);
         
-        // 5. Statistiques par statut
-        const pendingManager = validRequests.filter(r => r.status === 'pending_manager').length;
-        const pendingAdmin = validRequests.filter(r => r.status === 'pending_admin').length;
-        const approved = validRequests.filter(r => r.status === 'approved').length;
-        const rejected = validRequests.filter(r => r.status === 'rejected').length;
+        // 6. Statistiques par statut (uniquement sur les congés)
+        const pendingManager = conges.filter(r => r.status === 'pending_manager').length;
+        const pendingAdmin = conges.filter(r => r.status === 'pending_admin').length;
+        const approved = conges.filter(r => r.status === 'approved').length;
+        const rejected = conges.filter(r => r.status === 'rejected').length;
+        
+        // Ajouter les permissions en attente
+        const permPending = permissions.filter(r => r.status === 'pending_manager' || r.status === 'pending_admin').length;
+        const permApproved = permissions.filter(r => r.status === 'approved').length;
         
         setStatusStats([
-            { name: 'Approuvées', value: approved, color: '#10b981' },
+            { name: 'Approuvées', value: approved + permApproved, color: '#10b981' },
             { name: 'En attente manager', value: pendingManager, color: '#3b82f6' },
-            { name: 'En attente admin', value: pendingAdmin, color: '#f59e0b' },
+            { name: 'En attente admin', value: pendingAdmin + permPending, color: '#f59e0b' },
             { name: 'Refusées', value: rejected, color: '#ef4444' }
         ]);
     };
@@ -114,11 +135,11 @@ function StatisticsChart({ requests, balance }) {
             <div className="dashboard-header">
                 <div className="dashboard-header-content">
                     <h1 className="dashboard-title">Mes statistiques personnelles</h1>
-                    <p className="dashboard-subtitle">Analyse détaillée de vos congés</p>
+                    <p className="dashboard-subtitle">Analyse détaillée de vos congés et permissions</p>
                 </div>
             </div>
             
-            {/* Cartes KPI modernes - Style Manager */}
+            {/* Cartes KPI modernes */}
             <div className="stats-cards-grid">
                 <div className="stat-card-progress">
                     <div className="stat-card-progress-header">
@@ -142,6 +163,46 @@ function StatisticsChart({ requests, balance }) {
 
                 <div className="stat-card-progress">
                     <div className="stat-card-progress-header">
+                        <span className="stat-card-progress-title">🏖️ Congés</span>
+                        <span className="stat-card-progress-value">{totalConges}</span>
+                    </div>
+                    <div className="progress-circle-container">
+                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#667eea" strokeWidth="8" 
+                                strokeDasharray={`${2 * Math.PI * 54}`} 
+                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - totalConges / Math.max(totalConges, 100))}`}
+                                transform="rotate(-90 60 60)"
+                                strokeLinecap="round"
+                            />
+                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#667eea">{totalConges}</text>
+                        </svg>
+                    </div>
+                    <div className="stat-card-progress-footer">{totalJoursPris} jours pris</div>
+                </div>
+
+                <div className="stat-card-progress">
+                    <div className="stat-card-progress-header">
+                        <span className="stat-card-progress-title">⏰ Permissions</span>
+                        <span className="stat-card-progress-value">{totalPermissions}</span>
+                    </div>
+                    <div className="progress-circle-container">
+                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#f59e0b" strokeWidth="8" 
+                                strokeDasharray={`${2 * Math.PI * 54}`} 
+                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - totalPermissions / Math.max(totalPermissions, 10))}`}
+                                transform="rotate(-90 60 60)"
+                                strokeLinecap="round"
+                            />
+                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#f59e0b">{totalPermissions}</text>
+                        </svg>
+                    </div>
+                    <div className="stat-card-progress-footer">{totalPermissionHeures}h utilisées</div>
+                </div>
+
+                <div className="stat-card-progress">
+                    <div className="stat-card-progress-header">
                         <span className="stat-card-progress-title">Approuvées</span>
                         <span className="stat-card-progress-value">{totalApprouvees}</span>
                     </div>
@@ -159,49 +220,9 @@ function StatisticsChart({ requests, balance }) {
                     </div>
                     <div className="stat-card-progress-footer">taux d'approbation</div>
                 </div>
-
-                <div className="stat-card-progress">
-                    <div className="stat-card-progress-header">
-                        <span className="stat-card-progress-title">En attente</span>
-                        <span className="stat-card-progress-value">{totalEnAttente}</span>
-                    </div>
-                    <div className="progress-circle-container">
-                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#f59e0b" strokeWidth="8" 
-                                strokeDasharray={`${2 * Math.PI * 54}`} 
-                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - totalEnAttente / Math.max(totalDemandes, 1))}`}
-                                transform="rotate(-90 60 60)"
-                                strokeLinecap="round"
-                            />
-                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#f59e0b">{totalEnAttente}</text>
-                        </svg>
-                    </div>
-                    <div className="stat-card-progress-footer">demandes en attente</div>
-                </div>
-
-                <div className="stat-card-progress">
-                    <div className="stat-card-progress-header">
-                        <span className="stat-card-progress-title">Refusées</span>
-                        <span className="stat-card-progress-value">{totalRefusees}</span>
-                    </div>
-                    <div className="progress-circle-container">
-                        <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
-                            <circle cx="60" cy="60" r="54" fill="none" stroke="#ef4444" strokeWidth="8" 
-                                strokeDasharray={`${2 * Math.PI * 54}`} 
-                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - totalRefusees / Math.max(totalDemandes, 1))}`}
-                                transform="rotate(-90 60 60)"
-                                strokeLinecap="round"
-                            />
-                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#ef4444">{totalRefusees}</text>
-                        </svg>
-                    </div>
-                    <div className="stat-card-progress-footer">demandes refusées</div>
-                </div>
             </div>
 
-            {/* Deuxième ligne - indicateurs clés SANS EMOJIS */}
+            {/* Deuxième ligne */}
             <div className="stats-cards-grid secondary">
                 <div className="kpi-card">
                     <div className="kpi-icon-wrapper blue">
@@ -212,9 +233,7 @@ function StatisticsChart({ requests, balance }) {
                     <div className="kpi-content">
                         <div className="kpi-value">{tauxApprobation}%</div>
                         <div className="kpi-label">Taux d'approbation</div>
-                        <div className="kpi-trend positive">
-                            {totalApprouvees} / {totalDemandes} approuvées
-                        </div>
+                        <div className="kpi-trend positive">{totalApprouvees} / {totalDemandes} approuvées</div>
                     </div>
                 </div>
                 <div className="kpi-card">
@@ -229,7 +248,7 @@ function StatisticsChart({ requests, balance }) {
                     </div>
                     <div className="kpi-content">
                         <div className="kpi-value">{formatNumber(totalJoursPris)} jours</div>
-                        <div className="kpi-label">Total jours pris</div>
+                        <div className="kpi-label">Total jours de congés pris</div>
                         <div className="kpi-trend neutral">depuis le début</div>
                     </div>
                 </div>
@@ -248,7 +267,7 @@ function StatisticsChart({ requests, balance }) {
                 </div>
             </div>
             
-            {/* Onglets SANS EMOJIS */}
+            {/* Onglets */}
             <div className="statistics-tabs-container">
                 <div className="statistics-tabs">
                     <button className={`tab-btn ${activeTab === 'monthly' ? 'active' : ''}`} onClick={() => setActiveTab('monthly')}>
@@ -279,7 +298,7 @@ function StatisticsChart({ requests, balance }) {
             <div className="charts-container">
                 {activeTab === 'monthly' && (
                     <div className="chart-card">
-                        <h3>Jours pris par mois - {new Date().getFullYear()}</h3>
+                        <h3>Jours de congés pris par mois - {new Date().getFullYear()}</h3>
                         {monthlyData.some(d => d.jours > 0) ? (
                             <ResponsiveContainer width="100%" height={400}>
                                 <BarChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
@@ -306,7 +325,7 @@ function StatisticsChart({ requests, balance }) {
                 
                 {activeTab === 'types' && (
                     <div className="chart-card">
-                        <h3>Répartition par type de congé</h3>
+                        <h3>Répartition par type</h3>
                         <div className="horizontal-bars-container">
                             {typeStats.map((stat, index) => {
                                 const total = typeStats.reduce((sum, s) => sum + s.value, 0);
@@ -322,7 +341,9 @@ function StatisticsChart({ requests, balance }) {
                                                     backgroundColor: stat.color
                                                 }}
                                             >
-                                                <span className="horizontal-bar-value">{stat.value} jour(s)</span>
+                                                <span className="horizontal-bar-value">
+                                                    {stat.name === '⏰ Permissions' ? `${stat.value} perm. (${stat.heures || 0}h)` : `${stat.value} jour(s)`}
+                                                </span>
                                             </div>
                                         </div>
                                         <div className="horizontal-bar-percent">{percentage}%</div>
@@ -332,7 +353,7 @@ function StatisticsChart({ requests, balance }) {
                         </div>
                         {typeStats.every(s => s.value === 0) && (
                             <div className="info-box text-center" style={{ marginTop: '20px' }}>
-                                Aucune donnée de congés
+                                Aucune donnée disponible
                             </div>
                         )}
                     </div>
@@ -379,7 +400,8 @@ function StatisticsChart({ requests, balance }) {
                 </div>
                 <div className="tip-content">
                     <strong>Conseils :</strong> Utilisez l'onglet "Par mois" pour voir votre consommation de congés dans l'année. 
-                    Le taux d'approbation vous aide à suivre l'acceptation de vos demandes.
+                    Le taux d'approbation vous aide à suivre l'acceptation de vos demandes. 
+                    Les <strong>congés</strong> (🏖️) et les <strong>permissions</strong> (⏰) sont maintenant inclus dans vos statistiques.
                 </div>
             </div>
         </div>

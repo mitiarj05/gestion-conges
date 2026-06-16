@@ -1,3 +1,4 @@
+// frontend/src/components/manager/TeamList.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_URL } from '../../config/api';
@@ -6,6 +7,7 @@ function TeamList({ teamMembers, onRefresh }) {
     const [showAddModal, setShowAddModal] = useState(false);
     const [availableEmployees, setAvailableEmployees] = useState([]);
     const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -33,15 +35,24 @@ function TeamList({ teamMembers, onRefresh }) {
     };
 
     const handleAddMember = async () => {
-        if (!selectedEmployeeId) { alert('Veuillez sélectionner un employé'); return; }
+        if (!selectedEmployeeId) { 
+            alert('Veuillez sélectionner un employé'); 
+            return; 
+        }
+        
         const selectedEmployee = availableEmployees.find(emp => emp.id === parseInt(selectedEmployeeId));
-        if (!selectedEmployee) { alert('Employé non trouvé'); return; }
+        if (!selectedEmployee) { 
+            alert('Employé non trouvé'); 
+            return; 
+        }
+        
         setLoading(true);
         try {
             await axios.post(`${API_URL}/users/add-team-member`, { employee_id: selectedEmployee.id }, getAuthHeaders());
             alert(`✅ ${selectedEmployee.prenom} ${selectedEmployee.nom} a été ajouté à votre équipe !`);
             setShowAddModal(false);
             setSelectedEmployeeId('');
+            setSearchTerm('');
             if (onRefresh) onRefresh();
             setRefreshTrigger(prev => prev + 1);
         } catch (error) {
@@ -66,6 +77,23 @@ function TeamList({ teamMembers, onRefresh }) {
         }
     };
 
+    // Filtrer les employés par recherche
+    const getFilteredEmployees = () => {
+        if (!searchTerm.trim()) return availableEmployees;
+        
+        const search = searchTerm.toLowerCase().trim();
+        return availableEmployees.filter(emp => {
+            return (emp.nom || '').toLowerCase().includes(search) ||
+                   (emp.prenom || '').toLowerCase().includes(search) ||
+                   (emp.email || '').toLowerCase().includes(search) ||
+                   (emp.service || '').toLowerCase().includes(search) ||
+                   (emp.telephone || '').toLowerCase().includes(search) ||
+                   (emp.id && emp.id.toString().includes(search));
+        });
+    };
+
+    const filteredEmployees = getFilteredEmployees();
+
     return (
         <div>
             <div className="dashboard-header">
@@ -75,7 +103,9 @@ function TeamList({ teamMembers, onRefresh }) {
                 </div>
                 <div className="dashboard-header-actions">
                     <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
                         Ajouter un membre
                     </button>
                 </div>
@@ -83,9 +113,11 @@ function TeamList({ teamMembers, onRefresh }) {
 
             {teamMembers.length === 0 ? (
                 <div className="empty-state-card">
-                    <p>📭 Aucun membre dans votre équipe pour le moment.</p>
+                    <p> Aucun membre dans votre équipe pour le moment.</p>
                     <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
                         Ajouter votre premier membre
                     </button>
                 </div>
@@ -93,7 +125,14 @@ function TeamList({ teamMembers, onRefresh }) {
                 <div className="table-wrapper-modern">
                     <table className="modern-table full-width">
                         <thead>
-                            <tr><th>Nom</th><th>Prénom</th><th>Email</th><th>Service</th><th>Actions</th></tr>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Prénom</th>
+                                <th>Email</th>
+                                <th>Service</th>
+                                <th>Téléphone</th>
+                                <th>Actions</th>
+                            </tr>
                         </thead>
                         <tbody>
                             {teamMembers.map(member => (
@@ -102,6 +141,7 @@ function TeamList({ teamMembers, onRefresh }) {
                                     <td><span className="employee-name-cell">{member.prenom}</span></td>
                                     <td>{member.email}</td>
                                     <td>{member.service || '-'}</td>
+                                    <td>{member.telephone || '-'}</td>
                                     <td>
                                         <button className="action-btn delete" onClick={() => handleRemoveMember(member.id, `${member.prenom} ${member.nom}`)} title="Retirer de l'équipe">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -116,51 +156,181 @@ function TeamList({ teamMembers, onRefresh }) {
                 </div>
             )}
 
+            {/* Modal Ajouter un membre - AVEC LISTE DE RÉSULTATS */}
             {showAddModal && (
-                <div className="modal-overlay">
-                    <div className="modal" style={{ maxWidth: '500px' }}>
+                <div className="modal-overlay" onClick={(e) => {
+                    if (e.target === e.currentTarget) {
+                        setShowAddModal(false);
+                        setSearchTerm('');
+                        setSelectedEmployeeId('');
+                    }
+                }}>
+                    <div className="modal" style={{ maxWidth: '650px', maxHeight: '85vh', overflow: 'hidden' }}>
                         <div className="modal-header">
                             <h3>➕ Ajouter un membre à mon équipe</h3>
-                            <button className="modal-close" onClick={() => setShowAddModal(false)}>✖</button>
+                            <button className="modal-close" onClick={() => {
+                                setShowAddModal(false);
+                                setSearchTerm('');
+                                setSelectedEmployeeId('');
+                            }}>✖</button>
                         </div>
-                        {loading && availableEmployees.length === 0 ? (
-                            <div className="text-center">Chargement des employés...</div>
-                        ) : availableEmployees.length === 0 ? (
-                            <div className="info-card-tip" style={{ background: '#fff3cd' }}>
-                                <div className="tip-icon">📢</div>
-                                <div className="tip-content">
-                                    <p>Aucun employé disponible actuellement.</p>
-                                    <p style={{ fontSize: '12px', marginTop: '10px' }}>
-                                        💡 Les employés sont disponibles s'ils :<br/>
-                                        - Ont le rôle "employé"<br/>
-                                        - N'ont pas encore de manager assigné<br/>
-                                        - Ne sont pas déjà dans une équipe
-                                    </p>
-                                </div>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="form-group">
-                                    <label>Sélectionner un employé</label>
-                                    <select className="form-input" onChange={(e) => setSelectedEmployeeId(e.target.value)} value={selectedEmployeeId}>
-                                        <option value="">-- Choisir un employé --</option>
-                                        {availableEmployees.map(emp => (
-                                            <option key={emp.id} value={emp.id}>
-                                                {emp.prenom} {emp.nom} - {emp.email} {emp.service ? `(${emp.service})` : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="modal-footer">
-                                    <button className="btn-primary" onClick={handleAddMember} disabled={!selectedEmployeeId || loading}>
-                                        {loading ? 'Ajout en cours...' : '✅ Ajouter à l\'équipe'}
-                                    </button>
-                                    <button className="btn-secondary" onClick={() => { setShowAddModal(false); setSelectedEmployeeId(''); }}>
-                                        Annuler
-                                    </button>
-                                </div>
-                            </>
-                        )}
+                        <div className="modal-body" style={{ maxHeight: 'calc(85vh - 140px)', overflowY: 'auto', padding: '20px' }}>
+                            {loading && availableEmployees.length === 0 ? (
+                                <div className="text-center">Chargement des employés...</div>
+                            ) : (
+                                <>
+                                    {/* Barre de recherche */}
+                                    <div className="form-group">
+                                        <label>🔍 Rechercher un employé</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="Nom, prénom, email, service ou téléphone..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            style={{ marginBottom: '12px' }}
+                                            autoFocus
+                                        />
+                                        {searchTerm && filteredEmployees.length === 0 && (
+                                            <small className="info-text" style={{ color: '#ef4444', display: 'block', marginBottom: '12px' }}>
+                                                 Aucun employé trouvé pour "{searchTerm}"
+                                            </small>
+                                        )}
+                                    </div>
+
+                                    {/* Liste des employés disponibles */}
+                                    {filteredEmployees.length > 0 ? (
+                                        <div className="search-results-list" style={{ 
+                                            marginBottom: '16px',
+                                            maxHeight: '250px',
+                                            overflowY: 'auto',
+                                            border: '1px solid var(--border-light, #e2e8f0)',
+                                            borderRadius: '12px',
+                                            background: 'var(--bg-card, #ffffff)'
+                                        }}>
+                                            {filteredEmployees.map(emp => (
+                                                <div
+                                                    key={emp.id}
+                                                    className={`search-result-item ${selectedEmployeeId === String(emp.id) ? 'selected' : ''}`}
+                                                    onClick={() => setSelectedEmployeeId(String(emp.id))}
+                                                    style={{
+                                                        padding: '12px 16px',
+                                                        cursor: 'pointer',
+                                                        borderBottom: '1px solid var(--border-light, #f1f5f9)',
+                                                        transition: 'all 0.2s',
+                                                        background: selectedEmployeeId === String(emp.id) ? 'var(--primary-50, #eff6ff)' : 'transparent',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        if (selectedEmployeeId !== String(emp.id)) {
+                                                            e.currentTarget.style.background = 'var(--bg-tertiary, #f8fafc)';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        if (selectedEmployeeId !== String(emp.id)) {
+                                                            e.currentTarget.style.background = 'transparent';
+                                                        }
+                                                    }}
+                                                >
+                                                    <div>
+                                                        <div style={{ fontWeight: '600', color: 'var(--text-primary, #1e293b)' }}>
+                                                            {emp.prenom} {emp.nom}
+                                                        </div>
+                                                        <div style={{ fontSize: '13px', color: 'var(--text-secondary, #64748b)' }}>
+                                                            {emp.email && <span>📧 {emp.email}</span>}
+                                                            {emp.service && <span style={{ marginLeft: '12px' }}>🏢 {emp.service}</span>}
+                                                            {emp.telephone && <span style={{ marginLeft: '12px' }}>📞 {emp.telephone}</span>}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ 
+                                                        fontSize: '12px', 
+                                                        color: 'var(--text-tertiary, #94a3b8)',
+                                                        background: 'var(--bg-tertiary, #f1f5f9)',
+                                                        padding: '4px 12px',
+                                                        borderRadius: '20px'
+                                                    }}>
+                                                        Disponible
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        !searchTerm && (
+                                            <div className="info-box" style={{ 
+                                                background: '#fef3c7',
+                                                padding: '12px 16px',
+                                                borderRadius: '8px',
+                                                marginBottom: '16px'
+                                            }}>
+                                                ⚠️ Aucun employé disponible. Les employés doivent avoir le rôle "employé" et ne pas avoir de manager.
+                                            </div>
+                                        )
+                                    )}
+
+                                    {/* Informations de l'employé sélectionné */}
+                                    {selectedEmployeeId && availableEmployees.find(emp => emp.id === parseInt(selectedEmployeeId)) && (
+                                        <div className="info-box" style={{ 
+                                            background: '#ecfdf5', 
+                                            borderLeft: '4px solid #10b981',
+                                            marginTop: '12px',
+                                            padding: '12px 16px',
+                                            borderRadius: '8px'
+                                        }}>
+                                            <strong> Employé sélectionné :</strong><br/>
+                                            {(() => {
+                                                const emp = availableEmployees.find(e => e.id === parseInt(selectedEmployeeId));
+                                                return (
+                                                    <>
+                                                        <strong style={{ fontSize: '16px' }}>{emp.prenom} {emp.nom}</strong>
+                                                        {emp.email && <span style={{ display: 'block', fontSize: '13px', color: '#475569' }}>📧 {emp.email}</span>}
+                                                        {emp.service && <span style={{ display: 'block', fontSize: '13px', color: '#475569' }}>🏢 {emp.service}</span>}
+                                                        {emp.telephone && <span style={{ display: 'block', fontSize: '13px', color: '#475569' }}>📞 {emp.telephone}</span>}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+
+                                    {!searchTerm && filteredEmployees.length > 0 && (
+                                        <div className="info-box" style={{ 
+                                            background: 'var(--info-bg, #eff6ff)',
+                                            padding: '12px 16px',
+                                            borderRadius: '8px',
+                                            marginBottom: '16px'
+                                        }}>
+                                            💡 Tapez un nom, prénom, email ou service pour trouver un employé
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                        <div className="modal-footer" style={{ 
+                            padding: '16px 20px',
+                            borderTop: '1px solid var(--border-light, #e2e8f0)',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: '12px'
+                        }}>
+                            <button 
+                                className="btn-primary" 
+                                onClick={handleAddMember} 
+                                disabled={!selectedEmployeeId || loading}
+                            >
+                                {loading ? 'Ajout en cours...' : ' Ajouter à l\'équipe'}
+                            </button>
+                            <button 
+                                className="btn-secondary" 
+                                onClick={() => {
+                                    setShowAddModal(false);
+                                    setSearchTerm('');
+                                    setSelectedEmployeeId('');
+                                }}
+                            >
+                                Annuler
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

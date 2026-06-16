@@ -59,7 +59,17 @@ function ManagerDashboard({ onLogout }) {
             const token = localStorage.getItem('token');
             if (!token) { navigate('/login'); return; }
             const response = await axios.get(`${API_URL}/leaves/team-pending`, getAuthHeaders());
-            setPendingRequests(response.data);
+            // Transformer les données pour inclure les permissions
+            const formatted = response.data.map(req => ({
+                ...req,
+                isPermission: req.type_conge_id === 3 || req.request_type === 'permission',
+                displayInfo: req.type_conge_id === 3 ? {
+                    date: req.date_permission,
+                    duree: req.duree_heures,
+                    est_demi_journee: req.est_demi_journee
+                } : null
+            }));
+            setPendingRequests(formatted);
         } catch (error) {
             console.error('Erreur fetchPendingRequests:', error);
             if (error.response?.status === 401) {
@@ -73,7 +83,11 @@ function ManagerDashboard({ onLogout }) {
     const fetchFilteredTeamRequests = async (periode) => {
         try {
             const response = await axios.get(`${API_URL}/leaves/team-pending-filtered?periode=${periode}`, getAuthHeaders());
-            setPendingRequests(response.data);
+            const formatted = response.data.map(req => ({
+                ...req,
+                isPermission: req.type_conge_id === 3 || req.request_type === 'permission'
+            }));
+            setPendingRequests(formatted);
         } catch (error) {
             console.error('Erreur fetch filtered:', error);
         }
@@ -125,11 +139,9 @@ function ManagerDashboard({ onLogout }) {
 
     const currentPath = location.pathname;
 
-    // Fonction pour déterminer le contenu à afficher selon la route
     const renderContent = () => {
         console.log(`🎨 [ManagerDashboard] Rendu du contenu pour: ${currentPath}`);
 
-        // Page Mon profil
         if (currentPath === '/dashboard/manager/profile') {
             return (
                 <Profile user={user} role="manager" onLogout={onLogout} onProfileUpdate={(updatedUser) => {
@@ -140,37 +152,31 @@ function ManagerDashboard({ onLogout }) {
             );
         }
 
-        // Route pour Mes demandes
         if (currentPath === '/dashboard/manager/my-requests') {
             return <ManagerMyRequests />;
         }
 
-        // Nouvelle demande
         if (currentPath === '/dashboard/manager/new-request') {
             return <LeaveRequest onSuccess={handleRequestSuccess} />;
         }
 
-        // Calendrier équipe
         if (currentPath === '/dashboard/manager/team-calendar' || currentPath.includes('/team-calendar')) {
             return <TeamCalendar />;
         }
 
-        // Gestion de l'équipe
         if (currentPath === '/dashboard/manager/team' || currentPath.includes('/team')) {
             return <TeamList teamMembers={teamMembers} onRefresh={refreshData} />;
         }
 
-        // Validations
         if (currentPath.includes('/validations')) {
             return <PendingValidations requests={pendingRequests} onRefresh={refreshData} />;
         }
 
-        // Statistiques
         if (currentPath.includes('/stats')) {
             return <TeamStatistics teamMembers={teamMembers} />;
         }
 
-        // Dashboard principal par défaut
+        // Dashboard principal
         return (
             <>
                 <div className="dashboard-header">
@@ -215,7 +221,7 @@ function ManagerDashboard({ onLogout }) {
                         <div className="kpi-card-info">
                             <div className="kpi-card-value">{pendingRequests.length}</div>
                             <div className="kpi-card-label">Demandes en attente</div>
-                            <div className="kpi-card-sub">à valider</div>
+                            <div className="kpi-card-sub">dont {pendingRequests.filter(r => r.isPermission).length} permission(s)</div>
                         </div>
                     </div>
 
@@ -270,7 +276,7 @@ function ManagerDashboard({ onLogout }) {
                         </button>
                         <button className="quick-action-btn primary" onClick={() => navigate('/dashboard/manager/new-request')}>
                             <span className="quick-action-icon">📝</span>
-                            <span>Faire une demande de congé</span>
+                            <span>Faire une demande</span>
                         </button>
                         <button className="quick-action-btn" onClick={() => navigate('/dashboard/manager/team')}>
                             <span className="quick-action-icon">👥</span>
@@ -295,7 +301,7 @@ function ManagerDashboard({ onLogout }) {
                     <div className="info-card-tip">
                         <div className="tip-icon">💡</div>
                         <div className="tip-content">
-                            <strong>Conseil :</strong> Ajoutez des membres à votre équipe dans l'onglet "Mon équipe" pour commencer à gérer leurs demandes.
+                            <strong>Conseil :</strong> Ajoutez des membres à votre équipe dans l'onglet "Mon équipe" pour commencer à gérer leurs demandes (congés et permissions).
                         </div>
                     </div>
                 )}
@@ -303,7 +309,6 @@ function ManagerDashboard({ onLogout }) {
         );
     };
 
-    // Layout commun avec un seul return
     return (
         <>
             <Navbar user={user} role="manager" onLogout={onLogout} />
@@ -315,7 +320,7 @@ function ManagerDashboard({ onLogout }) {
                 </main>
             </div>
             <ToastNotification toasts={toasts} removeToast={removeToast} />
-                    <ChatbotWidget user={user} role="manager" />
+            <ChatbotWidget user={user} role="manager" />
         </>
     );
 }

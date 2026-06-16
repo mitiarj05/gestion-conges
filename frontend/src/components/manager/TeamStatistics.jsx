@@ -6,8 +6,15 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 
 function TeamStatistics({ teamMembers }) {
     const [stats, setStats] = useState({
-        totalRequests: 0, approvedRequests: 0, pendingRequests: 0, rejectedRequests: 0,
-        totalDaysTaken: 0, requestsByEmployee: [], requestsByType: { CP: 0, SANS_SOLDE: 0 }, monthlyData: []
+        totalRequests: 0,
+        approvedRequests: 0,
+        pendingRequests: 0,
+        rejectedRequests: 0,
+        totalDaysTaken: 0,
+        totalPermissionHours: 0,
+        requestsByEmployee: [],
+        requestsByType: { CP: 0, SANS_SOLDE: 0, PERMISSION: 0 },
+        monthlyData: []
     });
     const [loading, setLoading] = useState(true);
     const [activeChart, setActiveChart] = useState('bar');
@@ -49,8 +56,9 @@ function TeamStatistics({ teamMembers }) {
     ].filter(s => s.value > 0);
 
     const typeData = [
-        { name: 'Congés Payés', value: stats.requestsByType.CP, color: '#667eea' },
-        { name: 'Congé sans solde', value: stats.requestsByType.SANS_SOLDE, color: '#f59e0b' }
+        { name: '🏖️ Congés Payés', value: stats.requestsByType.CP, color: '#667eea' },
+        { name: '📝 Congé sans solde', value: stats.requestsByType.SANS_SOLDE, color: '#10b981' },
+        { name: '⏰ Permission', value: stats.requestsByType.PERMISSION, color: '#f59e0b' }
     ].filter(s => s.value > 0);
 
     const monthlyChartData = stats.monthlyData.map(item => ({
@@ -67,7 +75,7 @@ function TeamStatistics({ teamMembers }) {
             <div className="dashboard-header">
                 <div className="dashboard-header-content">
                     <h1 className="dashboard-title">Statistiques de l'équipe</h1>
-                    <p className="dashboard-subtitle">Analyse des demandes de votre équipe</p>
+                    <p className="dashboard-subtitle">Analyse des demandes de votre équipe (congés et permissions)</p>
                 </div>
             </div>
 
@@ -76,7 +84,7 @@ function TeamStatistics({ teamMembers }) {
                     { title: 'Total demandes', value: stats.totalRequests, color: '#667eea', pct: stats.totalRequests / Math.max(stats.totalRequests, 100), label: 'demandes totales' },
                     { title: 'Approuvées', value: stats.approvedRequests, color: '#10b981', pct: tauxApprobation / 100, label: "taux d'approbation", display: `${tauxApprobation}%` },
                     { title: 'En attente', value: stats.pendingRequests, color: '#f59e0b', pct: stats.pendingRequests / Math.max(stats.totalRequests, 1), label: 'demandes en attente' },
-                    { title: 'Refusées', value: stats.rejectedRequests, color: '#ef4444', pct: stats.rejectedRequests / Math.max(stats.totalRequests, 1), label: 'demandes refusées' }
+                    { title: '⏰ Permissions', value: stats.requestsByType.PERMISSION, color: '#f59e0b', pct: stats.requestsByType.PERMISSION / Math.max(stats.totalRequests, 1), label: 'permissions' }
                 ].map((card, i) => (
                     <div key={i} className="stat-card-progress">
                         <div className="stat-card-progress-header">
@@ -104,13 +112,29 @@ function TeamStatistics({ teamMembers }) {
                     <div className="kpi-icon-wrapper blue">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                            <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                            <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/>
                         </svg>
                     </div>
                     <div className="kpi-content">
                         <div className="kpi-value">{stats.totalDaysTaken} jours</div>
-                        <div className="kpi-label">Total jours pris</div>
+                        <div className="kpi-label">Total jours de congés pris</div>
                         <div className="kpi-trend neutral">par toute l'équipe</div>
+                    </div>
+                </div>
+                <div className="kpi-card">
+                    <div className="kpi-icon-wrapper orange">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                    </div>
+                    <div className="kpi-content">
+                        <div className="kpi-value">{stats.totalPermissionHours} h</div>
+                        <div className="kpi-label">Total heures de permission</div>
+                        <div className="kpi-trend neutral">utilisées</div>
                     </div>
                 </div>
                 <div className="kpi-card">
@@ -123,20 +147,6 @@ function TeamStatistics({ teamMembers }) {
                         <div className="kpi-value">{tauxApprobation}%</div>
                         <div className="kpi-label">Taux d'approbation</div>
                         <div className="kpi-trend positive">{stats.approvedRequests} / {stats.totalRequests} approuvées</div>
-                    </div>
-                </div>
-                <div className="kpi-card">
-                    <div className="kpi-icon-wrapper orange">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                            <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                    </div>
-                    <div className="kpi-content">
-                        <div className="kpi-value">{teamMembers.length > 0 ? (stats.totalRequests / teamMembers.length).toFixed(1) : 0}</div>
-                        <div className="kpi-label">Moyenne par employé</div>
-                        <div className="kpi-trend neutral">demandes par employé</div>
                     </div>
                 </div>
             </div>
@@ -189,10 +199,10 @@ function TeamStatistics({ teamMembers }) {
 
             {typeData.length > 0 && (
                 <div className="team-chart-card">
-                    <h4>Répartition par type de congé</h4>
+                    <h4>Répartition par type de demande</h4>
                     <div className="horizontal-bars-container">
                         {typeData.map((stat, index) => {
-                            const total = stats.requestsByType.CP + stats.requestsByType.SANS_SOLDE;
+                            const total = stats.requestsByType.CP + stats.requestsByType.SANS_SOLDE + stats.requestsByType.PERMISSION;
                             const percentage = total > 0 ? Math.round((stat.value / total) * 100) : 0;
                             return (
                                 <div key={index} className="horizontal-bar-item">
@@ -216,19 +226,34 @@ function TeamStatistics({ teamMembers }) {
                     <div className="table-responsive">
                         <table className="team-stats-table">
                             <thead>
-                                <tr><th>Employé</th><th>Total demandes</th><th>Approuvées</th><th>Refusées</th><th>En attente</th><th>Jours pris</th><th>Taux succès</th></tr>
+                                <tr>
+                                    <th>Employé</th>
+                                    <th>Total demandes</th>
+                                    <th>🏖️ Congés</th>
+                                    <th>⏰ Permissions</th>
+                                    <th>Approuvées</th>
+                                    <th>Refusées</th>
+                                    <th>En attente</th>
+                                    <th>Jours pris</th>
+                                    <th>Heures perm.</th>
+                                    <th>Taux succès</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 {stats.requestsByEmployee.map((emp, idx) => {
                                     const taux = emp.total > 0 ? Math.round((emp.approved / emp.total) * 100) : 0;
+                                    const conges = emp.total - (emp.totalPermissionHeures > 0 ? 1 : 0);
                                     return (
                                         <tr key={idx}>
                                             <td><strong>{emp.prenom} {emp.nom}</strong></td>
                                             <td>{emp.total}</td>
+                                            <td style={{ color: '#667eea' }}>{emp.total - (emp.totalPermissionHeures > 0 ? 1 : 0)}</td>
+                                            <td style={{ color: '#f59e0b' }}>{emp.totalPermissionHeures > 0 ? '✓' : 0}</td>
                                             <td><span className="status-badge approved">{emp.approved}</span></td>
                                             <td><span className="status-badge rejected">{emp.rejected}</span></td>
                                             <td><span className="status-badge pending">{emp.pending}</span></td>
                                             <td>{emp.totalDays || 0} jours</td>
+                                            <td>{emp.totalPermissionHeures || 0}h</td>
                                             <td>
                                                 <div className="mini-progress">
                                                     <div className="mini-progress-bar" style={{ width: `${taux}%` }}></div>
@@ -251,8 +276,9 @@ function TeamStatistics({ teamMembers }) {
                     </svg>
                 </div>
                 <div className="tip-content">
-                    <strong>Conseils :</strong> Surveillez les demandes en attente pour les traiter rapidement.
-                    Le taux d'approbation reflète la qualité des demandes de votre équipe.
+                    <strong>Conseils :</strong> Surveillez les demandes en attente pour les traiter rapidement. 
+                    Le taux d'approbation reflète la qualité des demandes de votre équipe. 
+                    Les <strong>congés</strong>et les <strong>permissions</strong>sont maintenant inclus dans les statistiques.
                 </div>
             </div>
         </div>

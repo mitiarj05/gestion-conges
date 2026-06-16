@@ -1,8 +1,8 @@
 // frontend/src/components/manager/MyRequests.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { leaveService } from '../../services/apiService';
-import { formatDate, formatDateTime } from '../../utils/dateUtils';
+import { formatDate } from '../../utils/dateUtils';
 import Modal from '../common/Modal';
 import LoadingSpinner from '../common/LoadingSpinner';
 import ToastNotification from '../notifications/ToastNotification';
@@ -19,7 +19,11 @@ function ManagerMyRequests() {
         type_id: 1,
         start_date: '',
         end_date: '',
-        motif: ''
+        date_permission: '',
+        duree_heures: 1,
+        est_demi_journee: false,
+        motif: '',
+        isPermission: false
     });
     const [toasts, setToasts] = useState([]);
     const [errors, setErrors] = useState([]);
@@ -32,14 +36,6 @@ function ManagerMyRequests() {
 
     const navigate = useNavigate();
 
-    useEffect(() => {
-        fetchMyRequests();
-    }, []);
-
-    useEffect(() => {
-        filterRequests();
-    }, [requests, filterStatus, filterType, searchTerm]);
-
     const addToast = (message, type = 'info', duration = 5000) => {
         const id = Date.now();
         setToasts(prev => [...prev, { id, message, type, duration }]);
@@ -50,24 +46,44 @@ function ManagerMyRequests() {
         setToasts(prev => prev.filter(toast => toast.id !== id));
     };
 
-    const fetchMyRequests = async () => {
+    const fetchMyRequests = useCallback(async () => {
         setLoading(true);
         try {
             const response = await leaveService.getMyRequests();
-            const formattedRequests = response.data.map(req => ({
-                ...req,
-                displayDates: `${formatDate(req.start_date)} → ${formatDate(req.end_date)}`,
-                displayDuration: `${req.duration} jour(s)`
-            }));
+            const formattedRequests = response.data.map(req => {
+                const isPermission = req.type_id === 3 || req.request_type === 'permission';
+                
+                let displayDates = '';
+                let displayDuration = '';
+                
+                if (isPermission) {
+                    displayDates = req.date_permission || req.start_date;
+                    displayDuration = `${req.duree_heures || 0} heure(s)`;
+                } else {
+                    displayDates = `${formatDate(req.start_date)} → ${formatDate(req.end_date)}`;
+                    displayDuration = `${req.duration || req.nombre_jours || 0} jour(s)`;
+                }
+                
+                return {
+                    ...req,
+                    isPermission: isPermission,
+                    displayDates: displayDates,
+                    displayDuration: displayDuration
+                };
+            });
             setRequests(formattedRequests);
             
             // Récupérer les justificatifs
             const justifs = {};
             for (const req of formattedRequests) {
-                try {
-                    const justifResponse = await leaveService.getJustificatifs(req.id);
-                    justifs[req.id] = justifResponse.data;
-                } catch (e) {
+                if (!req.isPermission) {
+                    try {
+                        const justifResponse = await leaveService.getJustificatifs(req.id);
+                        justifs[req.id] = justifResponse.data;
+                    } catch (e) {
+                        justifs[req.id] = [];
+                    }
+                } else {
                     justifs[req.id] = [];
                 }
             }
@@ -78,9 +94,9 @@ function ManagerMyRequests() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const filterRequests = () => {
+    const filterRequests = useCallback(() => {
         let filtered = [...requests];
         
         if (filterStatus !== 'all') {
@@ -88,7 +104,11 @@ function ManagerMyRequests() {
         }
         
         if (filterType !== 'all') {
-            filtered = filtered.filter(r => r.type_id === parseInt(filterType));
+            if (filterType === 'permission') {
+                filtered = filtered.filter(r => r.isPermission === true);
+            } else {
+                filtered = filtered.filter(r => r.type_id === parseInt(filterType));
+            }
         }
         
         if (searchTerm) {
@@ -96,21 +116,34 @@ function ManagerMyRequests() {
             filtered = filtered.filter(r => {
                 return (r.start_date || '').toLowerCase().includes(searchLower) ||
                        (r.end_date || '').toLowerCase().includes(searchLower) ||
+                       (r.date_permission || '').toLowerCase().includes(searchLower) ||
                        (r.motif || '').toLowerCase().includes(searchLower) ||
                        (r.type || '').toLowerCase().includes(searchLower);
             });
         }
         
         setFilteredRequests(filtered);
-    };
+    }, [requests, filterStatus, filterType, searchTerm]);
+
+    useEffect(() => {
+        fetchMyRequests();
+    }, [fetchMyRequests]);
+
+    useEffect(() => {
+        filterRequests();
+    }, [filterRequests]);
 
     const handleEdit = (request) => {
         setSelectedRequest(request);
         setEditingRequest({
-            type_id: request.type_id,
-            start_date: request.start_date,
-            end_date: request.end_date,
-            motif: request.motif || ''
+            type_id: request.type_id || 1,
+            start_date: request.start_date || '',
+            end_date: request.end_date || '',
+            date_permission: request.date_permission || '',
+            duree_heures: request.duree_heures || 1,
+            est_demi_journee: request.est_demi_journee || false,
+            motif: request.motif || '',
+            isPermission: request.isPermission || false
         });
         setErrors([]);
         setShowEditModal(true);
@@ -138,6 +171,29 @@ function ManagerMyRequests() {
     };
 
     const handleCancelApprovedRequest = async (request) => {
+        // Si c'est une permission, annulation simplifiée
+        if (request.isPermission) {
+            const motif = prompt('Motif de l\'annulation (obligatoire) :');
+            if (!motif || motif.trim() === '') {
+                addToast('Veuillez fournir un motif pour annuler votre permission.', 'error');
+                return;
+            }
+            if (window.confirm(`Confirmer l'annulation de votre permission du ${request.date_permission} ?`)) {
+                try {
+                    const response = await leaveService.cancelApprovedRequest(request.id, motif.trim());
+                    if (response.data.success) {
+                        addToast(response.data.message, 'success');
+                        fetchMyRequests();
+                    }
+                } catch (error) {
+                    const errorMsg = error.response?.data?.message || 'Erreur lors de l\'annulation';
+                    addToast(errorMsg, 'error');
+                }
+            }
+            return;
+        }
+
+        // Pour les congés, vérifier le délai de 48h
         const startDate = new Date(request.start_date);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -172,6 +228,46 @@ function ManagerMyRequests() {
     const handleUpdateRequest = async (e) => {
         e.preventDefault();
         
+        // Validation pour la permission
+        if (editingRequest.isPermission) {
+            if (!editingRequest.date_permission) {
+                setErrors(['Veuillez sélectionner la date de la permission']);
+                return;
+            }
+            if (!editingRequest.duree_heures || editingRequest.duree_heures <= 0) {
+                setErrors(['Veuillez saisir une durée valide']);
+                return;
+            }
+            if (editingRequest.duree_heures > 4) {
+                setErrors(['La permission ne peut pas dépasser 4 heures']);
+                return;
+            }
+            
+            try {
+                await leaveService.updateRequest(selectedRequest.id, {
+                    type_id: 3,
+                    date_permission: editingRequest.date_permission,
+                    duree_heures: parseFloat(editingRequest.duree_heures),
+                    est_demi_journee: editingRequest.est_demi_journee,
+                    motif: editingRequest.motif
+                });
+                addToast('Permission modifiée avec succès. L\'administrateur a été notifié.', 'success');
+                fetchMyRequests();
+                setShowEditModal(false);
+                setSelectedRequest(null);
+                setEditingRequest({ type_id: 1, start_date: '', end_date: '', date_permission: '', duree_heures: 1, est_demi_journee: false, motif: '', isPermission: false });
+            } catch (error) {
+                console.error('Erreur modification permission:', error);
+                if (error.response?.data?.errors) {
+                    setErrors(error.response.data.errors);
+                } else {
+                    setErrors([error.response?.data?.message || 'Erreur lors de la modification']);
+                }
+            }
+            return;
+        }
+
+        // Validation pour les congés
         if (!editingRequest.start_date || !editingRequest.end_date) {
             setErrors(['Veuillez sélectionner les dates de début et de fin']);
             return;
@@ -193,7 +289,7 @@ function ManagerMyRequests() {
             fetchMyRequests();
             setShowEditModal(false);
             setSelectedRequest(null);
-            setEditingRequest({ type_id: 1, start_date: '', end_date: '', motif: '' });
+            setEditingRequest({ type_id: 1, start_date: '', end_date: '', date_permission: '', duree_heures: 1, est_demi_journee: false, motif: '', isPermission: false });
         } catch (error) {
             console.error('Erreur modification:', error);
             if (error.response?.data?.errors) {
@@ -237,6 +333,26 @@ function ManagerMyRequests() {
         setSearchTerm('');
     };
 
+    const getTodayDate = () => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const getMinPermissionDate = () => {
+        const date = new Date();
+        date.setHours(date.getHours() + 24);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const todayDate = getTodayDate();
+    const minPermissionDate = getMinPermissionDate();
+
     if (loading) return <LoadingSpinner />;
 
     return (
@@ -244,8 +360,8 @@ function ManagerMyRequests() {
             <ToastNotification toasts={toasts} removeToast={removeToast} />
             
             <div className="page-header">
-                <h2>Mes demandes de congé</h2>
-                <p className="page-subtitle">Historique complet de toutes vos demandes</p>
+                <h2>Mes demandes</h2>
+                <p className="page-subtitle">Historique complet de toutes vos demandes (congés et permissions)</p>
             </div>
             
             {/* Filtres */}
@@ -268,7 +384,7 @@ function ManagerMyRequests() {
                     </div>
                     
                     <div className="filter-group">
-                        <label>Type de congé</label>
+                        <label>Type de demande</label>
                         <select 
                             className="form-input" 
                             value={filterType} 
@@ -277,6 +393,7 @@ function ManagerMyRequests() {
                             <option value="all">Tous les types</option>
                             <option value="1">Congés Payés</option>
                             <option value="2">Congé sans solde</option>
+                            <option value="permission">⏰ Permission</option>
                         </select>
                     </div>
                     
@@ -285,7 +402,7 @@ function ManagerMyRequests() {
                         <input 
                             type="text" 
                             className="form-input" 
-                            placeholder="Date (YYYY-MM-DD) ou motif..."
+                            placeholder="Date ou motif..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -325,20 +442,57 @@ function ManagerMyRequests() {
                             today.setHours(0, 0, 0, 0);
                             const canCancelApproved = isApproved && startDate > today;
                             const canEdit = req.statut === 'pending_manager' || req.statut === 'pending_admin';
+                            const isPermission = req.isPermission;
                             
                             return (
                                 <tr key={req.id}>
-                                    <td className="date-cell">{req.displayDates}</td>
-                                    <td>{req.type}</td>
-                                    <td>{req.displayDuration}</td>
+                                    <td className="date-cell">
+                                        {isPermission ? (
+                                            <span style={{ color: '#f59e0b' }}>📅 {req.displayDates}</span>
+                                        ) : (
+                                            req.displayDates
+                                        )}
+                                        {isPermission && req.est_demi_journee && (
+                                            <div style={{ fontSize: '11px', color: '#f59e0b' }}>Demi-journée</div>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {isPermission ? (
+                                            <span style={{ 
+                                                background: '#fef3c7', 
+                                                color: '#92400e', 
+                                                padding: '2px 10px', 
+                                                borderRadius: '20px', 
+                                                fontSize: '11px', 
+                                                fontWeight: '600',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}>
+                                                ⏰ Permission
+                                            </span>
+                                        ) : (
+                                            req.type
+                                        )}
+                                    </td>
+                                    <td>
+                                        {isPermission ? (
+                                            <span style={{ color: '#f59e0b', fontWeight: '500' }}>
+                                                {req.displayDuration}
+                                            </span>
+                                        ) : (
+                                            req.displayDuration
+                                        )}
+                                    </td>
                                     <td>{req.motif || '-'}</td>
                                     <td>{getStatusLabel(req.statut, req.motif_refus)}</td>
                                     <td>
                                         {justificatifs[req.id]?.length > 0 ? (
                                             <span className="badge-success">Fichier(s)</span>
-                                        ) : (canEdit && (
+                                        ) : (canEdit && !isPermission && (
                                             <FileUpload demandeId={req.id} onUploadComplete={handleJustificatifUpload} />
                                         ))}
+                                        {isPermission && <span style={{ fontSize: '11px', color: '#94a3b8' }}>Non requis</span>}
                                     </td>
                                     <td>
                                         {canEdit && (
@@ -358,7 +512,7 @@ function ManagerMyRequests() {
                                         )}
                                         {req.statut === 'approved' && canCancelApproved && (
                                             <div className="action-buttons">
-                                                <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler le congé">
+                                                <button className="action-btn cancel" onClick={() => handleCancelApprovedRequest(req)} title="Annuler">
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                         <path d="M18 6L6 18M6 6l12 12"/>
                                                     </svg>
@@ -401,7 +555,7 @@ function ManagerMyRequests() {
             </div>
 
             {/* Modal de modification */}
-            <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="✏️ Modifier ma demande de congé">
+            <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="✏️ Modifier ma demande">
                 <form onSubmit={handleUpdateRequest} className="edit-request-form">
                     {errors.length > 0 && (
                         <div className="error-messages">
@@ -411,37 +565,106 @@ function ManagerMyRequests() {
                         </div>
                     )}
                     
-                    <div className="form-group">
-                        <label>Type de congé</label>
-                        <select value={editingRequest.type_id} onChange={(e) => setEditingRequest({...editingRequest, type_id: e.target.value})} required>
-                            <option value="1">🏖️ Congés Payés</option>
-                            <option value="2">📝 Congé sans solde</option>
-                        </select>
-                    </div>
-                    
-                    <div className="form-row">
-                        <div className="form-group">
-                            <label>Date de début</label>
-                            <input type="date" value={editingRequest.start_date} onChange={(e) => setEditingRequest({...editingRequest, start_date: e.target.value})} min={new Date().toISOString().split('T')[0]} required />
-                        </div>
-                        <div className="form-group">
-                            <label>Date de fin</label>
-                            <input type="date" value={editingRequest.end_date} onChange={(e) => setEditingRequest({...editingRequest, end_date: e.target.value})} min={editingRequest.start_date || new Date().toISOString().split('T')[0]} required />
-                        </div>
-                    </div>
+                    {editingRequest.isPermission ? (
+                        // Formulaire de modification pour une permission
+                        <>
+                            <div className="info-box" style={{ background: '#fef3c7', marginBottom: '15px', padding: '12px', borderRadius: '8px', fontSize: '13px' }}>
+                                <strong>⏰ Modification d'une permission</strong><br/>
+                                • Vous modifiez une permission en attente de validation.<br/>
+                                • Après modification, l'administrateur devra la revalider.<br/>
+                                • ⚠️ La date doit être aujourd'hui ou dans le futur (préavis 24h).
+                            </div>
+
+                            <div className="form-group">
+                                <label>Date de la permission <span style={{ color: '#ef4444' }}>*</span></label>
+                                <input 
+                                    type="date" 
+                                    className="form-input" 
+                                    value={editingRequest.date_permission} 
+                                    onChange={(e) => setEditingRequest({...editingRequest, date_permission: e.target.value})} 
+                                    min={minPermissionDate}
+                                    required 
+                                />
+                                <small className="info-text">⏰ Préavis minimum : 24h</small>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Durée (heures) <span style={{ color: '#ef4444' }}>*</span></label>
+                                <select 
+                                    className="form-input" 
+                                    value={editingRequest.duree_heures} 
+                                    onChange={(e) => setEditingRequest({...editingRequest, duree_heures: parseFloat(e.target.value)})}
+                                    required
+                                >
+                                    <option value="0.5">0.5 heure (30 min)</option>
+                                    <option value="1">1 heure</option>
+                                    <option value="1.5">1.5 heures</option>
+                                    <option value="2">2 heures</option>
+                                    <option value="2.5">2.5 heures</option>
+                                    <option value="3">3 heures</option>
+                                    <option value="3.5">3.5 heures</option>
+                                    <option value="4">4 heures (max)</option>
+                                </select>
+                                <small className="info-text">⏰ Maximum 4 heures par permission</small>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Demi-journée</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingTop: '8px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={editingRequest.est_demi_journee} 
+                                            onChange={(e) => setEditingRequest({...editingRequest, est_demi_journee: e.target.checked})}
+                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                        />
+                                        <span style={{ fontSize: '14px', color: '#475569' }}>Demi-journée (matin ou après-midi)</span>
+                                    </label>
+                                </div>
+                                <small className="info-text">📋 Cochez si la permission concerne une demi-journée</small>
+                            </div>
+                        </>
+                    ) : (
+                        // Formulaire de modification pour un congé
+                        <>
+                            <div className="form-group">
+                                <label>Type de congé</label>
+                                <select value={editingRequest.type_id} onChange={(e) => setEditingRequest({...editingRequest, type_id: parseInt(e.target.value)})} required>
+                                    <option value="1">🏖️ Congés Payés</option>
+                                    <option value="2">📝 Congé sans solde</option>
+                                </select>
+                            </div>
+                            
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Date de début</label>
+                                    <input type="date" value={editingRequest.start_date} onChange={(e) => setEditingRequest({...editingRequest, start_date: e.target.value})} min={todayDate} required />
+                                </div>
+                                <div className="form-group">
+                                    <label>Date de fin</label>
+                                    <input type="date" value={editingRequest.end_date} onChange={(e) => setEditingRequest({...editingRequest, end_date: e.target.value})} min={editingRequest.start_date || todayDate} required />
+                                </div>
+                            </div>
+
+                            <div className="info-note">
+                                <p>⚠️ <strong>Information importante :</strong></p>
+                                <ul>
+                                    <li>Vous modifiez une demande en attente de validation par l'administrateur.</li>
+                                    <li>L'administrateur recevra une notification du changement.</li>
+                                    <li>Les dates doivent être aujourd'hui ou dans le futur.</li>
+                                </ul>
+                            </div>
+                        </>
+                    )}
                     
                     <div className="form-group">
                         <label>Motif (optionnel)</label>
-                        <textarea value={editingRequest.motif} onChange={(e) => setEditingRequest({...editingRequest, motif: e.target.value})} rows="3" placeholder="Précisez le motif de votre congé..."></textarea>
-                    </div>
-                    
-                    <div className="info-note">
-                        <p>⚠️ <strong>Information importante :</strong></p>
-                        <ul>
-                            <li>Vous modifiez une demande en attente de validation par l'administrateur.</li>
-                            <li>L'administrateur recevra une notification du changement.</li>
-                            <li>Les dates doivent être aujourd'hui ou dans le futur.</li>
-                        </ul>
+                        <textarea 
+                            value={editingRequest.motif} 
+                            onChange={(e) => setEditingRequest({...editingRequest, motif: e.target.value})} 
+                            rows="3" 
+                            placeholder="Précisez le motif de votre demande..."
+                        />
                     </div>
                     
                     <div className="form-actions">
@@ -454,12 +677,12 @@ function ManagerMyRequests() {
             {/* Modal de confirmation suppression */}
             <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="🗑️ Annuler la demande">
                 <div className="delete-confirmation">
-                    <p>Êtes-vous sûr de vouloir annuler cette demande de congé ?</p>
+                    <p>Êtes-vous sûr de vouloir annuler cette demande ?</p>
                     {selectedRequest && (
                         <div className="request-summary">
-                            <p><strong>Type :</strong> {selectedRequest.type}</p>
-                            <p><strong>Dates :</strong> {formatDate(selectedRequest.start_date)} → {formatDate(selectedRequest.end_date)}</p>
-                            <p><strong>Durée :</strong> {selectedRequest.duration} jour(s)</p>
+                            <p><strong>Type :</strong> {selectedRequest.isPermission ? '⏰ Permission' : selectedRequest.type}</p>
+                            <p><strong>Dates :</strong> {selectedRequest.displayDates}</p>
+                            <p><strong>Durée :</strong> {selectedRequest.displayDuration}</p>
                         </div>
                     )}
                     <p className="warning-text">Cette action est irréversible.</p>

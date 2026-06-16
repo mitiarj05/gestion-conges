@@ -31,6 +31,7 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
     const [passwordErrors, setPasswordErrors] = useState({});
     
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [deleteError, setDeleteError] = useState('');
     
     const { toasts, removeToast, success, error: toastError } = useToast();
 
@@ -38,7 +39,6 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     });
 
-    // Fonction pour construire l'URL complète de la photo
     const getFullPhotoUrl = (photoUrl) => {
         if (!photoUrl) return null;
         if (photoUrl.startsWith('http')) return photoUrl;
@@ -46,15 +46,11 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
         return `${baseUrl}${photoUrl}`;
     };
 
-    // Fonction pour mettre à jour l'utilisateur dans le localStorage et notifier
     const updateLocalStorageAndNotify = (updatedUserData) => {
         const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
         const updatedUser = { ...storedUser, ...updatedUserData };
         localStorage.setItem('user', JSON.stringify(updatedUser));
-        
-        // Déclencher un événement personnalisé pour notifier les composants (Sidebar, Navbar)
         window.dispatchEvent(new Event('profileUpdated'));
-        
         return updatedUser;
     };
 
@@ -77,7 +73,6 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
             });
             if (userData.photo_url) {
                 const fullUrl = getFullPhotoUrl(userData.photo_url);
-                console.log('📸 Photo URL complète:', fullUrl);
                 setPhotoPreview(fullUrl);
             }
         } catch (error) {
@@ -95,10 +90,7 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
             const response = await axios.put(`${API_URL}/users/profile`, editForm, getAuthHeaders());
             success('Profil mis à jour avec succès');
             setUser(response.data.user);
-            
-            // Mettre à jour le localStorage et notifier
             updateLocalStorageAndNotify(response.data.user);
-            
             if (onProfileUpdate) {
                 onProfileUpdate(response.data.user);
             }
@@ -139,9 +131,17 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
         }
     };
 
+    // ============ SUPPRESSION DE COMPTE CORRIGÉE ============
     const handleDeleteAccount = async () => {
-        if (deleteConfirmText !== 'SUPPRIMER') {
-            toastError('Veuillez taper "SUPPRIMER" pour confirmer');
+        setDeleteError('');
+        
+        // Vérifier que le texte de confirmation est exactement "SUPPRIMER"
+        if (deleteConfirmText.trim() !== 'SUPPRIMER') {
+            setDeleteError('Veuillez taper exactement "SUPPRIMER" pour confirmer');
+            return;
+        }
+        
+        if (!window.confirm('⚠️ Êtes-vous ABSOLUMENT sûr de vouloir supprimer votre compte ? Cette action est IRRÉVERSIBLE !')) {
             return;
         }
         
@@ -160,6 +160,7 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
             }, 1500);
         } catch (error) {
             toastError(error.response?.data?.message || 'Erreur lors de la suppression du compte');
+            setDeleteError(error.response?.data?.message || 'Erreur lors de la suppression');
         } finally {
             setSaving(false);
         }
@@ -191,17 +192,10 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
             });
             success('Photo de profil mise à jour');
             const newPhotoUrl = response.data.photo_url;
-            
-            // Mettre à jour l'état user
             setUser({ ...user, photo_url: newPhotoUrl });
-            
-            // Mettre à jour le localStorage et notifier
             updateLocalStorageAndNotify({ photo_url: newPhotoUrl });
-            
             const fullUrl = getFullPhotoUrl(newPhotoUrl);
-            console.log('📸 Nouvelle photo URL:', fullUrl);
             setPhotoPreview(fullUrl);
-            
             if (onProfileUpdate) {
                 onProfileUpdate({ ...user, photo_url: newPhotoUrl });
             }
@@ -214,20 +208,13 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
 
     const handleRemovePhoto = async () => {
         if (!window.confirm('Voulez-vous vraiment supprimer votre photo de profil ?')) return;
-        
         setUploadingPhoto(true);
         try {
             await axios.delete(`${API_URL}/users/photo`, getAuthHeaders());
             success('Photo de profil supprimée');
-            
-            // Mettre à jour l'état user
             setUser({ ...user, photo_url: null });
-            
-            // Mettre à jour le localStorage et notifier
             updateLocalStorageAndNotify({ photo_url: null });
-            
             setPhotoPreview(null);
-            
             if (onProfileUpdate) {
                 onProfileUpdate({ ...user, photo_url: null });
             }
@@ -290,7 +277,6 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
                                     alt="Photo de profil" 
                                     className="profile-photo-img"
                                     onError={(e) => {
-                                        console.error('❌ Erreur chargement image:', photoPreview);
                                         e.target.style.display = 'none';
                                         const parent = e.target.parentElement;
                                         if (parent) {
@@ -440,7 +426,11 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
                             </svg>
                         </button>
                         
-                        <button className="security-action-btn danger" onClick={() => setShowDeleteModal(true)}>
+                        <button className="security-action-btn danger" onClick={() => {
+                            setDeleteConfirmText('');
+                            setDeleteError('');
+                            setShowDeleteModal(true);
+                        }}>
                             <div className="security-action-icon">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8"/>
@@ -543,13 +533,29 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
                 </div>
             )}
 
-            {/* Modal Suppression de compte */}
+            {/* ============ MODAL SUPPRESSION DE COMPTE CORRIGÉE ============ */}
             {showDeleteModal && (
-                <div className="modal-overlay" onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}>
-                    <div className="modal" style={{ maxWidth: '450px' }}>
+                <div className="modal-overlay" onClick={(e) => { 
+                    if (e.target === e.currentTarget) {
+                        setShowDeleteModal(false);
+                        setDeleteConfirmText('');
+                        setDeleteError('');
+                    }
+                }}>
+                    <div className="modal" style={{ maxWidth: '500px' }}>
                         <div className="modal-header" style={{ background: '#dc3545' }}>
                             <h3 style={{ color: 'white' }}>⚠️ Supprimer mon compte</h3>
-                            <button className="modal-close" onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }} style={{ color: 'white' }}>✖</button>
+                            <button 
+                                className="modal-close" 
+                                onClick={() => { 
+                                    setShowDeleteModal(false);
+                                    setDeleteConfirmText('');
+                                    setDeleteError('');
+                                }} 
+                                style={{ color: 'white' }}
+                            >
+                                ✖
+                            </button>
                         </div>
                         <div className="modal-body">
                             <div className="delete-warning">
@@ -558,27 +564,79 @@ function Profile({ user: currentUser, role, onLogout, onProfileUpdate }) {
                                     <line x1="12" y1="8" x2="12" y2="12"/>
                                     <line x1="12" y1="16" x2="12.01" y2="16"/>
                                 </svg>
-                                <p>Cette action est <strong>IRRÉVERSIBLE</strong> !</p>
+                                <p style={{ fontSize: '16px', fontWeight: 'bold' }}>⚠️ Cette action est <strong style={{ color: '#dc3545' }}>IRRÉVERSIBLE</strong> !</p>
                                 <p>Toutes vos données (demandes, notifications, etc.) seront définitivement supprimées.</p>
-                                <p>Veuillez taper <strong>"SUPPRIMER"</strong> pour confirmer.</p>
+                                <p style={{ marginTop: '16px' }}>
+                                    Veuillez taper <strong style={{ color: '#dc3545' }}>"SUPPRIMER"</strong> pour confirmer.
+                                </p>
                             </div>
-                            <div className="form-group">
+                            
+                            {deleteError && (
+                                <div className="error-message" style={{ marginTop: '12px' }}>
+                                    ❌ {deleteError}
+                                </div>
+                            )}
+                            
+                            <div className="form-group" style={{ marginTop: '16px' }}>
+                                <label style={{ fontWeight: '600' }}>Confirmation</label>
                                 <input
                                     type="text"
                                     className="form-input"
                                     placeholder="Tapez SUPPRIMER ici"
                                     value={deleteConfirmText}
-                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                    style={{ borderColor: '#dc3545', textAlign: 'center', fontSize: '16px', fontWeight: 'bold' }}
+                                    onChange={(e) => {
+                                        setDeleteConfirmText(e.target.value);
+                                        if (deleteError) setDeleteError('');
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleDeleteAccount();
+                                        }
+                                    }}
+                                    style={{ 
+                                        borderColor: deleteConfirmText === 'SUPPRIMER' ? '#10b981' : '#dc3545',
+                                        textAlign: 'center', 
+                                        fontSize: '18px', 
+                                        fontWeight: 'bold',
+                                        letterSpacing: '2px',
+                                        transition: 'border-color 0.3s'
+                                    }}
+                                    autoFocus
                                 />
+                                {deleteConfirmText && deleteConfirmText !== 'SUPPRIMER' && (
+                                    <small className="error-text" style={{ display: 'block', marginTop: '6px' }}>
+                                        ⚠️ Tapez exactement "SUPPRIMER" (en majuscules)
+                                    </small>
+                                )}
+                                {deleteConfirmText === 'SUPPRIMER' && (
+                                    <small className="success-text" style={{ display: 'block', marginTop: '6px', color: '#10b981', fontWeight: '600' }}>
+                                        ✅ Confirmation valide
+                                    </small>
+                                )}
                             </div>
                         </div>
-                        <div className="modal-footer">
-                            <button className="btn-danger" onClick={handleDeleteAccount} disabled={saving}>
-                                {saving ? 'Suppression...' : 'Confirmer la suppression'}
-                            </button>
-                            <button className="btn-secondary" onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}>
+                        <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+                            <button 
+                                className="btn-secondary" 
+                                onClick={() => { 
+                                    setShowDeleteModal(false);
+                                    setDeleteConfirmText('');
+                                    setDeleteError('');
+                                }}
+                            >
                                 Annuler
+                            </button>
+                            <button 
+                                className="btn-danger" 
+                                onClick={handleDeleteAccount} 
+                                disabled={saving || deleteConfirmText !== 'SUPPRIMER'}
+                                style={{ 
+                                    opacity: deleteConfirmText === 'SUPPRIMER' && !saving ? 1 : 0.5,
+                                    cursor: deleteConfirmText === 'SUPPRIMER' && !saving ? 'pointer' : 'not-allowed'
+                                }}
+                            >
+                                {saving ? 'Suppression...' : '🗑️ Confirmer la suppression'}
                             </button>
                         </div>
                     </div>

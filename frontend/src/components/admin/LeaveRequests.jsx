@@ -86,8 +86,9 @@ function LeaveRequests() {
 
         if (filterType !== 'all') {
             filtered = filtered.filter(req => {
-                if (filterType === 'cp') return req.type_name === 'Congés Payés';
-                if (filterType === 'sans_solde') return req.type_name === 'Congé sans solde';
+                if (filterType === 'cp') return req.type_conge_id === 1;
+                if (filterType === 'sans_solde') return req.type_conge_id === 2;
+                if (filterType === 'permission') return req.type_conge_id === 3;
                 return true;
             });
         }
@@ -133,6 +134,79 @@ function LeaveRequests() {
         setShowDetailModal(true);
     };
 
+    // Fonction pour déterminer si c'est une permission
+    const isPermission = (req) => {
+        return req.type_conge_id === 3 || req.type_name === 'Permission';
+    };
+
+    // Fonction pour afficher le type avec badge
+    const getTypeDisplay = (req) => {
+        if (isPermission(req)) {
+            return (
+                <span style={{ 
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: '#fef3c7', 
+                    color: '#92400e', 
+                    padding: '2px 10px', 
+                    borderRadius: '20px', 
+                    fontSize: '11px', 
+                    fontWeight: '600'
+                }}>
+                    ⏰ Permission
+                </span>
+            );
+        }
+        return req.type_name || 'Congé';
+    };
+
+    // Fonction pour afficher les dates
+    const getDatesDisplay = (req) => {
+        if (isPermission(req)) {
+            return (
+                <div className="period-cell">
+                    <span className="month" style={{ color: '#f59e0b' }}>📅 {formatDate(req.date_permission)}</span>
+                    {req.est_demi_journee && (
+                        <span className="year" style={{ color: '#f59e0b', fontSize: '11px' }}>
+                            Demi-journée
+                        </span>
+                    )}
+                </div>
+            );
+        }
+        return (
+            <div className="period-cell">
+                <span className="month">{formatDate(req.date_debut)} →</span>
+                <span className="year">{formatDate(req.date_fin)}</span>
+            </div>
+        );
+    };
+
+    // Fonction pour afficher la durée
+    const getDurationDisplay = (req) => {
+        if (isPermission(req)) {
+            return (
+                <span className="amount" style={{ color: '#f59e0b', fontWeight: '500' }}>
+                    {req.duree_heures || 0} h
+                </span>
+            );
+        }
+        return (
+            <span className="amount">
+                {req.nombre_jours || 0} j
+            </span>
+        );
+    };
+
+    // Fonction pour afficher le motif
+    const getMotifDisplay = (req) => {
+        if (isPermission(req) && req.motif) {
+            return req.motif;
+        }
+        return req.motif || '-';
+    };
+
     if (loading) {
         return (
             <div className="loading-container" style={{ minHeight: '400px' }}>
@@ -148,7 +222,7 @@ function LeaveRequests() {
 
             <div className="dashboard-header">
                 <div className="dashboard-header-content">
-                    <h1 className="dashboard-title">Gestion des demandes de congé</h1>
+                    <h1 className="dashboard-title">Gestion des demandes</h1>
                     <p className="dashboard-subtitle">Consultez et gérez toutes les demandes de l'entreprise</p>
                 </div>
                 <div className="dashboard-header-actions">
@@ -161,7 +235,7 @@ function LeaveRequests() {
                 </div>
             </div>
 
-            {/* Cartes stats compactes */}
+            {/* Cartes stats */}
             <div className="payroll-stats-grid" style={{ marginBottom: '24px' }}>
                 <div className="payroll-stat-card">
                     <div className="payroll-stat-icon blue">
@@ -252,6 +326,7 @@ function LeaveRequests() {
                             <option value="all">Tous</option>
                             <option value="cp">Congés Payés</option>
                             <option value="sans_solde">Congé sans solde</option>
+                            <option value="permission">⏰ Permission</option>
                         </select>
                     </div>
                     <div className="filter-group">
@@ -285,7 +360,7 @@ function LeaveRequests() {
                                 <th>Service</th>
                                 <th>Dates</th>
                                 <th>Type</th>
-                                <th>Jours</th>
+                                <th>Durée</th>
                                 <th>Statut</th>
                                 <th>Date demande</th>
                                 <th>Actions</th>
@@ -303,45 +378,46 @@ function LeaveRequests() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredRequests.map(req => (
-                                    <tr key={req.id}>
-                                        <td>
-                                            <div className="employee-cell">
-                                                <div className="employee-avatar" style={{ background: '#667eea' }}>
-                                                    {req.prenom?.charAt(0)}{req.nom?.charAt(0)}
+                                filteredRequests.map(req => {
+                                    const isPerm = isPermission(req);
+                                    
+                                    return (
+                                        <tr key={req.id}>
+                                            <td>
+                                                <div className="employee-cell">
+                                                    <div className="employee-avatar" style={{ 
+                                                        background: isPerm ? '#f59e0b' : '#667eea' 
+                                                    }}>
+                                                        {req.prenom?.charAt(0)}{req.nom?.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="employee-name">{req.prenom} {req.nom}</div>
+                                                        <div className="employee-email">{req.email || '-'}</div>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <div className="employee-name">{req.prenom} {req.nom}</div>
-                                                    <div className="employee-email">{req.email || '-'}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>{req.service || '-'}</td>
-                                        <td>
-                                            <div className="period-cell">
-                                                <span className="month">{formatDate(req.date_debut)} →</span>
-                                                <span className="year">{formatDate(req.date_fin)}</span>
-                                            </div>
-                                        </td>
-                                        <td>{req.type_name}</td>
-                                        <td className="amount">{req.nombre_jours}</td>
-                                        <td>{getStatusLabel(req.statut)}</td>
-                                        <td className="date-cell">{formatDate(req.cree_le)}</td>
-                                        <td>
-                                            <button
-                                                className="action-btn view"
-                                                onClick={() => openDetailModal(req)}
-                                                title="Voir détails"
-                                            >
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                                    <circle cx="12" cy="12" r="3"/>
-                                                </svg>
-                                                Détails
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
+                                            </td>
+                                            <td>{req.service || '-'}</td>
+                                            <td>{getDatesDisplay(req)}</td>
+                                            <td>{getTypeDisplay(req)}</td>
+                                            <td>{getDurationDisplay(req)}</td>
+                                            <td>{getStatusLabel(req.statut)}</td>
+                                            <td className="date-cell">{formatDate(req.cree_le)}</td>
+                                            <td>
+                                                <button
+                                                    className="action-btn view"
+                                                    onClick={() => openDetailModal(req)}
+                                                    title="Voir détails"
+                                                >
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                                        <circle cx="12" cy="12" r="3"/>
+                                                    </svg>
+                                                    Détails
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
@@ -350,75 +426,134 @@ function LeaveRequests() {
 
             {/* Modal Détails */}
             {showDetailModal && selectedRequest && (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowDetailModal(false); }}>
-        <div className="modal" style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-                <h3>Détail de la demande</h3>
-                <button className="modal-close" onClick={() => setShowDetailModal(false)}>✖</button>
-            </div>
-            <div className="modal-body">
-                <div className="detail-item" style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-tertiary, #f8fafc)', borderRadius: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                        <div className="employee-avatar" style={{ background: '#667eea', width: '48px', height: '48px', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', color: 'white' }}>
-                            {selectedRequest.prenom?.charAt(0)}{selectedRequest.nom?.charAt(0)}
+                <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowDetailModal(false); }}>
+                    <div className="modal" style={{ maxWidth: '550px' }}>
+                        <div className="modal-header">
+                            <h3>Détail de la demande</h3>
+                            <button className="modal-close" onClick={() => setShowDetailModal(false)}>✖</button>
                         </div>
-                        <div>
-                            <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text-primary, #1e293b)' }}>{selectedRequest.prenom} {selectedRequest.nom}</div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary, #64748b)' }}>{selectedRequest.email}</div>
-                            <div style={{ fontSize: '12px', color: 'var(--text-tertiary, #94a3b8)' }}>{selectedRequest.service || 'Service non spécifié'}</div>
+                        <div className="modal-body">
+                            <div className="detail-item" style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-tertiary, #f8fafc)', borderRadius: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                                    <div className="employee-avatar" style={{ 
+                                        background: isPermission(selectedRequest) ? '#f59e0b' : '#667eea', 
+                                        width: '48px', 
+                                        height: '48px', 
+                                        fontSize: '18px', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        borderRadius: '12px', 
+                                        color: 'white' 
+                                    }}>
+                                        {selectedRequest.prenom?.charAt(0)}{selectedRequest.nom?.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text-primary, #1e293b)' }}>
+                                            {selectedRequest.prenom} {selectedRequest.nom}
+                                        </div>
+                                        <div style={{ fontSize: '13px', color: 'var(--text-secondary, #64748b)' }}>
+                                            {selectedRequest.email}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary, #94a3b8)' }}>
+                                            {selectedRequest.service || 'Service non spécifié'}
+                                        </div>
+                                    </div>
+                                    {isPermission(selectedRequest) && (
+                                        <span style={{ 
+                                            marginLeft: 'auto',
+                                            background: '#fef3c7', 
+                                            color: '#92400e', 
+                                            padding: '4px 12px', 
+                                            borderRadius: '20px', 
+                                            fontSize: '12px', 
+                                            fontWeight: '600'
+                                        }}>
+                                            ⏰ Permission
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                {isPermission(selectedRequest) ? (
+                                    // Affichage pour une permission
+                                    <>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                            <span style={{ color: 'var(--text-secondary, #475569)' }}>📅 Date :</span>
+                                            <strong style={{ color: 'var(--text-primary, #1e293b)' }}>
+                                                {formatDate(selectedRequest.date_permission)}
+                                            </strong>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                            <span style={{ color: 'var(--text-secondary, #475569)' }}>⏰ Durée :</span>
+                                            <strong style={{ color: 'var(--text-primary, #1e293b)' }}>
+                                                {selectedRequest.duree_heures || 0} heure(s)
+                                            </strong>
+                                        </div>
+                                        
+                                        {selectedRequest.est_demi_journee && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                                <span style={{ color: 'var(--text-secondary, #475569)' }}>📋 Type :</span>
+                                                <strong style={{ color: '#f59e0b' }}>Demi-journée</strong>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    // Affichage pour un congé
+                                    <>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                            <span style={{ color: 'var(--text-secondary, #475569)' }}>📅 Période :</span>
+                                            <strong style={{ color: 'var(--text-primary, #1e293b)' }}>
+                                                {formatDate(selectedRequest.date_debut)} → {formatDate(selectedRequest.date_fin)}
+                                            </strong>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                            <span style={{ color: 'var(--text-secondary, #475569)' }}>📊 Durée :</span>
+                                            <strong style={{ color: 'var(--text-primary, #1e293b)' }}>
+                                                {selectedRequest.nombre_jours} jours
+                                            </strong>
+                                        </div>
+                                    </>
+                                )}
+                                
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                    <span style={{ color: 'var(--text-secondary, #475569)' }}>📌 Statut :</span>
+                                    <strong>{getStatusLabel(selectedRequest.statut)}</strong>
+                                </div>
+                                
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
+                                    <span style={{ color: 'var(--text-secondary, #475569)' }}>📅 Date demande :</span>
+                                    <strong style={{ color: 'var(--text-primary, #1e293b)' }}>
+                                        {formatDate(selectedRequest.cree_le)}
+                                    </strong>
+                                </div>
+                                
+                                {selectedRequest.motif && (
+                                    <div style={{ padding: '12px', marginTop: '12px', background: 'var(--info-bg, #eff6ff)', borderRadius: '10px' }}>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '6px', color: 'var(--info-text, #1e40af)' }}>📝 Motif :</div>
+                                        <div style={{ fontSize: '13px', color: 'var(--text-primary, #1e293b)' }}>{selectedRequest.motif}</div>
+                                    </div>
+                                )}
+                                
+                                {selectedRequest.motif_refus && (
+                                    <div style={{ padding: '12px', marginTop: '12px', background: 'var(--danger-bg, #fee2e2)', borderRadius: '10px' }}>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '6px', color: 'var(--danger-text, #dc2626)' }}>❌ Motif du refus :</div>
+                                        <div style={{ fontSize: '13px', color: 'var(--danger-text, #dc2626)' }}>{selectedRequest.motif_refus}</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn-secondary" onClick={() => setShowDetailModal(false)} style={{ 
+                                background: 'var(--bg-tertiary, #f1f5f9)', 
+                                border: '1px solid var(--border-light, #e2e8f0)', 
+                                color: 'var(--text-secondary, #475569)'
+                            }}>Fermer</button>
                         </div>
                     </div>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
-                        <span style={{ color: 'var(--text-secondary, #475569)' }}>📅 Période :</span>
-                        <strong style={{ color: 'var(--text-primary, #1e293b)' }}>{formatDate(selectedRequest.date_debut)} → {formatDate(selectedRequest.date_fin)}</strong>
-                    </div>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
-                        <span style={{ color: 'var(--text-secondary, #475569)' }}>📝 Type :</span>
-                        <strong style={{ color: 'var(--text-primary, #1e293b)' }}>{selectedRequest.type_name}</strong>
-                    </div>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
-                        <span style={{ color: 'var(--text-secondary, #475569)' }}>📊 Durée :</span>
-                        <strong style={{ color: 'var(--text-primary, #1e293b)' }}>{selectedRequest.nombre_jours} jours</strong>
-                    </div>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
-                        <span style={{ color: 'var(--text-secondary, #475569)' }}>📌 Statut :</span>
-                        <strong>{getStatusLabel(selectedRequest.statut)}</strong>
-                    </div>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)' }}>
-                        <span style={{ color: 'var(--text-secondary, #475569)' }}>📅 Date demande :</span>
-                        <strong style={{ color: 'var(--text-primary, #1e293b)' }}>{formatDate(selectedRequest.cree_le)}</strong>
-                    </div>
-                    
-                    {selectedRequest.motif && (
-                        <div style={{ padding: '12px', marginTop: '12px', background: 'var(--info-bg, #eff6ff)', borderRadius: '10px' }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '6px', color: 'var(--info-text, #1e40af)' }}>📝 Motif :</div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-primary, #1e293b)' }}>{selectedRequest.motif}</div>
-                        </div>
-                    )}
-                    
-                    {selectedRequest.motif_refus && (
-                        <div style={{ padding: '12px', marginTop: '12px', background: 'var(--danger-bg, #fee2e2)', borderRadius: '10px' }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '6px', color: 'var(--danger-text, #dc2626)' }}>❌ Motif du refus :</div>
-                            <div style={{ fontSize: '13px', color: 'var(--danger-text, #dc2626)' }}>{selectedRequest.motif_refus}</div>
-                        </div>
-                    )}
                 </div>
-            </div>
-            <div className="modal-footer">
-                <button className="btn-secondary" onClick={() => setShowDetailModal(false)} style={{ 
-                    background: 'var(--bg-tertiary, #f1f5f9)', 
-                    border: '1px solid var(--border-light, #e2e8f0)', 
-                    color: 'var(--text-secondary, #475569)'
-                }}>Fermer</button>
-            </div>
-        </div>
-    </div>
-)}
+            )}
         </div>
     );
 }

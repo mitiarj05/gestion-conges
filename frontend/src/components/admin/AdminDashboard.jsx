@@ -1,5 +1,5 @@
 // frontend/src/components/admin/AdminDashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL, getSocketUrl } from '../../config/api';
@@ -14,10 +14,22 @@ import PayrollDashboard from '../payroll/PayrollDashboard';
 import GlobalCalendar from './GlobalCalendar';
 import LeaveRequests from './LeaveRequests';
 import AdminStatistics from './AdminStatistics';
+import AdminValidations from './AdminValidations';
 import Profile from '../common/Profile';
 import ChatbotWidget from '../chatbot/ChatbotWidget';
 
 console.log('📁 [AdminDashboard] Chargement du module');
+
+// Fonction de formatage de date (déplacée en dehors du composant)
+const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+};
 
 function AdminDashboard({ onLogout }) {
     const [user, setUser] = useState({});
@@ -37,6 +49,7 @@ function AdminDashboard({ onLogout }) {
     const [showPromoteModal, setShowPromoteModal] = useState(false);
     const [showAssignManagerModal, setShowAssignManagerModal] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
+    const [promoteSearchTerm, setPromoteSearchTerm] = useState('');
     const [managers, setManagers] = useState([]);
     const [createForm, setCreateForm] = useState({
         nom: '', prenom: '', email: '', password: '', telephone: '', service: '', salaire_base: 500000
@@ -74,6 +87,110 @@ function AdminDashboard({ onLogout }) {
     const getAuthHeaders = () => ({
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     });
+
+    // Regrouper les fonctions de fetch dans useCallback
+    const fetchStats = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/stats`, getAuthHeaders());
+            setStats(response.data);
+        } catch (error) {
+            console.error('Erreur stats:', error);
+        }
+    }, []);
+
+    const fetchUsers = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/users`, getAuthHeaders());
+            setUsers(response.data);
+        } catch (error) {
+            console.error('Erreur users:', error);
+        }
+    }, []);
+
+    const fetchPendingApprovals = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/pending-approvals`, getAuthHeaders());
+            setPendingApprovals(response.data);
+        } catch (error) {
+            console.error('Erreur pending approvals:', error);
+        }
+    }, []);
+
+    const fetchLeaveRequests = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
+            setLeaveRequests(response.data);
+        } catch (error) {
+            console.error('Erreur leave requests:', error);
+        }
+    }, []);
+
+    const fetchManagers = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/managers-list`, getAuthHeaders());
+            setManagers(response.data);
+        } catch (error) {
+            console.error('Erreur managers:', error);
+        }
+    }, []);
+
+    const fetchEmployeesOnly = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/employees-only`, getAuthHeaders());
+            setEmployeesOnly(response.data);
+        } catch (error) {
+            console.error('Erreur employees only:', error);
+        }
+    }, []);
+
+    const fetchMonthlyStats = useCallback(async (year) => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/stats-by-month?year=${year}`, getAuthHeaders());
+            setMonthlyStats(response.data);
+        } catch (error) {
+            console.error('Erreur stats mensuelles:', error);
+        }
+    }, []);
+
+    const fetchTypeStats = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/stats-by-type`, getAuthHeaders());
+            setTypeStats(response.data);
+        } catch (error) {
+            console.error('Erreur stats par type:', error);
+        }
+    }, []);
+
+    const fetchAvailableYears = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/available-years`, getAuthHeaders());
+            setAvailableYears(response.data);
+        } catch (error) {
+            console.error('Erreur récupération années:', error);
+            setAvailableYears([2024, 2025, 2026]);
+        }
+    }, []);
+
+    const fetchFilteredLeaveRequests = useCallback(async (periode) => {
+        try {
+            const response = await axios.get(`${API_URL}/admin/leave-requests-filtered?periode=${periode}`, getAuthHeaders());
+            setFilteredLeaveRequests(response.data);
+        } catch (error) {
+            console.error('Erreur filtered requests:', error);
+        }
+    }, []);
+
+    const fetchAllData = useCallback(async () => {
+        await Promise.all([
+            fetchStats(),
+            fetchUsers(),
+            fetchPendingApprovals(),
+            fetchLeaveRequests(),
+            fetchManagers(),
+            fetchEmployeesOnly()
+        ]);
+        setLoading(false);
+    }, [fetchStats, fetchUsers, fetchPendingApprovals, fetchLeaveRequests, fetchManagers, fetchEmployeesOnly]);
 
     useEffect(() => {
         console.log('📦 [AdminDashboard] Montage');
@@ -115,7 +232,7 @@ function AdminDashboard({ onLogout }) {
                 }
             };
         }
-    }, []);
+    }, [success]);
 
     useEffect(() => {
         fetchAllData();
@@ -129,119 +246,16 @@ function AdminDashboard({ onLogout }) {
             fetchTypeStats();
         }, 60000);
         return () => clearInterval(interval);
-    }, [selectedYear]);
-
-    const fetchAllData = async () => {
-        await Promise.all([
-            fetchStats(),
-            fetchUsers(),
-            fetchPendingApprovals(),
-            fetchLeaveRequests(),
-            fetchManagers(),
-            fetchEmployeesOnly()
-        ]);
-        setLoading(false);
-    };
-
-    const fetchStats = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/stats`, getAuthHeaders());
-            setStats(response.data);
-        } catch (error) {
-            console.error('Erreur stats:', error);
-        }
-    };
-
-    const fetchUsers = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/users`, getAuthHeaders());
-            setUsers(response.data);
-        } catch (error) {
-            console.error('Erreur users:', error);
-        }
-    };
-
-    const fetchPendingApprovals = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/pending-approvals`, getAuthHeaders());
-            setPendingApprovals(response.data);
-        } catch (error) {
-            console.error('Erreur pending approvals:', error);
-        }
-    };
-
-    const fetchLeaveRequests = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
-            setLeaveRequests(response.data);
-        } catch (error) {
-            console.error('Erreur leave requests:', error);
-        }
-    };
-
-    const fetchMonthlyStats = async (year) => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/stats-by-month?year=${year}`, getAuthHeaders());
-            setMonthlyStats(response.data);
-        } catch (error) {
-            console.error('Erreur stats mensuelles:', error);
-        }
-    };
-
-    const fetchTypeStats = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/stats-by-type`, getAuthHeaders());
-            setTypeStats(response.data);
-        } catch (error) {
-            console.error('Erreur stats par type:', error);
-        }
-    };
-
-    const fetchAvailableYears = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/available-years`, getAuthHeaders());
-            setAvailableYears(response.data);
-        } catch (error) {
-            console.error('Erreur récupération années:', error);
-            setAvailableYears([2024, 2025, 2026]);
-        }
-    };
+    }, [selectedYear, fetchAllData, fetchMonthlyStats, fetchTypeStats, fetchFilteredLeaveRequests, fetchAvailableYears]);
 
     const handleYearChange = (year) => {
         setSelectedYear(year);
         fetchMonthlyStats(year);
     };
 
-    const fetchFilteredLeaveRequests = async (periode) => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/leave-requests-filtered?periode=${periode}`, getAuthHeaders());
-            setFilteredLeaveRequests(response.data);
-        } catch (error) {
-            console.error('Erreur filtered requests:', error);
-        }
-    };
-
     const handlePeriodeChange = (periode) => {
         setPeriodeFilter(periode);
         fetchFilteredLeaveRequests(periode);
-    };
-
-    const fetchManagers = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/managers-list`, getAuthHeaders());
-            setManagers(response.data);
-        } catch (error) {
-            console.error('Erreur managers:', error);
-        }
-    };
-
-    const fetchEmployeesOnly = async () => {
-        try {
-            const response = await axios.get(`${API_URL}/admin/employees-only`, getAuthHeaders());
-            setEmployeesOnly(response.data);
-        } catch (error) {
-            console.error('Erreur employees only:', error);
-        }
     };
 
     const refreshAll = () => {
@@ -398,7 +412,8 @@ function AdminDashboard({ onLogout }) {
     };
 
     const handleFinalApprove = async (id, request_type) => {
-        if (!window.confirm('Approuver définitivement cette demande ?')) return;
+        const typeLabel = request_type === 'permission' ? 'la permission' : 'le congé';
+        if (!window.confirm(`Approuver définitivement ${typeLabel} ?`)) return;
         setProcessingId(id);
         try {
             await axios.put(`${API_URL}/admin/final-approve/${id}`, 
@@ -413,7 +428,8 @@ function AdminDashboard({ onLogout }) {
     };
 
     const handleFinalReject = async (id, request_type) => {
-        const motif = prompt('Motif du refus :');
+        const typeLabel = request_type === 'permission' ? 'la permission' : 'le congé';
+        const motif = prompt(`Motif du refus de ${typeLabel} :`);
         if (!motif) return;
         setProcessingId(id);
         try {
@@ -490,6 +506,11 @@ function AdminDashboard({ onLogout }) {
                     localStorage.setItem('user', JSON.stringify({ ...storedUser, ...updatedUser }));
                 }} />
             );
+        }
+
+        // Page Validations (NOUVEAU)
+        if (currentPath.includes('/validations')) {
+            return <AdminValidations />;
         }
 
         // Page Paiement
@@ -657,7 +678,7 @@ function AdminDashboard({ onLogout }) {
                         </table>
                     </div>
 
-                    {/* Modals */}
+                    {/* Modals - gardés identiques */}
                     {showCreateModal && (<div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowCreateModal(false); }}>
                         <div className="modal"><div className="modal-header"><h3>Ajouter un employé</h3><button className="modal-close" onClick={() => setShowCreateModal(false)}>✖</button></div>
                         <form onSubmit={handleCreateEmployee}>
@@ -696,16 +717,298 @@ function AdminDashboard({ onLogout }) {
                         </form></div>
                     </div>)}
 
-                    {showPromoteModal && (<div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowPromoteModal(false); }}>
-                        <div className="modal"><div className="modal-header"><h3>Promouvoir en manager</h3><button className="modal-close" onClick={() => setShowPromoteModal(false)}>✖</button></div>
-                        <form onSubmit={handlePromoteToManager}>
-                            <div className="form-group"><label>Sélectionner un employé</label><select className="form-input" value={promoteUserId} onChange={(e) => setPromoteUserId(e.target.value)} required>
-                                <option value="">-- Choisir --</option>{employeesOnly.map(emp => (<option key={emp.id} value={emp.id}>{emp.prenom} {emp.nom} (Salaire: {formatNumber(emp.salaire_base)} Ar)</option>))}
-                            </select></div>
-                            <div className="info-box" style={{ background: '#fef3c7', marginBottom: '15px' }}>La promotion augmentera le salaire à 1 000 000 Ar.</div>
-                            <div className="modal-footer"><button type="submit" className="btn-primary">Promouvoir</button><button type="button" className="btn-secondary" onClick={() => setShowPromoteModal(false)}>Annuler</button></div>
-                        </form></div>
-                    </div>)}
+{/* Modal Promouvoir en manager */}
+{showPromoteModal && (
+    <div className="modal-overlay" onClick={(e) => { 
+        if (e.target === e.currentTarget) {
+            setShowPromoteModal(false);
+            setPromoteSearchTerm('');
+            setPromoteUserId('');
+        }
+    }}>
+        <div className="modal" style={{ 
+            maxWidth: '650px', 
+            maxHeight: '90vh', 
+            display: 'flex',
+            flexDirection: 'column'
+        }}>
+            <div className="modal-header" style={{ flexShrink: 0 }}>
+                <h3> Promouvoir en manager</h3>
+                <button className="modal-close" onClick={() => {
+                    setShowPromoteModal(false);
+                    setPromoteSearchTerm('');
+                    setPromoteUserId('');
+                }}>✖</button>
+            </div>
+            
+            <form onSubmit={handlePromoteToManager} style={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                flex: 1,
+                overflow: 'hidden'
+            }}>
+                <div className="modal-body" style={{ 
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '20px',
+                    maxHeight: 'calc(90vh - 160px)'
+                }}>
+                    
+                    {/* Barre de recherche */}
+                    <div className="form-group">
+                        <label>🔍 Rechercher un employé</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Nom, prénom, email, service ou téléphone..."
+                            value={promoteSearchTerm}
+                            onChange={(e) => setPromoteSearchTerm(e.target.value)}
+                            style={{ marginBottom: '12px' }}
+                            autoFocus
+                        />
+                        {promoteSearchTerm && employeesOnly.filter(emp => {
+                            const search = promoteSearchTerm.toLowerCase().trim();
+                            return (emp.nom || '').toLowerCase().includes(search) ||
+                                   (emp.prenom || '').toLowerCase().includes(search) ||
+                                   (emp.email || '').toLowerCase().includes(search) ||
+                                   (emp.service || '').toLowerCase().includes(search) ||
+                                   (emp.telephone || '').toLowerCase().includes(search);
+                        }).length === 0 && (
+                            <small className="info-text" style={{ color: '#ef4444', display: 'block', marginBottom: '12px' }}>
+                                 Aucun employé trouvé pour "{promoteSearchTerm}"
+                            </small>
+                        )}
+                    </div>
+
+                    {/* Liste des employés filtrés */}
+                    {employeesOnly.filter(emp => {
+                        const search = promoteSearchTerm.toLowerCase().trim();
+                        if (!search) return true;
+                        return (emp.nom || '').toLowerCase().includes(search) ||
+                               (emp.prenom || '').toLowerCase().includes(search) ||
+                               (emp.email || '').toLowerCase().includes(search) ||
+                               (emp.service || '').toLowerCase().includes(search) ||
+                               (emp.telephone || '').toLowerCase().includes(search);
+                    }).length > 0 && (
+                        <>
+                            <div className="search-results-list" style={{ 
+                                marginBottom: '12px',
+                                maxHeight: '200px',
+                                overflowY: 'auto',
+                                border: '1px solid var(--border-light, #e2e8f0)',
+                                borderRadius: '12px',
+                                background: 'var(--bg-card, #ffffff)'
+                            }}>
+                                {employeesOnly
+                                    .filter(emp => {
+                                        const search = promoteSearchTerm.toLowerCase().trim();
+                                        if (!search) return true;
+                                        return (emp.nom || '').toLowerCase().includes(search) ||
+                                               (emp.prenom || '').toLowerCase().includes(search) ||
+                                               (emp.email || '').toLowerCase().includes(search) ||
+                                               (emp.service || '').toLowerCase().includes(search) ||
+                                               (emp.telephone || '').toLowerCase().includes(search);
+                                    })
+                                    .map(emp => (
+                                        <div
+                                            key={emp.id}
+                                            className={`search-result-item ${promoteUserId === String(emp.id) ? 'selected' : ''}`}
+                                            onClick={() => setPromoteUserId(String(emp.id))}
+                                            style={{
+                                                padding: '10px 14px',
+                                                cursor: 'pointer',
+                                                borderBottom: '1px solid var(--border-light, #f1f5f9)',
+                                                transition: 'all 0.2s',
+                                                background: promoteUserId === String(emp.id) ? 'var(--primary-50, #eff6ff)' : 'transparent',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                if (promoteUserId !== String(emp.id)) {
+                                                    e.currentTarget.style.background = 'var(--bg-tertiary, #f8fafc)';
+                                                }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                if (promoteUserId !== String(emp.id)) {
+                                                    e.currentTarget.style.background = 'transparent';
+                                                }
+                                            }}
+                                        >
+                                            <div>
+                                                <div style={{ fontWeight: '600', color: 'var(--text-primary, #1e293b)' }}>
+                                                    {emp.prenom} {emp.nom}
+                                                </div>
+                                                <div style={{ fontSize: '12px', color: 'var(--text-secondary, #64748b)' }}>
+                                                    {emp.email && <span>📧 {emp.email}</span>}
+                                                    {emp.service && <span style={{ marginLeft: '8px' }}>🏢 {emp.service}</span>}
+                                                    {emp.telephone && <span style={{ marginLeft: '8px' }}>📞 {emp.telephone}</span>}
+                                                </div>
+                                            </div>
+                                            <div style={{ fontSize: '12px', textAlign: 'right' }}>
+                                                <div style={{ color: 'var(--text-secondary, #64748b)' }}>
+                                                    {formatNumber(emp.salaire_base || 500000)} Ar
+                                                </div>
+                                                <div style={{ fontSize: '10px', color: '#f59e0b' }}>→ 1 000 000 Ar</div>
+                                            </div>
+                                        </div>
+                                    ))
+                                }
+                            </div>
+
+                            {/* OU Sélection par dropdown */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <label style={{ fontSize: '13px', color: 'var(--text-secondary, #64748b)', display: 'block', marginBottom: '6px' }}>
+                                    Ou sélectionner via la liste déroulante :
+                                </label>
+                                <select 
+                                    className="form-input" 
+                                    value={promoteUserId} 
+                                    onChange={(e) => setPromoteUserId(e.target.value)}
+                                    style={{ minHeight: '40px' }}
+                                >
+                                    <option value="">-- Choisir un employé --</option>
+                                    {employeesOnly
+                                        .filter(emp => {
+                                            const search = promoteSearchTerm.toLowerCase().trim();
+                                            if (!search) return true;
+                                            return (emp.nom || '').toLowerCase().includes(search) ||
+                                                   (emp.prenom || '').toLowerCase().includes(search) ||
+                                                   (emp.email || '').toLowerCase().includes(search) ||
+                                                   (emp.service || '').toLowerCase().includes(search) ||
+                                                   (emp.telephone || '').toLowerCase().includes(search);
+                                        })
+                                        .map(emp => (
+                                            <option key={emp.id} value={emp.id}>
+                                                {emp.prenom} {emp.nom} 
+                                                {emp.service ? ` (${emp.service})` : ''}
+                                                {emp.email ? ` - 📧 ${emp.email}` : ''}
+                                                {' - Salaire: '}{formatNumber(emp.salaire_base || 500000)} Ar
+                                            </option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
+                        </>
+                    )}
+
+                    {employeesOnly.length === 0 && (
+                        <div className="info-box" style={{ 
+                            background: '#fef3c7',
+                            padding: '12px 16px',
+                            borderRadius: '8px',
+                            marginBottom: '16px'
+                        }}>
+                            ⚠️ Aucun employé disponible pour promotion
+                        </div>
+                    )}
+
+                    {employeesOnly.filter(emp => {
+                        const search = promoteSearchTerm.toLowerCase().trim();
+                        if (!search) return true;
+                        return (emp.nom || '').toLowerCase().includes(search) ||
+                               (emp.prenom || '').toLowerCase().includes(search) ||
+                               (emp.email || '').toLowerCase().includes(search) ||
+                               (emp.service || '').toLowerCase().includes(search) ||
+                               (emp.telephone || '').toLowerCase().includes(search);
+                    }).length === 0 && promoteSearchTerm && employeesOnly.length > 0 && (
+                        <div className="info-box" style={{ 
+                            background: '#fef3c7',
+                            padding: '12px 16px',
+                            borderRadius: '8px',
+                            marginBottom: '16px'
+                        }}>
+                             Aucun employé trouvé pour "{promoteSearchTerm}"
+                        </div>
+                    )}
+
+                    {/* Informations de l'employé sélectionné */}
+                    {promoteUserId && employeesOnly.find(emp => emp.id === parseInt(promoteUserId)) && (
+                        <div className="info-box" style={{ 
+                            background: '#ecfdf5', 
+                            borderLeft: '4px solid #10b981',
+                            marginTop: '12px',
+                            padding: '12px 16px',
+                            borderRadius: '8px'
+                        }}>
+                            <strong> Employé sélectionné :</strong><br/>
+                            {(() => {
+                                const emp = employeesOnly.find(e => e.id === parseInt(promoteUserId));
+                                return (
+                                    <>
+                                        <strong style={{ fontSize: '16px' }}>{emp.prenom} {emp.nom}</strong>
+                                        {emp.email && <span style={{ display: 'block', fontSize: '13px', color: '#475569' }}>📧 {emp.email}</span>}
+                                        {emp.service && <span style={{ display: 'block', fontSize: '13px', color: '#475569' }}>🏢 {emp.service}</span>}
+                                        {emp.telephone && <span style={{ display: 'block', fontSize: '13px', color: '#475569' }}>📞 {emp.telephone}</span>}
+                                        <span style={{ display: 'block', fontSize: '13px', color: '#475569' }}>
+                                             Salaire: {formatNumber(emp.salaire_base || 500000)} Ar → <strong style={{ color: '#10b981' }}>1 000 000 Ar</strong>
+                                        </span>
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    )}
+
+                    <div className="info-box" style={{ 
+                        background: '#fef3c7', 
+                        marginTop: '12px',
+                        borderLeft: '4px solid #f59e0b',
+                        borderRadius: '8px',
+                        padding: '12px 16px'
+                    }}>
+                        <strong>⚠️ Information importante :</strong><br/>
+                        • Seuls les employés (rôle "employee") peuvent être promus manager<br/>
+                        • La promotion augmentera le salaire à <strong>1 000 000 Ar</strong><br/>
+                        • L'employé pourra gérer une équipe<br/>
+                        • L'employé aura accès aux fonctionnalités manager
+                    </div>
+                </div>
+                
+                {/* ============ FOOTER AVEC BOUTON VISIBLE ============ */}
+                <div className="modal-footer" style={{ 
+                    padding: '16px 20px',
+                    borderTop: '1px solid var(--border-light, #e2e8f0)',
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '12px',
+                    flexShrink: 0,
+                    background: 'var(--bg-card, #ffffff)',
+                    borderBottomLeftRadius: '16px',
+                    borderBottomRightRadius: '16px'
+                }}>
+                    <button 
+                        type="submit" 
+                        className="btn-primary" 
+                        disabled={!promoteUserId || loading}
+                        style={{
+                            padding: '10px 24px',
+                            fontSize: '15px',
+                            fontWeight: '600',
+                            minWidth: '140px'
+                        }}
+                    >
+                        {loading ? 'Promotion en cours...' : ' Promouvoir'}
+                    </button>
+                    <button 
+                        type="button" 
+                        className="btn-secondary" 
+                        onClick={() => {
+                            setShowPromoteModal(false);
+                            setPromoteSearchTerm('');
+                            setPromoteUserId('');
+                        }}
+                        style={{
+                            padding: '10px 24px',
+                            fontSize: '15px'
+                        }}
+                    >
+                        Annuler
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+)}
 
                     {showAssignManagerModal && (<div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowAssignManagerModal(false); }}>
                         <div className="modal"><div className="modal-header"><h3>Assigner un manager</h3><button className="modal-close" onClick={() => setShowAssignManagerModal(false)}>✖</button></div>
@@ -857,40 +1160,86 @@ function AdminDashboard({ onLogout }) {
                             <span className="pending-count">{pendingApprovals.length}</span>
                         </div>
                         <div className="requests-list-modern">
-                            {pendingApprovals.map(req => (
-                                <div key={`${req.request_type}-${req.id}`} className="request-card">
-                                    <div className="request-card-info">
-                                        <div className="request-employee">
-                                            <div className="employee-avatar">
-                                                {req.prenom?.charAt(0)}{req.nom?.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <div className="employee-name">{req.prenom} {req.nom}</div>
-                                                <div className="request-details">
-                                                    {req.date_debut} → {req.date_fin} • {req.type_name} • {req.nombre_jours} jours
+                            {pendingApprovals.map(req => {
+                                const isPerm = req.type_conge_id === 3 || req.request_type === 'permission';
+                                
+                                return (
+                                    <div key={`${req.request_type}-${req.id}`} className="request-card">
+                                        <div className="request-card-info">
+                                            <div className="request-employee">
+                                                <div className="employee-avatar" style={{ background: isPerm ? '#f59e0b' : '#667eea' }}>
+                                                    {req.prenom?.charAt(0)}{req.nom?.charAt(0)}
                                                 </div>
-                                                {req.manager_nom && (
-                                                    <div className="request-manager">Pré-validé par : {req.manager_prenom} {req.manager_nom}</div>
-                                                )}
+                                                <div>
+                                                    <div className="employee-name">{req.prenom} {req.nom}</div>
+                                                    <div className="request-details">
+                                                        {isPerm ? (
+                                                            <>
+                                                                📅 {req.date_permission} • ⏰ {req.duree_heures}h
+                                                                {req.est_demi_journee ? ' (Demi-journée)' : ''}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                {req.date_debut} → {req.date_fin} • {req.type_name} • {req.nombre_jours} jours
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    {isPerm && (
+                                                        <div className="request-type-badge" style={{
+                                                            display: 'inline-block',
+                                                            background: '#fef3c7',
+                                                            color: '#92400e',
+                                                            padding: '2px 10px',
+                                                            borderRadius: '20px',
+                                                            fontSize: '11px',
+                                                            fontWeight: '600',
+                                                            marginTop: '6px'
+                                                        }}>
+                                                            ⏰ Permission
+                                                        </div>
+                                                    )}
+                                                    {!isPerm && (
+                                                        <div className="request-type-badge" style={{
+                                                            display: 'inline-block',
+                                                            background: '#dbeafe',
+                                                            color: '#1e40af',
+                                                            padding: '2px 10px',
+                                                            borderRadius: '20px',
+                                                            fontSize: '11px',
+                                                            fontWeight: '600',
+                                                            marginTop: '6px'
+                                                        }}>
+                                                            {req.type_name}
+                                                        </div>
+                                                    )}
+                                                    {req.manager_nom && (
+                                                        <div className="request-manager">Pré-validé par : {req.manager_prenom} {req.manager_nom}</div>
+                                                    )}
+                                                    {req.motif && (
+                                                        <div className="request-motive" style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                                                            📝 Motif : {req.motif}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
+                                        <div className="request-card-actions">
+                                            <button className="btn-approve" onClick={() => handleFinalApprove(req.id, req.request_type)} disabled={processingId === req.id}>
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M20 6L9 17l-5-5"/>
+                                                </svg>
+                                                Approuver
+                                            </button>
+                                            <button className="btn-reject" onClick={() => handleFinalReject(req.id, req.request_type)} disabled={processingId === req.id}>
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M18 6L6 18M6 6l12 12"/>
+                                                </svg>
+                                                Refuser
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="request-card-actions">
-                                        <button className="btn-approve" onClick={() => handleFinalApprove(req.id, req.request_type)} disabled={processingId === req.id}>
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <path d="M20 6L9 17l-5-5"/>
-                                            </svg>
-                                            Approuver
-                                        </button>
-                                        <button className="btn-reject" onClick={() => handleFinalReject(req.id, req.request_type)} disabled={processingId === req.id}>
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <path d="M18 6L6 18M6 6l12 12"/>
-                                            </svg>
-                                            Refuser
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -911,15 +1260,45 @@ function AdminDashboard({ onLogout }) {
                                 <tr><th>Employé</th><th>Dates</th><th>Type</th><th>Jours</th><th>Statut</th></tr>
                             </thead>
                             <tbody>
-                                {filteredLeaveRequests.filter(req => req.statut !== 'pending_manager').slice(0, 5).map(req => (
-                                    <tr key={req.id}>
-                                        <td><span className="employee-name-cell">{req.prenom} {req.nom}</span></td>
-                                        <td>{req.date_debut} → {req.date_fin}</td>
-                                        <td>{req.type_name}</td>
-                                        <td>{req.nombre_jours}</td>
-                                        <td>{getStatusLabel(req.statut)}</td>
-                                    </tr>
-                                ))}
+                                {filteredLeaveRequests.filter(req => req.statut !== 'pending_manager').slice(0, 5).map(req => {
+                                    const isPerm = req.type_conge_id === 3;
+                                    return (
+                                        <tr key={req.id}>
+                                            <td><span className="employee-name-cell">{req.prenom} {req.nom}</span></td>
+                                            <td>
+                                                {isPerm ? (
+                                                    <span style={{ color: '#f59e0b' }}>📅 {formatDate(req.date_permission)}</span>
+                                                ) : (
+                                                    `${formatDate(req.date_debut)} → ${formatDate(req.date_fin)}`
+                                                )}
+                                            </td>
+                                            <td>
+                                                {isPerm ? (
+                                                    <span style={{ 
+                                                        background: '#fef3c7', 
+                                                        color: '#92400e', 
+                                                        padding: '2px 10px', 
+                                                        borderRadius: '20px', 
+                                                        fontSize: '11px', 
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        ⏰ Permission
+                                                    </span>
+                                                ) : (
+                                                    req.type_name
+                                                )}
+                                            </td>
+                                            <td>
+                                                {isPerm ? (
+                                                    <span style={{ color: '#f59e0b' }}>{req.duree_heures || 0} h</span>
+                                                ) : (
+                                                    req.nombre_jours
+                                                )}
+                                            </td>
+                                            <td>{getStatusLabel(req.statut)}</td>
+                                        </tr>
+                                    );
+                                })}
                                 {filteredLeaveRequests.filter(req => req.statut !== 'pending_manager').length === 0 && (
                                     <tr><td colSpan="5" className="empty-state">Aucune demande traitée</td></tr>
                                 )}
@@ -939,6 +1318,10 @@ function AdminDashboard({ onLogout }) {
                         <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/profile')}>
                             <span className="quick-action-icon">👤</span>
                             <span>Mon profil</span>
+                        </button>
+                        <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/validations')}>
+                            <span className="quick-action-icon">✅</span>
+                            <span>Validations</span>
                         </button>
                         <button className="quick-action-btn" onClick={() => navigate('/dashboard/admin/users')}>
                             <span className="quick-action-icon">👥</span>
@@ -966,7 +1349,6 @@ function AdminDashboard({ onLogout }) {
         );
     };
 
-    // Layout commun avec un seul return
     return (
         <>
             <Navbar user={user} role="admin" onLogout={onLogout} />
@@ -978,7 +1360,7 @@ function AdminDashboard({ onLogout }) {
                 </main>
             </div>
             <ToastNotification toasts={toasts} removeToast={removeToast} />
-                    <ChatbotWidget user={user} role="admin" />
+            <ChatbotWidget user={user} role="admin" />
         </>
     );
 }

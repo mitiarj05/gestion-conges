@@ -10,19 +10,20 @@ function AdminStatistics() {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [availableYears, setAvailableYears] = useState([]);
     
-    // Statistiques globales
     const [globalStats, setGlobalStats] = useState({
         totalEmployees: 0,
         totalManagers: 0,
         totalRequests: 0,
+        totalConges: 0,
+        totalPermissions: 0,
         approvedRequests: 0,
         pendingRequests: 0,
         rejectedRequests: 0,
         totalDaysTaken: 0,
+        totalPermissionHours: 0,
         avgRequestsPerEmployee: 0
     });
     
-    // Données graphiques
     const [monthlyStats, setMonthlyStats] = useState([]);
     const [typeStats, setTypeStats] = useState([]);
     const [employeeStats, setEmployeeStats] = useState([]);
@@ -62,19 +63,25 @@ function AdminStatistics() {
             const leaveStatsRes = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
             const leaves = leaveStatsRes.data;
             
+            const conges = leaves.filter(l => l.type_conge_id === 1 || l.type_conge_id === 2);
+            const permissions = leaves.filter(l => l.type_conge_id === 3);
             const approved = leaves.filter(l => l.statut === 'approved').length;
             const pending = leaves.filter(l => l.statut === 'pending_manager' || l.statut === 'pending_admin').length;
             const rejected = leaves.filter(l => l.statut === 'rejected').length;
-            const totalDays = leaves.filter(l => l.statut === 'approved').reduce((sum, l) => sum + (l.nombre_jours || 0), 0);
+            const totalDays = conges.filter(l => l.statut === 'approved').reduce((sum, l) => sum + (l.nombre_jours || 0), 0);
+            const totalHours = permissions.filter(l => l.statut === 'approved').reduce((sum, l) => sum + (l.duree_heures || 0), 0);
             
             setGlobalStats({
                 totalEmployees: statsRes.data.employees || 0,
                 totalManagers: statsRes.data.managers || 0,
                 totalRequests: leaves.length,
+                totalConges: conges.length,
+                totalPermissions: permissions.length,
                 approvedRequests: approved,
                 pendingRequests: pending,
                 rejectedRequests: rejected,
                 totalDaysTaken: totalDays,
+                totalPermissionHours: totalHours,
                 avgRequestsPerEmployee: statsRes.data.employees > 0 ? (leaves.length / statsRes.data.employees).toFixed(1) : 0
             });
         } catch (error) {
@@ -98,10 +105,23 @@ function AdminStatistics() {
 
     const fetchTypeStats = async () => {
         try {
-            const response = await axios.get(`${API_URL}/admin/stats-by-type`, getAuthHeaders());
-            setTypeStats(response.data);
+            const allRequests = await axios.get(`${API_URL}/admin/leave-requests`, getAuthHeaders());
+            const cp = allRequests.data.filter(r => r.type_conge_id === 1).length;
+            const sansSolde = allRequests.data.filter(r => r.type_conge_id === 2).length;
+            const permissions = allRequests.data.filter(r => r.type_conge_id === 3).length;
+            
+            setTypeStats([
+                { type: 'Congés Payés', total: cp, color: '#667eea' },
+                { type: 'Congé sans solde', total: sansSolde, color: '#10b981' },
+                { type: '⏰ Permission', total: permissions, color: '#f59e0b' }
+            ]);
         } catch (error) {
             console.error('Erreur type stats:', error);
+            setTypeStats([
+                { type: 'Congés Payés', total: 0, color: '#667eea' },
+                { type: 'Congé sans solde', total: 0, color: '#10b981' },
+                { type: '⏰ Permission', total: 0, color: '#f59e0b' }
+            ]);
         }
     };
 
@@ -115,6 +135,9 @@ function AdminStatistics() {
             usersRes.data.forEach(user => {
                 if (user.roles && (user.roles.includes('employe') || user.roles.includes('manager'))) {
                     const userLeaves = leaves.filter(l => l.utilisateur_id === user.id);
+                    const permissions = userLeaves.filter(l => l.type_conge_id === 3);
+                    const conges = userLeaves.filter(l => l.type_conge_id !== 3);
+                    
                     employeeStatsMap[user.id] = {
                         id: user.id,
                         nom: user.nom,
@@ -122,10 +145,13 @@ function AdminStatistics() {
                         service: user.service || '-',
                         role: user.roles.includes('manager') ? 'Manager' : 'Employé',
                         totalRequests: userLeaves.length,
+                        totalConges: conges.length,
+                        totalPermissions: permissions.length,
                         approved: userLeaves.filter(l => l.statut === 'approved').length,
                         pending: userLeaves.filter(l => l.statut === 'pending_manager' || l.statut === 'pending_admin').length,
                         rejected: userLeaves.filter(l => l.statut === 'rejected').length,
-                        totalDays: userLeaves.filter(l => l.statut === 'approved').reduce((sum, l) => sum + (l.nombre_jours || 0), 0)
+                        totalDays: conges.filter(l => l.statut === 'approved').reduce((sum, l) => sum + (l.nombre_jours || 0), 0),
+                        totalHours: permissions.filter(l => l.statut === 'approved').reduce((sum, l) => sum + (l.duree_heures || 0), 0)
                     };
                 }
             });
@@ -147,17 +173,21 @@ function AdminStatistics() {
             usersRes.data.forEach(user => {
                 const service = user.service || 'Sans service';
                 if (!serviceStatsMap[service]) {
-                    serviceStatsMap[service] = { totalRequests: 0, totalEmployees: 0 };
+                    serviceStatsMap[service] = { totalRequests: 0, totalConges: 0, totalPermissions: 0, totalEmployees: 0 };
                 }
                 serviceStatsMap[service].totalEmployees++;
                 const userLeaves = leaves.filter(l => l.utilisateur_id === user.id);
                 serviceStatsMap[service].totalRequests += userLeaves.length;
+                serviceStatsMap[service].totalConges += userLeaves.filter(l => l.type_conge_id !== 3).length;
+                serviceStatsMap[service].totalPermissions += userLeaves.filter(l => l.type_conge_id === 3).length;
             });
             
             const sortedStats = Object.entries(serviceStatsMap)
                 .map(([service, data]) => ({
                     service,
                     totalRequests: data.totalRequests,
+                    totalConges: data.totalConges,
+                    totalPermissions: data.totalPermissions,
                     totalEmployees: data.totalEmployees,
                     avgRequestsPerEmployee: (data.totalRequests / data.totalEmployees).toFixed(1)
                 }))
@@ -209,7 +239,7 @@ function AdminStatistics() {
             <div className="dashboard-header">
                 <div className="dashboard-header-content">
                     <h1 className="dashboard-title">📊 Statistiques globales</h1>
-                    <p className="dashboard-subtitle">Analyse complète des congés de l'entreprise</p>
+                    <p className="dashboard-subtitle">Analyse complète des congés et permissions de l'entreprise</p>
                 </div>
             </div>
 
@@ -274,21 +304,21 @@ function AdminStatistics() {
 
                 <div className="stat-card-progress">
                     <div className="stat-card-progress-header">
-                        <span className="stat-card-progress-title">Jours pris</span>
-                        <span className="stat-card-progress-value">{globalStats.totalDaysTaken}</span>
+                        <span className="stat-card-progress-title">⏰ Permissions</span>
+                        <span className="stat-card-progress-value">{globalStats.totalPermissions}</span>
                     </div>
                     <div className="progress-circle-container">
                         <svg viewBox="0 0 120 120" className="progress-circle" width="100" height="100">
                             <circle cx="60" cy="60" r="54" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
                             <circle cx="60" cy="60" r="54" fill="none" stroke="#f59e0b" strokeWidth="8" 
                                 strokeDasharray={`${2 * Math.PI * 54}`} 
-                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - globalStats.totalDaysTaken / Math.max(globalStats.totalDaysTaken, 500))}`}
+                                strokeDashoffset={`${2 * Math.PI * 54 * (1 - globalStats.totalPermissions / Math.max(globalStats.totalPermissions, 100))}`}
                                 transform="rotate(-90 60 60)" strokeLinecap="round"
                             />
-                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#f59e0b">{globalStats.totalDaysTaken}</text>
+                            <text x="60" y="65" textAnchor="middle" fontSize="20" fontWeight="bold" fill="#f59e0b">{globalStats.totalPermissions}</text>
                         </svg>
                     </div>
-                    <div className="stat-card-progress-footer">jours de congés pris</div>
+                    <div className="stat-card-progress-footer">{globalStats.totalPermissionHours}h totales</div>
                 </div>
             </div>
 
@@ -443,12 +473,15 @@ function AdminStatistics() {
                         </div>
 
                         <div className="chart-card">
-                            <h3>Répartition par type de congé</h3>
-                            {typeStats.length > 0 ? (
+                            <h3>Répartition par type de demande</h3>
+                            {typeStats.length > 0 && typeStats.some(s => s.total > 0) ? (
                                 <ResponsiveContainer width="100%" height={300}>
                                     <PieChart>
                                         <Pie data={typeStats} cx="50%" cy="50%" labelLine={true} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={100} dataKey="total" nameKey="type">
-                                            {typeStats.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
+                                            {typeStats.map((entry, index) => {
+                                                const color = entry.type === '⏰ Permission' ? '#f59e0b' : entry.color || COLORS[index % COLORS.length];
+                                                return <Cell key={`cell-${index}`} fill={color} />;
+                                            })}
                                         </Pie>
                                         <Tooltip formatter={(value) => [`${value} demande(s)`, 'Nombre']} />
                                         <Legend />
@@ -494,10 +527,13 @@ function AdminStatistics() {
                                     <th>Service</th>
                                     <th>Rôle</th>
                                     <th>Total demandes</th>
+                                    <th>🏖️ Congés</th>
+                                    <th>⏰ Permissions</th>
                                     <th>Approuvées</th>
                                     <th>Refusées</th>
                                     <th>En attente</th>
                                     <th>Jours pris</th>
+                                    <th>Heures perm.</th>
                                     <th>Taux succès</th>
                                 </tr>
                             </thead>
@@ -510,10 +546,13 @@ function AdminStatistics() {
                                             <td>{emp.service}</td>
                                             <td><span className={`role-badge-${emp.role === 'Manager' ? 'manager' : 'employee'}`}>{emp.role}</span></td>
                                             <td>{emp.totalRequests}</td>
+                                            <td style={{ color: '#667eea' }}>{emp.totalConges}</td>
+                                            <td style={{ color: '#f59e0b' }}>{emp.totalPermissions}</td>
                                             <td><span className="status-badge approved">{emp.approved}</span></td>
                                             <td><span className="status-badge rejected">{emp.rejected}</span></td>
                                             <td><span className="status-badge pending">{emp.pending}</span></td>
                                             <td>{emp.totalDays} jours</td>
+                                            <td>{emp.totalHours}h</td>
                                             <td>
                                                 <div className="mini-progress">
                                                     <div className="mini-progress-bar" style={{ width: `${taux}%`, background: taux >= 70 ? '#10b981' : taux >= 40 ? '#f59e0b' : '#ef4444' }}></div>
@@ -524,7 +563,7 @@ function AdminStatistics() {
                                     );
                                 })}
                                 {employeeStats.length === 0 && (
-                                    <tr><td colSpan="9" className="text-center" style={{ padding: '40px' }}>Aucune donnée disponible</td></tr>
+                                    <tr><td colSpan="12" className="text-center" style={{ padding: '40px' }}>Aucune donnée disponible</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -542,6 +581,8 @@ function AdminStatistics() {
                                     <th>Service</th>
                                     <th>Employés</th>
                                     <th>Total demandes</th>
+                                    <th>🏖️ Congés</th>
+                                    <th>⏰ Permissions</th>
                                     <th>Moyenne/employé</th>
                                     <th>Proportion</th>
                                 </tr>
@@ -555,6 +596,8 @@ function AdminStatistics() {
                                             <td><strong>{service.service}</strong></td>
                                             <td>{service.totalEmployees}</td>
                                             <td>{service.totalRequests}</td>
+                                            <td style={{ color: '#667eea' }}>{service.totalConges}</td>
+                                            <td style={{ color: '#f59e0b' }}>{service.totalPermissions}</td>
                                             <td>{service.avgRequestsPerEmployee} demande(s)</td>
                                             <td>
                                                 <div className="mini-progress">
@@ -566,7 +609,7 @@ function AdminStatistics() {
                                     );
                                 })}
                                 {serviceStats.length === 0 && (
-                                    <tr><td colSpan="5" className="text-center" style={{ padding: '40px' }}>Aucune donnée disponible</td></tr>
+                                    <tr><td colSpan="7" className="text-center" style={{ padding: '40px' }}>Aucune donnée disponible</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -582,7 +625,7 @@ function AdminStatistics() {
                     </svg>
                 </div>
                 <div className="tip-content">
-                    <strong>Analyse :</strong> Ces statistiques vous permettent de suivre l'activité des congés dans l'entreprise. 
+                    <strong>Analyse :</strong> Ces statistiques incluent les <strong>congés</strong> (🏖️) et les <strong>permissions</strong> (⏰). 
                     Utilisez les filtres pour analyser par période et identifier les tendances.
                 </div>
             </div>

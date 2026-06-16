@@ -10,7 +10,8 @@ function LeaveFilters({
     setSearchTerm,
     totalCount,
     filteredCount,
-    onReset
+    onReset,
+    showPermissionFilter = true
 }) {
     return (
         <div className="filters-bar">
@@ -32,15 +33,18 @@ function LeaveFilters({
                 </div>
                 
                 <div className="filter-group">
-                    <label>Type de congé</label>
+                    <label>Type de demande</label>
                     <select 
                         className="form-input" 
                         value={filterType} 
                         onChange={(e) => setFilterType(e.target.value)}
                     >
                         <option value="all">Tous les types</option>
-                        <option value="1">Congés Payés</option>
-                        <option value="2">Congé sans solde</option>
+                        <option value="cp">Congés Payés</option>
+                        <option value="sans_solde">Congé sans solde</option>
+                        {showPermissionFilter && (
+                            <option value="permission">⏰ Permission</option>
+                        )}
                     </select>
                 </div>
                 
@@ -49,7 +53,7 @@ function LeaveFilters({
                     <input 
                         type="text" 
                         className="form-input" 
-                        placeholder="Date (YYYY-MM-DD) ou motif..."
+                        placeholder="Date, motif..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
